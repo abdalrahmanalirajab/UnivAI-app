@@ -56,7 +56,7 @@ export default function DashboardShell({
       >
         <Box>
           <Typography variant="h5" sx={{ fontFamily: '"Lora", serif', color: '#FAF7EF' }}>
-            Uni-VA
+            UnivAI
           </Typography>
           <Typography
             variant="overline"

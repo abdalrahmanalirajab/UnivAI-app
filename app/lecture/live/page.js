@@ -81,7 +81,7 @@ export default function LiveLecturePage() {
         }}
       >
         <Typography variant="body2" sx={{ fontWeight: 700, fontSize: '0.85rem' }}>
-          Uni-VA{' '}
+          UnivAI{' '}
           <Typography component="span" sx={{ fontWeight: 400, color: '#8B9BB5', fontSize: '0.85rem' }}>
             | Macroeconomics 402: Global Fiscal Policy
           </Typography>

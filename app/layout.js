@@ -2,7 +2,7 @@ import './globals.css';
 import ThemeRegistry from './ThemeRegistry';
 
 export const metadata = {
-  title: 'Uni-VA | Academic OS',
+  title: 'UnivAI | Academic OS',
 };
 
 export default function RootLayout({ children }) {

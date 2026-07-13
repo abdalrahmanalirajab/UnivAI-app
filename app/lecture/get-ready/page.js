@@ -55,7 +55,7 @@ export default function GetReadyPage() {
         </Box>
         <Box>
           <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff', lineHeight: 1.2 }}>
-            Uni-VA
+            UnivAI
           </Typography>
           <Typography variant="overline" sx={{ color: '#8B9BB5', display: 'block', lineHeight: 1.2 }}>
             ACADEMIC OPERATING SYSTEM
