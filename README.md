@@ -1,26 +1,36 @@
-# UnivAI App — frontend prototype
+# UnivAI-app — the Face (port 3100)
 
-The standalone frontend prototype of **UnivAI ("Jamieh")**: the first pass at
-the student-facing pages (upload, schedule, lecture, evaluation) with the MUI
-theme, built as its own Next.js app.
-
-The integrated product lives in the main `UnivAI` repo (`app/`, port 3100);
-this repo is where the UI ideas get tried first.
-
-## Run it
+Every page, every API route, and all integration glue for UnivAI: dashboard,
+auth flows, exam callbacks, LiveKit tokens, course upload, and the virtual
+clock. Frontend is **pure MUI**: no `sx`, no `styled()`, no CSS files.
 
 ```bash
-npm install
-npm run dev          # http://localhost:3000
+npx next dev -p 3100      # or: make app  (from the parent repo)
 ```
 
-## What's inside
+## Find what you're looking for
 
-| Folder | What |
+| You want | Look in |
 |---|---|
-| `app/upload/` | book upload page |
-| `app/schedule/` | the weekly lecture schedule |
-| `app/lecture/` | the lecture room UI |
-| `app/evaluation/` | quizzes / results views |
-| `app/components/` | shared building blocks |
-| `app/theme.js` + `ThemeRegistry.js` | the MUI theme |
+| a page | `app/<route>/page.tsx` — `/upload`, `/schedule`, `/lecture/[id]`, `/exams`, `/dashboard`, `/admin` |
+| an API route | `app/api/<name>/route.ts` — clock, upload, admin (state / generate / restart), exams (start / callback), dashboard |
+| the live-lecture room UI | `app/lecture/[id]/LectureRoom.tsx` — LiveKit room, slide iframe, raise-hand steppers |
+| business logic | `lib/` — one file per concern (see below) |
+
+## lib/ — one file per concern
+
+| File | Owns |
+|---|---|
+| `clock.ts` | the virtual clock — the ONLY wall-clock read on the TS side |
+| `db.ts` | Postgres (`:5433`) |
+| `lectures.ts` | the 4-week schedule, join windows, reschedule |
+| `attendance.ts` | on-time / late / absent, derived from the clock |
+| `exams.ts` | exam-system integration: seeding its world, question-bank sync, windows, starting exams |
+| `course-size.ts` | the XS–XL dial (mirror of the generator's SIZES — keep in sync) |
+| `generation.ts` | spawns the course builder detached |
+| `python.ts` | how TS shells out to the venv's Python |
+| `settings.ts` | the key/value admin settings table |
+| `env.ts`, `time.ts` | env access, time formatting |
+
+Slidev decks are served static from `public/slides/week-N/`
+(built by `scripts/build-slides.mjs`).
