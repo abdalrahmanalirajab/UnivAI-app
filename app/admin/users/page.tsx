@@ -10,7 +10,9 @@ import Chip from "@mui/material/Chip";
 import TextField from "@mui/material/TextField";
 import Select from "@mui/material/Select";
 import MenuItem from "@mui/material/MenuItem";
+import Alert from "@mui/material/Alert";
 import { authClient } from "@/lib/auth-client";
+import { copyFor } from "@/lib/errorMap";
 
 export default function AdminUsersPage() {
   const [search, setSearch] = useState("");
@@ -18,8 +20,10 @@ export default function AdminUsersPage() {
   const [users, setUsers] = useState<unknown[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
+    setActionError(null);
     const id = setTimeout(async () => {
       setLoading(true);
       const { data } = await authClient.admin.listUsers({
@@ -52,6 +56,7 @@ export default function AdminUsersPage() {
         <MenuItem value="email">email</MenuItem>
         <MenuItem value="name">name</MenuItem>
       </Select>
+      {actionError && <Alert severity="error">{actionError}</Alert>}
       <Table>
         <TableHead>
           <TableRow>
@@ -60,11 +65,13 @@ export default function AdminUsersPage() {
             <TableCell>Role</TableCell>
             <TableCell>Status</TableCell>
             <TableCell>Created At</TableCell>
+            <TableCell>Actions</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
           {users.map((u, i) => {
             const user = u as {
+              id?: string;
               name?: string;
               email?: string;
               role?: string;
@@ -72,7 +79,7 @@ export default function AdminUsersPage() {
               createdAt?: string;
             };
             return (
-              <TableRow key={i}>
+              <TableRow key={user.id ?? i}>
                 <TableCell>{user.name}</TableCell>
                 <TableCell>{user.email}</TableCell>
                 <TableCell>{user.role}</TableCell>
@@ -83,6 +90,31 @@ export default function AdminUsersPage() {
                   />
                 </TableCell>
                 <TableCell>{user.createdAt}</TableCell>
+                <TableCell>
+                  <Select
+                    value={user.role ?? "student"}
+                    onChange={async (e) => {
+                      const newRole = e.target.value as "student" | "admin";
+                      const prevRole = user.role;
+                      const newUsers = [...users];
+                      (newUsers[i] as Record<string, unknown>).role = newRole;
+                      setUsers(newUsers);
+                      setActionError(null);
+                      const { error } = await authClient.admin.setRole({
+                        userId: user.id ?? "",
+                        role: newRole,
+                      });
+                      if (error) {
+                        (newUsers[i] as Record<string, unknown>).role = prevRole;
+                        setUsers([...newUsers]);
+                        setActionError(copyFor(error).message);
+                      }
+                    }}
+                  >
+                    <MenuItem value="student">student</MenuItem>
+                    <MenuItem value="admin">admin</MenuItem>
+                  </Select>
+                </TableCell>
               </TableRow>
             );
           })}
