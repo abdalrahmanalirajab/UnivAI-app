@@ -74,6 +74,10 @@ export default function ProfilePage() {
       </Button>
       {saveSuccess && <FormSuccess message="Saved" />}
       {saveError && <FormError message={saveError} />}
+      <Divider />
+      <Typography>Change email</Typography>
+      <TextField label="New email" name="newEmail" fullWidth margin="normal" />
+      <Button variant="contained">Change email</Button>
     </>
   );
 }
