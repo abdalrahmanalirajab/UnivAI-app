@@ -36,13 +36,14 @@ type Row = {
 /**
  * Stamp a join. Called when the student actually enters the LiveKit room.
  * Idempotent: the first join for a lecture wins (re-joining never rewrites it).
+ * Scoped to the owner: a student can only stamp their own lecture.
  */
-export async function stampJoin(lectureId: number): Promise<LectureAttendance | null> {
+export async function stampJoin(sid: string, lectureId: number): Promise<LectureAttendance | null> {
   const virtualNow = await now();
 
   const lectures = await query<{ id: number; starts_at: Date }>(
-    "SELECT id, starts_at FROM lectures WHERE id = $1",
-    [lectureId]
+    "SELECT id, starts_at FROM lectures WHERE id = $1 AND student_id = $2",
+    [lectureId, sid]
   );
   const lecture = lectures[0];
   if (!lecture) return null;
@@ -55,25 +56,27 @@ export async function stampJoin(lectureId: number): Promise<LectureAttendance | 
   const isLate = minutesPastStart > GRACE_MINUTES;
 
   await query(
-    `INSERT INTO attendance (lecture_id, joined_at, status, late_minutes)
-     VALUES ($1, $2, $3, $4)
-     ON CONFLICT (lecture_id) DO NOTHING`,
-    [lectureId, virtualNow, isLate ? "late" : "on_time", isLate ? minutesPastStart : 0]
+    `INSERT INTO attendance (student_id, lecture_id, joined_at, status, late_minutes)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (student_id, lecture_id) DO NOTHING`,
+    [sid, lectureId, virtualNow, isLate ? "late" : "on_time", isLate ? minutesPastStart : 0]
   );
 
-  const all = await getAttendance();
+  const all = await getAttendance(sid);
   return all.find((a) => a.lectureId === lectureId) ?? null;
 }
 
-/** Full attendance record. 'absent' and 'upcoming' are derived, never stored. */
-export async function getAttendance(): Promise<LectureAttendance[]> {
+/** Full attendance record for one student. 'absent'/'upcoming' are derived. */
+export async function getAttendance(sid: string): Promise<LectureAttendance[]> {
   const virtualNow = await now();
   const rows = await query<Row>(
     `SELECT l.id, l.week, l.title, l.starts_at,
             a.joined_at, a.status, a.late_minutes
        FROM lectures l
-       LEFT JOIN attendance a ON a.lecture_id = l.id
-      ORDER BY l.week ASC`
+       LEFT JOIN attendance a ON a.lecture_id = l.id AND a.student_id = $1
+      WHERE l.student_id = $1
+      ORDER BY l.week ASC`,
+    [sid]
   );
 
   return rows.map((row) => {
