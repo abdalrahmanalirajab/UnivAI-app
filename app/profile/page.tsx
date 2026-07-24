@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSession } from "@/lib/auth-client";
 import { authClient } from "@/lib/auth-client";
 import Typography from "@mui/material/Typography";
@@ -13,6 +13,10 @@ import PasswordField from "@/app/components/PasswordField";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import Checkbox from "@mui/material/Checkbox";
 import { copyFor } from "@/lib/errorMap";
+import List from "@mui/material/List";
+import ListItem from "@mui/material/ListItem";
+import ListItemText from "@mui/material/ListItemText";
+import Chip from "@mui/material/Chip";
 
 export default function ProfilePage() {
   const { data: session } = useSession();
@@ -39,6 +43,17 @@ export default function ProfilePage() {
   const [revokeOtherSessions, setRevokeOtherSessions] = useState(false);
   const [changePasswordSuccess, setChangePasswordSuccess] = useState(false);
   const [changePasswordError, setChangePasswordError] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<unknown[]>([]);
+
+  useEffect(() => {
+    authClient.listSessions().then((res) => setSessions(res.data ?? []));
+  }, []);
+
+  const handleRevokeOthers = async () => {
+    await authClient.revokeOtherSessions();
+    const res = await authClient.listSessions();
+    setSessions(res.data ?? []);
+  };
 
   const canSave = validateName(name) === null && validatePhone(phone) === null;
 
@@ -207,6 +222,29 @@ export default function ProfilePage() {
       </Button>
       {changePasswordSuccess && <FormSuccess message="Password changed." />}
       {changePasswordError && <FormError message={changePasswordError} />}
+      <Divider />
+      <Typography>Active sessions</Typography>
+      <List>
+        {sessions.map((s: unknown) => {
+          const session = s as { userAgent?: string; createdAt?: string; current?: boolean };
+          return (
+            <ListItem key={session.createdAt}>
+              <ListItemText
+                primary={session.userAgent ?? "Unknown"}
+                secondary={
+                  session.createdAt
+                    ? new Date(session.createdAt).toLocaleString()
+                    : undefined
+                }
+              />
+              {session.current && <Chip label="This device" size="small" />}
+            </ListItem>
+          );
+        })}
+      </List>
+      <Button variant="contained" onClick={handleRevokeOthers}>
+        Log out of all other devices
+      </Button>
     </>
   );
 }
