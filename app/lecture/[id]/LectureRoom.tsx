@@ -101,6 +101,8 @@ export default function LectureRoom({ lectureId }: Props) {
   const [agentState, setAgentState] = useState<AgentState>("connecting");
   const [slide, setSlide] = useState(1);
   const [week, setWeek] = useState<number | null>(null);
+  // This student's id — their slides live at /slides/<sid>/week-N/ (multi-tenant).
+  const [sid, setSid] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [attendance, setAttendance] = useState<{ status: string; lateMinutes: number } | null>(null);
   const [lastAnswer, setLastAnswer] = useState<{ question: string; answer: string; pages: number[] } | null>(null);
@@ -130,6 +132,7 @@ export default function LectureRoom({ lectureId }: Props) {
       if (!res.ok) throw new Error(data.error ?? "Could not join the lecture.");
 
       setWeek(data.lecture.week);
+      setSid(data.studentId);
       setTitle(data.lecture.title);
       setAttendance(data.attendance);
 
@@ -227,9 +230,9 @@ export default function LectureRoom({ lectureId }: Props) {
       frame.contentWindow.location.hash = `/${slide}`;
     } catch {
       // Different origin (it is not) — fall back to reloading the frame.
-      frame.src = `/slides/week-${week}/index.html#/${slide}`;
+      frame.src = `/slides/${sid}/week-${week}/index.html#/${slide}`;
     }
-  }, [slide, week]);
+  }, [slide, week, sid]);
 
   async function reply(message: Record<string, unknown>) {
     await room.localParticipant.publishData(
@@ -342,11 +345,11 @@ export default function LectureRoom({ lectureId }: Props) {
 
       <Card variant="outlined">
         <CardContent>
-          {week ? (
+          {week && sid ? (
             <iframe
               key={week}
               ref={slidesRef}
-              src={`/slides/week-${week}/index.html#/1`}
+              src={`/slides/${sid}/week-${week}/index.html#/1`}
               title={`Week ${week} slides`}
               width="100%"
               height="520"
