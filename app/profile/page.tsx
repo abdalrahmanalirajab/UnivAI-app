@@ -8,7 +8,11 @@ import TextField from "@mui/material/TextField";
 import Divider from "@mui/material/Divider";
 import Button from "@mui/material/Button";
 import { FormError, FormSuccess } from "@/app/components/FormAlerts";
-import { validateName, validatePhone } from "@/lib/validators";
+import { validateName, validatePhone, validatePassword } from "@/lib/validators";
+import PasswordField from "@/app/components/PasswordField";
+import FormControlLabel from "@mui/material/FormControlLabel";
+import Checkbox from "@mui/material/Checkbox";
+import { copyFor } from "@/lib/errorMap";
 
 export default function ProfilePage() {
   const { data: session } = useSession();
@@ -26,6 +30,15 @@ export default function ProfilePage() {
   const [newEmail, setNewEmail] = useState("");
   const [changeEmailError, setChangeEmailError] = useState<string | null>(null);
   const [changeEmailSuccess, setChangeEmailSuccess] = useState<string | null>(null);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [currentPasswordError, setCurrentPasswordError] = useState<string | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [newPasswordError, setNewPasswordError] = useState<string | null>(null);
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [confirmNewPasswordError, setConfirmNewPasswordError] = useState<string | null>(null);
+  const [revokeOtherSessions, setRevokeOtherSessions] = useState(false);
+  const [changePasswordSuccess, setChangePasswordSuccess] = useState(false);
+  const [changePasswordError, setChangePasswordError] = useState<string | null>(null);
 
   const canSave = validateName(name) === null && validatePhone(phone) === null;
 
@@ -109,6 +122,91 @@ export default function ProfilePage() {
       </Button>
       {changeEmailSuccess && <FormSuccess message={changeEmailSuccess} />}
       {changeEmailError && <FormError message={changeEmailError} />}
+      <Divider />
+      <Typography>Change password</Typography>
+      <PasswordField
+        label="Current password"
+        name="currentPassword"
+        fullWidth
+        margin="normal"
+        value={currentPassword}
+        onChange={(e) => {
+          setCurrentPassword(e.target.value);
+          setCurrentPasswordError(null);
+        }}
+        error={currentPasswordError !== null}
+        helperText={currentPasswordError}
+      />
+      <PasswordField
+        label="New password"
+        name="newPassword"
+        fullWidth
+        margin="normal"
+        value={newPassword}
+        onChange={(e) => {
+          setNewPassword(e.target.value);
+          setNewPasswordError(validatePassword(e.target.value));
+        }}
+        error={newPasswordError !== null}
+        helperText={newPasswordError}
+      />
+      <PasswordField
+        label="Confirm new password"
+        name="confirmNewPassword"
+        fullWidth
+        margin="normal"
+        value={confirmNewPassword}
+        onChange={(e) => {
+          setConfirmNewPassword(e.target.value);
+          setConfirmNewPasswordError(
+            e.target.value !== newPassword ? "Passwords do not match." : null
+          );
+        }}
+        error={confirmNewPasswordError !== null}
+        helperText={confirmNewPasswordError}
+      />
+      <FormControlLabel
+        control={
+          <Checkbox
+            checked={revokeOtherSessions}
+            onChange={(e) => setRevokeOtherSessions(e.target.checked)}
+          />
+        }
+        label="Log out of other devices"
+      />
+      <Button
+        variant="contained"
+        disabled={
+          !currentPassword ||
+          validatePassword(newPassword) !== null ||
+          confirmNewPassword !== newPassword
+        }
+        onClick={async () => {
+          setChangePasswordError(null);
+          setChangePasswordSuccess(false);
+          const { error } = await authClient.changePassword({
+            currentPassword,
+            newPassword,
+            revokeOtherSessions,
+          });
+          if (error) {
+            if (error.code === "INVALID_PASSWORD") {
+              setCurrentPasswordError(copyFor(error).message);
+            } else {
+              setChangePasswordError(copyFor(error).message);
+            }
+          } else {
+            setCurrentPassword("");
+            setNewPassword("");
+            setConfirmNewPassword("");
+            setChangePasswordSuccess(true);
+          }
+        }}
+      >
+        Change password
+      </Button>
+      {changePasswordSuccess && <FormSuccess message="Password changed." />}
+      {changePasswordError && <FormError message={changePasswordError} />}
     </>
   );
 }
