@@ -1,11 +1,15 @@
 import { now, getOffsetMs } from "@/lib/clock";
 import { query } from "@/lib/db";
 import { getAttendance, summarize } from "@/lib/attendance";
+import { requireAdminApi } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
-/** SUDO endpoint: everything the system knows about the student. No auth (MVP-1, local demo only). */
+/** SUDO endpoint: everything the system knows about the student. Admin+ only. */
 export async function GET() {
+  const gate = await requireAdminApi();
+  if (gate instanceof Response) return gate;
+
   const [virtualNow, offsetMs] = await Promise.all([now(), getOffsetMs()]);
 
   const [books, lectures, grades, qaLog] = await Promise.all([

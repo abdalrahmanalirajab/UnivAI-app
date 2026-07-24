@@ -1,6 +1,7 @@
 import { query } from "@/lib/db";
 import { rescheduleLectures } from "@/lib/lectures";
 import { resetExamWorld } from "@/lib/exams";
+import { requireAdminApi } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,9 @@ export const dynamic = "force-dynamic";
  * banks, midterm) re-seeds itself on the next exam start.
  */
 export async function POST() {
+  const gate = await requireAdminApi();
+  if (gate instanceof Response) return gate;
+
   await query("DELETE FROM attendance");
   await query("DELETE FROM grades");
   await query("DELETE FROM qa_log");

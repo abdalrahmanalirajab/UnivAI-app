@@ -5,6 +5,7 @@ import { REPO_ROOT } from "@/lib/python";
 import { spawnGeneration } from "@/lib/generation";
 import { getSetting, setSetting } from "@/lib/settings";
 import { COURSE_SIZES, DEFAULT_SIZE, isCourseSize } from "@/lib/course-size";
+import { requireAdminApi } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,9 @@ export const dynamic = "force-dynamic";
  */
 
 export async function GET() {
+  const gate = await requireAdminApi();
+  if (gate instanceof Response) return gate;
+
   const size = await getSetting("course_size");
   return Response.json({
     size: isCourseSize(size) ? size : DEFAULT_SIZE,
@@ -23,6 +27,9 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const gate = await requireAdminApi();
+  if (gate instanceof Response) return gate;
+
   const body = await request.json().catch(() => ({}));
   const size = body?.size;
   const mode = body?.mode;
