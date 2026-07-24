@@ -41,6 +41,24 @@ export default function NavBar() {
     router.push("/login");
   };
 
+  const navLinks = () => {
+    switch (user?.role) {
+      case "admin":
+        return [
+          ...STUDENT_LINKS,
+          { href: "/admin", label: "Admin" },
+        ];
+      case "super_admin":
+        return [
+          ...STUDENT_LINKS,
+          { href: "/admin", label: "Admin" },
+          { href: "/admin/users", label: "Admin ▸ Users" },
+        ];
+      default:
+        return ALL_LINKS;
+    }
+  };
+
   return (
     <AppBar position="static">
       <Toolbar>
@@ -62,9 +80,9 @@ export default function NavBar() {
                   Register
                 </Button>
               </>
-            ) : user.role === "student" ? (
+            ) : (
               <>
-                {STUDENT_LINKS.map((link) => (
+                {(user.role === "student" ? STUDENT_LINKS : navLinks()).map((link) => (
                   <Button
                     key={link.href}
                     color="inherit"
@@ -100,17 +118,6 @@ export default function NavBar() {
                   <MenuItem onClick={handleLogout}>Logout</MenuItem>
                 </Menu>
               </>
-            ) : (
-              ALL_LINKS.map((link) => (
-                <Button
-                  key={link.href}
-                  color="inherit"
-                  component={Link}
-                  href={link.href}
-                >
-                  {link.label}
-                </Button>
-              ))
             )}
           </Stack>
         </Stack>
