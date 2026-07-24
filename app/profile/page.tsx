@@ -23,6 +23,9 @@ export default function ProfilePage() {
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [newEmail, setNewEmail] = useState("");
+  const [changeEmailError, setChangeEmailError] = useState<string | null>(null);
+  const [changeEmailSuccess, setChangeEmailSuccess] = useState<string | null>(null);
 
   const canSave = validateName(name) === null && validatePhone(phone) === null;
 
@@ -76,8 +79,36 @@ export default function ProfilePage() {
       {saveError && <FormError message={saveError} />}
       <Divider />
       <Typography>Change email</Typography>
-      <TextField label="New email" name="newEmail" fullWidth margin="normal" />
-      <Button variant="contained">Change email</Button>
+      <TextField
+        label="New email"
+        name="newEmail"
+        fullWidth
+        margin="normal"
+        value={newEmail}
+        onChange={(e) => setNewEmail(e.target.value)}
+      />
+      <Button
+        variant="contained"
+        onClick={async () => {
+          setChangeEmailError(null);
+          setChangeEmailSuccess(null);
+          const { error } = await authClient.changeEmail({
+            newEmail,
+            callbackURL: "/profile?email_changed=1",
+          });
+          if (error) {
+            setChangeEmailError(error.message);
+          } else {
+            setChangeEmailSuccess(
+              `Verification sent to ${newEmail}. Your email will update once you click the link.`
+            );
+          }
+        }}
+      >
+        Change email
+      </Button>
+      {changeEmailSuccess && <FormSuccess message={changeEmailSuccess} />}
+      {changeEmailError && <FormError message={changeEmailError} />}
     </>
   );
 }
