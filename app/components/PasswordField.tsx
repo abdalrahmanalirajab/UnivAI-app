@@ -13,10 +13,13 @@ export default function PasswordField(props: TextFieldProps) {
 
   return (
     <TextField
+      {...props}
       type={visible ? "text" : "password"}
       InputProps={{
+        ...props.InputProps,
         endAdornment: (
           <InputAdornment position="end">
+            {props.InputProps?.endAdornment}
             <IconButton
               aria-label="toggle password visibility"
               onClick={() => setVisible((v) => !v)}
@@ -27,7 +30,6 @@ export default function PasswordField(props: TextFieldProps) {
           </InputAdornment>
         ),
       }}
-      {...props}
     />
   );
 }
