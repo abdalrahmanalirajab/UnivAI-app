@@ -20,6 +20,14 @@ export const auth = betterAuth({
   baseURL: env.BETTER_AUTH_URL,
   database: pool,
 
+  // Browsers send an Origin header and Better Auth rejects any origin it does
+  // not trust (baseURL is trusted by default). Local dev may run on :3000 or
+  // :3100, so trust both there; production trusts only BETTER_AUTH_URL.
+  trustedOrigins:
+    process.env.NODE_ENV === "production"
+      ? [env.BETTER_AUTH_URL]
+      : ["http://localhost:3000", "http://localhost:3100"],
+
   emailAndPassword: {
     enabled: true,
     // A fresh account can't sign in until it verifies its email (contract §6.1/6.2).
