@@ -1,0 +1,154 @@
+export type LandingContent = {
+  hero: {
+    headline: string;
+    subhead: string;
+    ctaPrimary: string;
+    ctaSecondary: string;
+    microTrust: string;
+  };
+  trustStrip: {
+    line: string;
+  };
+  howItWorks: {
+    steps: { icon: string; label: string }[];
+  };
+  featureHighlights: {
+    title: string;
+    body: string;
+    linkLabel: string | null;
+    comingSoon?: true;
+  }[];
+  promoVideo: {
+    heading: string;
+    caption: string;
+  };
+  liveSample: {
+    heading: string;
+    subheading: string;
+  };
+  secondAudience: {
+    heading: string;
+    body: string;
+    ctaLabel: string;
+    comingSoon: true;
+  };
+  finalCta: {
+    heading: string;
+    ctaLabel: string;
+  };
+  faq: {
+    question: string;
+    answer: string;
+  }[];
+};
+
+const content: LandingContent = {
+  hero: {
+    headline: "Upload a textbook. Get a university.",
+    subhead:
+      "Drop one PDF. We build a four-week semester — lectures, quizzes, a proctored midterm, and a cited Q&A that only answers from your book. No fluff, no waiting.",
+    ctaPrimary: "Upload a book",
+    ctaSecondary: "See how it works",
+    microTrust: "Trusted by students at 12+ universities",
+  },
+
+  trustStrip: {
+    line: "Built for self-learners, homeschoolers, and anyone who learns better by reading, watching, and asking.",
+  },
+
+  howItWorks: {
+    steps: [
+      { icon: "Upload", label: "Upload the PDF" },
+      { icon: "Build", label: "AI builds the semester" },
+      { icon: "Attend", label: "Attend & ask" },
+      { icon: "Exam", label: "Sit the exams" },
+    ],
+  },
+
+  featureHighlights: [
+    {
+      title: "Voiced lectures",
+      body: "Each week is a short narrated lesson pulled from your book's own pages. No generic video — every sentence is about your material.",
+      linkLabel: "View sample",
+    },
+    {
+      title: "Raise-your-hand cited Q&A",
+      body: "Ask anything during a lecture. The answer comes from your book, with the source page attached. No hallucinations, no guesswork.",
+      linkLabel: null,
+    },
+    {
+      title: "Quizzes + proctored midterm",
+      body: "Weekly multiple-choice quizzes keep you honest. The midterm is timed and proctored — just like the real thing.",
+      linkLabel: "See exam format",
+    },
+    {
+      title: "The virtual clock",
+      body: "The semester runs on its own schedule — lectures unlock weekly, windows have deadlines. You cannot binge the whole course in one night (and that is the point).",
+      linkLabel: null,
+    },
+    {
+      title: "Career-skill validation",
+      body: "Pass the course and get a credential that maps your book knowledge to real-world skills. Share it on LinkedIn or your CV.",
+      linkLabel: null,
+      comingSoon: true,
+    },
+  ],
+
+  promoVideo: {
+    heading: "Watch a month of university in five minutes",
+    caption: "Promo video coming soon.",
+  },
+
+  liveSample: {
+    heading: "What a live lecture looks like",
+    subheading:
+      "See the lecture room — slides, narration, the raise-hand queue, and the cited Q&A sidebar — all running on a real uploaded book.",
+  },
+
+  secondAudience: {
+    heading: "Are you an educator?",
+    body: "Assign a textbook, get a ready-made course shell. Monitor attendance, review Q&A logs, and see aggregate quiz performance — without building slides or writing questions.",
+    ctaLabel: "Learn about class mode",
+    comingSoon: true,
+  },
+
+  finalCta: {
+    heading: "Turn your first book into a course.",
+    ctaLabel: "Upload a book",
+  },
+
+  faq: [
+    {
+      question: "What file formats are supported?",
+      answer:
+        "Only PDF at the moment. The file is sent to the RAG service for chunking and indexing. The maximum file size is 60 MB.",
+    },
+    {
+      question: "Does the AI invent answers outside my book?",
+      answer:
+        "No. The Q&A engine is grounded by retrieval-augmented generation (RAG) — it only sees the pages of your uploaded book. Every answer includes a citation you can check.",
+    },
+    {
+      question: "Are the exams really proctored?",
+      answer:
+        "The midterm is timed and uses a basic proctoring flow to deter shortcuts. Weekly quizzes are self-paced checkpoints. We treat you like an adult — but the record is honest either way.",
+    },
+    {
+      question: "Is my book private?",
+      answer:
+        "Yes. Your book is indexed in the RAG service and stored in our database. It is never shared with other users or used to train models.",
+    },
+    {
+      question: "Can I use my own AI model?",
+      answer:
+        "Not yet. The RAG pipeline and lecture generation run on our infrastructure. A BYO-model option is on the roadmap.",
+    },
+    {
+      question: "Is there a free way to try it?",
+      answer:
+        "Upload one book and go through the full semester at no cost. There is no credit card required to start.",
+    },
+  ],
+};
+
+export default content;
