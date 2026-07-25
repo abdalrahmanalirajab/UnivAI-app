@@ -3,7 +3,7 @@ import Typography from "@mui/material/Typography";
 
 export default function PromoVideo() {
   return (
-    <section aria-label="PromoVideo">
+    <section aria-label="PromoVideo" id="promo-video">
       <Container maxWidth="lg">
         <Typography variant="h2" component="p">
           PromoVideo
