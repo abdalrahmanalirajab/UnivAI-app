@@ -134,33 +134,38 @@ export default function AdminUsersPage() {
                 </TableCell>
                 <TableCell>{user.createdAt}</TableCell>
                 <TableCell>
-                  <Select
-                    value={user.role ?? "student"}
-                    onChange={async (e) => {
-                      const newRole = e.target.value as "student" | "admin";
-                      const prevRole = user.role;
-                      const newUsers = [...users];
-                      (newUsers[i] as Record<string, unknown>).role = newRole;
-                      setUsers(newUsers);
-                      setActionError(null);
-                      const { error } = await authClient.admin.setRole({
-                        userId: user.id ?? "",
-                        role: newRole,
-                      });
-                      if (error) {
-                        (newUsers[i] as Record<string, unknown>).role = prevRole;
-                        setUsers([...newUsers]);
-                        setActionError(copyFor(error).message);
-                      }
-                    }}
-                  >
-                    <MenuItem value="student">student</MenuItem>
-                    <MenuItem value="admin">admin</MenuItem>
-</Select>
+                  {user.role === "super_admin" ? (
+                    <Chip label="super_admin" />
+                  ) : (
+                    <Select
+                      value={user.role ?? "student"}
+                      onChange={async (e) => {
+                        const newRole = e.target.value as "student" | "admin";
+                        const prevRole = user.role;
+                        const newUsers = [...users];
+                        (newUsers[i] as Record<string, unknown>).role = newRole;
+                        setUsers(newUsers);
+                        setActionError(null);
+                        const { error } = await authClient.admin.setRole({
+                          userId: user.id ?? "",
+                          role: newRole,
+                        });
+                        if (error) {
+                          (newUsers[i] as Record<string, unknown>).role = prevRole;
+                          setUsers([...newUsers]);
+                          setActionError(copyFor(error).message);
+                        }
+                      }}
+                    >
+                      <MenuItem value="student">student</MenuItem>
+                      <MenuItem value="admin">admin</MenuItem>
+                    </Select>
+                  )}
                   <Button
                     variant="outlined"
                     size="small"
                     color={user.banned ? "success" : "error"}
+                    disabled={user.role === "super_admin"}
                     onClick={() => {
                       if (user.banned) {
                         handleUnban(i);
