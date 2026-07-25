@@ -62,7 +62,7 @@ export default function ProfilePage() {
     setSaveSuccess(false);
     const { error } = await authClient.updateUser({ name, phone });
     if (error) {
-      setSaveError(error.message);
+      setSaveError(error.message ?? "Could not save changes.");
     } else {
       setSaveSuccess(true);
     }
@@ -125,7 +125,7 @@ export default function ProfilePage() {
             callbackURL: "/profile?email_changed=1",
           });
           if (error) {
-            setChangeEmailError(error.message);
+            setChangeEmailError(error.message ?? "Could not change email.");
           } else {
             setChangeEmailSuccess(
               `Verification sent to ${newEmail}. Your email will update once you click the link.`

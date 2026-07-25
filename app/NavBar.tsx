@@ -70,7 +70,7 @@ export default function NavBar() {
           <Typography variant="h6" component="div">
             UnivAI
           </Typography>
-          <Stack direction="row" spacing={1} alignItems="center">
+          <Stack direction="row" spacing={1}>
             {!user ? (
               <>
                 <Button color="inherit" component={Link} href="/login">

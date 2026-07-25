@@ -1,4 +1,7 @@
-export type AuthError = { code: string; message: string; status: number };
+// Matches Better Auth's real error shape: code/message are optional and there
+// may be extra fields (statusText) we ignore. Kept loose so any auth call's
+// error object is assignable.
+export type AuthError = { code?: string; message?: string; status: number };
 
 export const ERROR_COPY: Record<string, { field?: "email" | "password"; message: string }> = {
   USER_ALREADY_EXISTS: { field: "email", message: "An account with this email already exists." },
@@ -14,5 +17,6 @@ export const ERROR_COPY: Record<string, { field?: "email" | "password"; message:
 
 export function copyFor(err: AuthError): { field?: "email" | "password"; message: string } {
   if (err.status === 429) return { message: "Too many attempts. Please wait a moment." };
-  return ERROR_COPY[err.code] ?? { message: "Something went wrong, please try again." };
+  const copy = err.code ? ERROR_COPY[err.code] : undefined;
+  return copy ?? { message: "Something went wrong, please try again." };
 }
