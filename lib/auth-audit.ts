@@ -1,11 +1,11 @@
-import { createAuthMiddleware } from "better-auth/api";
 import { pool } from "./db";
 
 /**
- * Audit logging for privileged admin actions (docs/auth-plan.md §6). Wired as
- * Better Auth's global `hooks.after`, so it runs after every request; we only
- * act on the admin mutation endpoints below, and only when they SUCCEEDED
- * (a blocked call throws before producing `returned`, so it is never logged).
+ * Audit logging for privileged admin actions (docs/auth-plan.md §6). Called from
+ * the composed `hooks.after` middleware in lib/auth.ts, so it runs after every
+ * request; we only act on the admin mutation endpoints below, and only when they
+ * SUCCEEDED (a blocked call throws before producing `returned`, so it is never
+ * logged).
  *
  * The actor comes from the session the admin plugin already resolved; the
  * target + change come from the request body. Logging never throws — a broken
@@ -27,8 +27,8 @@ type AfterCtx = {
   };
 };
 
-export const auditHook = createAuthMiddleware(async (ctx) => {
-  const c = ctx as unknown as AfterCtx;
+export async function recordAudit(ctx: unknown) {
+  const c = ctx as AfterCtx;
   const action = AUDITED[c.path];
   if (!action) return;
 
@@ -64,4 +64,4 @@ export const auditHook = createAuthMiddleware(async (ctx) => {
   } catch (err) {
     console.error("auth_audit insert failed:", err);
   }
-});
+}

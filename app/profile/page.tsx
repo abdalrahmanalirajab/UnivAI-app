@@ -18,13 +18,22 @@ import ListItem from "@mui/material/ListItem";
 import ListItemText from "@mui/material/ListItemText";
 import Chip from "@mui/material/Chip";
 
+type SessionUser = NonNullable<ReturnType<typeof useSession>["data"]>["user"];
+
 export default function ProfilePage() {
   const { data: session } = useSession();
 
+  // useSession returns null while loading and momentarily during refetches
+  // (e.g. right after updateUser). Bail out here — BEFORE any other hook — so
+  // the hooks below live in ProfileForm and always run in the same order.
+  // ProfileForm mounts only once a session exists, so its useState initializers
+  // seed from the real user values.
   if (!session) return null;
 
-  const { user } = session;
+  return <ProfileForm user={session.user} />;
+}
 
+function ProfileForm({ user }: { user: SessionUser }) {
   const [name, setName] = useState(user.name ?? "");
   const [nameError, setNameError] = useState<string | null>(null);
   const [phone, setPhone] = useState(user.phone ?? "");
@@ -125,7 +134,13 @@ export default function ProfilePage() {
             callbackURL: "/profile?email_changed=1",
           });
           if (error) {
-            setChangeEmailError(error.message ?? "Could not change email.");
+            // Known codes (e.g. USER_ALREADY_EXISTS) get the friendly mapped
+            // copy; anything else keeps Better Auth's own message.
+            setChangeEmailError(
+              error.code
+                ? copyFor(error).message
+                : error.message ?? "Could not change email."
+            );
           } else {
             setChangeEmailSuccess(
               `Verification sent to ${newEmail}. Your email will update once you click the link.`

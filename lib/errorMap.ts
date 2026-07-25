@@ -11,7 +11,12 @@ export const ERROR_COPY: Record<string, { field?: "email" | "password"; message:
   PASSWORD_TOO_SHORT: { field: "password", message: "Password must be at least 8 characters." },
   INVALID_EMAIL_OR_PASSWORD: { message: "Incorrect email or password." },
   EMAIL_NOT_VERIFIED: { message: "Please verify your email first." },
-  USER_BANNED: { message: "This account is suspended." },
+  // Better Auth's admin plugin throws this code (not USER_BANNED) when a banned
+  // user tries to sign in; the ban reason is emailed separately (see auth-notify).
+  BANNED_USER: {
+    message:
+      "Your account has been suspended. Check your email for the reason and next steps.",
+  },
   INVALID_TOKEN: { message: "This link is invalid or expired." },
   TOKEN_EXPIRED: { message: "This link is invalid or expired." },
   INVALID_PASSWORD: { field: "password", message: "Current password is incorrect." },

@@ -1,10 +1,12 @@
 import { betterAuth } from "better-auth";
 import { admin } from "better-auth/plugins";
+import { createAuthMiddleware } from "better-auth/api";
 import { pool } from "./db";
 import { env } from "./env";
 import { sendEmail } from "./email";
 import { ac, roles } from "./auth-ac";
-import { auditHook } from "./auth-audit";
+import { recordAudit } from "./auth-audit";
+import { sendBanNotification } from "./auth-notify";
 import { guardHook } from "./auth-guards";
 
 /**
@@ -112,11 +114,16 @@ export const auth = betterAuth({
     },
   },
 
-  // guardHook (before): reject duplicate-email sign-ups and protect the
-  // super_admin role. auditHook (after): log privileged admin actions.
+  // guardHook (before): reject duplicate-email sign-ups/changes and protect the
+  // super_admin role. after: audit-log privileged admin actions, then email a
+  // banned user the reason. Only one before/after middleware is allowed, so the
+  // after concerns are composed here (both no-op on unrelated paths).
   hooks: {
     before: guardHook,
-    after: auditHook,
+    after: createAuthMiddleware(async (ctx) => {
+      await recordAudit(ctx);
+      await sendBanNotification(ctx);
+    }),
   },
 
   plugins: [

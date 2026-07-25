@@ -1,17 +1,18 @@
-import { createAuthMiddleware, APIError } from "better-auth/api";
+import { createAuthMiddleware, APIError, getSessionFromCtx } from "better-auth/api";
 
 /**
  * Global `hooks.before` guards (docs/auth-plan.md §6). Wired as Better Auth's
- * `hooks.before`, so it runs before every endpoint; we only act on two paths.
+ * `hooks.before`, so it runs before every endpoint; we only act on these paths.
  *
- *  1. POST /sign-up/email — with `requireEmailVerification` on, Better Auth
- *     deliberately returns a *generic success* when the email is already
- *     registered (an anti-enumeration measure — see dist/api/routes/sign-up.mjs,
- *     `shouldReturnGenericDuplicateResponse`). It never creates the user but
- *     responds with a synthetic one, so the UI happily sends the person to
- *     /verify-email and the address silently stays taken. We want the explicit
- *     "email already registered" error, so we detect the duplicate up front and
- *     throw USER_ALREADY_EXISTS (already mapped in lib/errorMap.ts).
+ *  1. POST /sign-up/email and POST /change-email — with `requireEmailVerification`
+ *     on, Better Auth deliberately returns a *generic success* when the target
+ *     email already belongs to someone (an anti-enumeration measure — see
+ *     dist/api/routes/sign-up.mjs `shouldReturnGenericDuplicateResponse`, and the
+ *     `findUserByEmail` short-circuit in dist/api/routes/update-user.mjs). It
+ *     never creates/changes anything but responds as if it did, so the UI happily
+ *     tells the person to check their inbox while the address stays taken. We want
+ *     the explicit "email already exists" error, so we detect the duplicate up
+ *     front and throw USER_ALREADY_EXISTS (already mapped in lib/errorMap.ts).
  *
  *  2. POST /admin/set-role and /admin/ban-user — the admin plugin has no concept
  *     of a protected role, so a super_admin can demote or ban *itself* (or any
@@ -23,7 +24,7 @@ import { createAuthMiddleware, APIError } from "better-auth/api";
 
 type GuardCtx = {
   path: string;
-  body?: { email?: string; userId?: string };
+  body?: { email?: string; newEmail?: string; userId?: string };
   context: {
     internalAdapter: {
       findUserByEmail: (email: string) => Promise<{ user?: unknown } | null>;
@@ -32,6 +33,12 @@ type GuardCtx = {
   };
 };
 
+const emailAlreadyExists = () =>
+  new APIError("UNPROCESSABLE_ENTITY", {
+    code: "USER_ALREADY_EXISTS",
+    message: "An account with this email already exists.",
+  });
+
 export const guardHook = createAuthMiddleware(async (ctx) => {
   const c = ctx as unknown as GuardCtx;
 
@@ -39,12 +46,23 @@ export const guardHook = createAuthMiddleware(async (ctx) => {
     const email = c.body?.email;
     if (!email) return;
     const existing = await c.context.internalAdapter.findUserByEmail(email);
-    if (existing?.user) {
-      throw new APIError("UNPROCESSABLE_ENTITY", {
-        code: "USER_ALREADY_EXISTS",
-        message: "An account with this email already exists.",
-      });
-    }
+    if (existing?.user) throw emailAlreadyExists();
+    return;
+  }
+
+  if (c.path === "/change-email") {
+    const newEmail = c.body?.newEmail?.toLowerCase();
+    if (!newEmail) return;
+    // change-email requires a session; if there isn't one, let Better Auth's
+    // session middleware reject it rather than probing emails for an anonymous
+    // caller (which would leak which addresses are registered).
+    const session = await getSessionFromCtx(ctx);
+    if (!session) return;
+    // Changing to your own current address is "email is the same", not a
+    // duplicate — let Better Auth's own check produce that message.
+    if (session.user?.email?.toLowerCase() === newEmail) return;
+    const existing = await c.context.internalAdapter.findUserByEmail(newEmail);
+    if (existing?.user) throw emailAlreadyExists();
     return;
   }
 

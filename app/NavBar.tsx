@@ -97,6 +97,9 @@ export default function NavBar() {
         </Stack>
         {user && (
           <>
+            <>
+            {user.name}
+            </>
             <IconButton onClick={(e) => setAnchorEl(e.currentTarget)}>
               <Avatar>{user.name?.charAt(0)?.toUpperCase()}</Avatar>
             </IconButton>
