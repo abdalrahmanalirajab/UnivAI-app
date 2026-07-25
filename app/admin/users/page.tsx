@@ -119,7 +119,7 @@ export default function AdminUsersPage() {
               email?: string;
               role?: string;
               banned?: boolean;
-              createdAt?: string;
+              createdAt?: string | Date;
             };
             return (
               <TableRow key={user.id ?? i}>
@@ -132,7 +132,9 @@ export default function AdminUsersPage() {
                     color={user.banned ? "error" : "success"}
                   />
                 </TableCell>
-                <TableCell>{user.createdAt}</TableCell>
+                <TableCell>
+                  {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : "—"}
+                </TableCell>
                 <TableCell>
                   <Select
                     value={user.role ?? "student"}
