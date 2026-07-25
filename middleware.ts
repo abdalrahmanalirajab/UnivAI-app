@@ -2,41 +2,47 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSessionCookie } from "better-auth/cookies";
 
 /**
- * Coarse route protection (docs/auth-contract.md §4). This only checks for a
- * session cookie's PRESENCE — it is an optimization, not the authorization
- * boundary. Real role checks live server-side in lib/session.ts (requireAdmin)
- * and in each API route.
+ * Deny-by-default route protection. A guest (no session) may see ONLY the
+ * public pages below — the landing page and the auth screens. Every other page
+ * (/dashboard, /schedule, /upload, /exams, /lecture/*, /admin, /profile, …)
+ * redirects to /login with a ?redirect back to where they were headed.
  *
- * Phase 1 scope: gate the NEW auth-owned pages (/profile, /admin) and bounce
- * signed-in users away from /login and /register. The existing demo pages
- * (/dashboard, /schedule, /upload, /exams, /lecture) are added to the matcher
- * in Phase 5, once they are scoped per-user and the login page exists.
+ * This is the coarse *authentication* gate. Role checks (student vs admin vs
+ * super_admin) still happen server-side in lib/session.ts. API routes are NOT
+ * matched here — they guard themselves (requireUserApi / requireAdminApi) and
+ * return JSON 401/403, and the exam webhook + Better Auth endpoints must stay
+ * reachable to server-to-server callers.
  */
+const PUBLIC_PATHS = new Set([
+  "/",
+  "/login",
+  "/register",
+  "/forgot-password",
+  "/reset-password",
+  "/verify-email",
+]);
+
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const hasSession = Boolean(getSessionCookie(req));
 
-  if (pathname === "/login" || pathname === "/register") {
-    return hasSession
-      ? NextResponse.redirect(new URL("/dashboard", req.url))
-      : NextResponse.next();
+  // Signed-in users have no business on the login/register screens.
+  if (hasSession && (pathname === "/login" || pathname === "/register")) {
+    return NextResponse.redirect(new URL("/dashboard", req.url));
   }
 
-  if (!hasSession) {
+  // Guests may only be on a public page; everything else → login.
+  if (!hasSession && !PUBLIC_PATHS.has(pathname)) {
     const url = new URL("/login", req.url);
     url.searchParams.set("redirect", pathname);
     return NextResponse.redirect(url);
   }
+
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: [
-    "/profile/:path*",
-    "/admin/:path*",
-    "/login",
-    "/register",
-    // Phase 5 (after per-user scoping): "/dashboard/:path*", "/schedule/:path*",
-    // "/upload/:path*", "/exams/:path*", "/lecture/:path*",
-  ],
+  // Run on every page route, but skip API routes (self-guarding), Next
+  // internals, and static files (anything with a dot, e.g. .ico / .svg / .html).
+  matcher: ["/((?!api|_next|.*\\.).*)"],
 };
