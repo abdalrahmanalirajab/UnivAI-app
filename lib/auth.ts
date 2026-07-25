@@ -5,6 +5,7 @@ import { env } from "./env";
 import { sendEmail } from "./email";
 import { ac, roles } from "./auth-ac";
 import { auditHook } from "./auth-audit";
+import { guardHook } from "./auth-guards";
 
 /**
  * Better Auth — the whole auth backend. See docs/auth-plan.md (Phase 1) and
@@ -111,8 +112,10 @@ export const auth = betterAuth({
     },
   },
 
-  // Audit privileged admin actions (role changes, bans, deletes).
+  // guardHook (before): reject duplicate-email sign-ups and protect the
+  // super_admin role. auditHook (after): log privileged admin actions.
   hooks: {
+    before: guardHook,
     after: auditHook,
   },
 

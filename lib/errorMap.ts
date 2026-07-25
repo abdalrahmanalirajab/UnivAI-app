@@ -5,6 +5,8 @@ export type AuthError = { code?: string; message?: string; status: number };
 
 export const ERROR_COPY: Record<string, { field?: "email" | "password"; message: string }> = {
   USER_ALREADY_EXISTS: { field: "email", message: "An account with this email already exists." },
+  CANNOT_CHANGE_SUPER_ADMIN_ROLE: { message: "A super admin's role cannot be changed." },
+  CANNOT_BAN_SUPER_ADMIN: { message: "A super admin cannot be banned." },
   INVALID_EMAIL: { field: "email", message: "Enter a valid email address." },
   PASSWORD_TOO_SHORT: { field: "password", message: "Password must be at least 8 characters." },
   INVALID_EMAIL_OR_PASSWORD: { message: "Incorrect email or password." },

@@ -12,6 +12,7 @@ import Select from "@mui/material/Select";
 import MenuItem from "@mui/material/MenuItem";
 import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
+import Stack from "@mui/material/Stack";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
@@ -136,6 +137,10 @@ export default function AdminUsersPage() {
                   {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : "—"}
                 </TableCell>
                 <TableCell>
+                  <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
+                  {user.role === "super_admin" ? (
+                    "super_admin"
+                  ) : (
                   <Select
                     value={user.role ?? "student"}
                     onChange={async (e) => {
@@ -158,11 +163,13 @@ export default function AdminUsersPage() {
                   >
                     <MenuItem value="student">student</MenuItem>
                     <MenuItem value="admin">admin</MenuItem>
-</Select>
-                  <Button
+                  </Select>
+                  )}
+                  {user.role === "super_admin" || <Button
                     variant="outlined"
                     size="small"
                     color={user.banned ? "success" : "error"}
+                    sx={{ ml: "auto" }}
                     onClick={() => {
                       if (user.banned) {
                         handleUnban(i);
@@ -174,7 +181,8 @@ export default function AdminUsersPage() {
                     }}
                   >
                     {user.banned ? "Unban" : "Ban"}
-                  </Button>
+                  </Button>}
+                  </Stack>
                 </TableCell>
               </TableRow>
             );
