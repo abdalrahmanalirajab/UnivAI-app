@@ -1,7 +1,11 @@
+"use client";
+
+import { useState, useEffect, useRef } from "react";
 import Container from "@mui/material/Container";
 import Grid from "@mui/material/Grid2";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
+import Grow from "@mui/material/Grow";
 import CloudUpload from "@mui/icons-material/CloudUpload";
 import AutoStories from "@mui/icons-material/AutoStories";
 import QuestionAnswer from "@mui/icons-material/QuestionAnswer";
@@ -17,25 +21,62 @@ const ICON_MAP = {
 
 export default function HowItWorks() {
   const { steps } = content.howItWorks;
+  const [inView, setInView] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(0);
+  const sectionRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const el = sectionRef.current;
+    if (!el) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setInView(true);
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.2 },
+    );
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!inView) return;
+
+    const interval = setInterval(() => {
+      setVisibleCount((prev) => {
+        if (prev < steps.length) return prev + 1;
+        clearInterval(interval);
+        return prev;
+      });
+    }, 200);
+
+    return () => clearInterval(interval);
+  }, [inView, steps.length]);
 
   return (
-    <section aria-label="HowItWorks">
+    <section aria-label="HowItWorks" ref={sectionRef}>
       <Container maxWidth="lg">
         <Stack spacing={4}>
           <Typography variant="h2" component="p">
             How it works
           </Typography>
           <Grid container spacing={4}>
-            {steps.map((step) => {
+            {steps.map((step, index) => {
               const Icon = ICON_MAP[step.icon];
               return (
                 <Grid size={{ xs: 12, sm: 6, md: 3 }} key={step.label}>
-                  <Stack spacing={1}>
-                    <Icon />
-                    <Typography variant="body2" align="center">
-                      {step.label}
-                    </Typography>
-                  </Stack>
+                  <Grow in={index < visibleCount} timeout={400}>
+                    <Stack spacing={1}>
+                      <Icon />
+                      <Typography variant="body2" align="center">
+                        {step.label}
+                      </Typography>
+                    </Stack>
+                  </Grow>
                 </Grid>
               );
             })}
