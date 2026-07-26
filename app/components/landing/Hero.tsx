@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Grid from "@mui/material/Grid2";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import Button from "@mui/material/Button";
 import Paper from "@mui/material/Paper";
+import Fade from "@mui/material/Fade";
 import Link from "next/link";
 import { useSession } from "@/lib/auth-client";
 import content from "./content";
@@ -21,6 +22,23 @@ export default function Hero() {
 
   const isGuest = !user;
   const isStudent = user?.role === "student";
+
+  const [showAfter, setShowAfter] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+    if (mq.matches) {
+      setShowAfter(true);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setShowAfter((prev) => !prev);
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <section aria-label="Hero">
@@ -61,9 +79,45 @@ export default function Hero() {
         </Grid>
         <Grid size={{ xs: 12, md: 6 }}>
           <Paper variant="outlined">
-            <Typography variant="body2" color="text.secondary" align="center">
-              Book preview placeholder
-            </Typography>
+            <Fade in={!showAfter} unmountOnExit>
+              <Stack spacing={1}>
+                <Typography variant="overline" color="text.secondary">
+                  Your textbook
+                </Typography>
+                <Paper variant="outlined">
+                  <Typography variant="body2" color="text.secondary" align="center">
+                    Book cover placeholder
+                  </Typography>
+                </Paper>
+              </Stack>
+            </Fade>
+            <Fade in={showAfter} unmountOnExit>
+              <Stack spacing={1}>
+                <Typography variant="overline" color="text.secondary">
+                  Your semester
+                </Typography>
+                <Paper variant="outlined">
+                  <Typography variant="caption" color="text.secondary">
+                    Lecture 1 – Introduction
+                  </Typography>
+                </Paper>
+                <Paper variant="outlined">
+                  <Typography variant="caption" color="text.secondary">
+                    Lecture 2 – Core concepts
+                  </Typography>
+                </Paper>
+                <Paper variant="outlined">
+                  <Typography variant="caption" color="text.secondary">
+                    Lecture 3 – Advanced topics
+                  </Typography>
+                </Paper>
+                <Paper variant="outlined">
+                  <Typography variant="caption" color="text.secondary">
+                    Quiz – Week 1 review
+                  </Typography>
+                </Paper>
+              </Stack>
+            </Fade>
           </Paper>
         </Grid>
       </Grid>
