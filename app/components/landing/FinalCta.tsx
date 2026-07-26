@@ -1,12 +1,17 @@
+"use client";
+
 import Container from "@mui/material/Container";
 import Grid from "@mui/material/Grid2";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import Button from "@mui/material/Button";
 import AppBar from "@mui/material/AppBar";
+import { useSession } from "@/lib/auth-client";
 import content from "./content";
 
 export default function FinalCta() {
+  const { data: session } = useSession();
+  const user = session?.user;
   const { finalCta } = content;
 
   return (
@@ -24,8 +29,11 @@ export default function FinalCta() {
           </Typography>
           <Grid container justifyContent="center">
             <Grid>
-              <Button variant="contained" href="/register?next=/upload">
-                {finalCta.ctaLabel}
+              <Button
+                variant="contained"
+                href={user ? "/upload" : "/register?next=/upload"}
+              >
+                {user ? "Upload a book" : "Start free"}
               </Button>
             </Grid>
           </Grid>
