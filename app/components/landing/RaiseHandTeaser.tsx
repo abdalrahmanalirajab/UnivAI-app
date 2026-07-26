@@ -26,12 +26,12 @@ export default function RaiseHandTeaser() {
 
   const handleRaiseHand = () => {
     if (raised) return;
+    setDisplayedText("");
     setRaised(true);
   };
 
   useEffect(() => {
     if (!raised) {
-      setDisplayedText("");
       indexRef.current = 0;
       return;
     }
@@ -53,7 +53,7 @@ export default function RaiseHandTeaser() {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [raised]);
+  }, [raised, raiseHandTeaser.fullAnswer]);
 
   return (
     <Paper variant="outlined">

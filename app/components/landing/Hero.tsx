@@ -24,15 +24,16 @@ export default function Hero() {
   const isGuest = !user;
   const isStudent = user?.role === "student";
 
-  const [showAfter, setShowAfter] = useState(false);
+  const [showAfter, setShowAfter] = useState(() => {
+    if (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      return true;
+    }
+    return false;
+  });
 
   useEffect(() => {
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-
-    if (mq.matches) {
-      setShowAfter(true);
-      return;
-    }
+    if (mq.matches) return;
 
     const interval = setInterval(() => {
       setShowAfter((prev) => !prev);
