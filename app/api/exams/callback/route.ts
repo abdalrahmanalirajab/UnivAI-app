@@ -17,6 +17,13 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "exam_id is required" }, { status: 400 });
   }
 
+  // The exam system echoes the owner it was handed at start time (student_sid).
+  // Without it we cannot route the grade to a student, so reject.
+  const sid = payload.student_sid as string | undefined;
+  if (!sid) {
+    return Response.json({ error: "student_sid is required" }, { status: 400 });
+  }
+
   const { kind, week } = await resolveWeek(payload);
   const takenAt = await now();
 
@@ -29,9 +36,10 @@ export async function POST(request: NextRequest) {
       : "Below the pass mark.";
 
   await query(
-    `INSERT INTO grades (kind, week, score, max_score, feedback, taken_at, exam_id, flagged, report)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    `INSERT INTO grades (student_id, kind, week, score, max_score, feedback, taken_at, exam_id, flagged, report)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      ON CONFLICT (exam_id) DO UPDATE SET
+       student_id = EXCLUDED.student_id,
        score = EXCLUDED.score,
        max_score = EXCLUDED.max_score,
        feedback = EXCLUDED.feedback,
@@ -39,6 +47,7 @@ export async function POST(request: NextRequest) {
        flagged = EXCLUDED.flagged,
        report = EXCLUDED.report`,
     [
+      sid,
       kind,
       week,
       payload.mark ?? 0,

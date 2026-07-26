@@ -1,6 +1,8 @@
+import { NextRequest } from "next/server";
 import { query } from "@/lib/db";
 import { rescheduleLectures } from "@/lib/lectures";
 import { resetExamWorld } from "@/lib/exams";
+import { requireAdminApi } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -14,11 +16,25 @@ export const dynamic = "force-dynamic";
  * pre-rendered voice stay exactly as built. The exam world (chapters, question
  * banks, midterm) re-seeds itself on the next exam start.
  */
-export async function POST() {
-  await query("DELETE FROM attendance");
-  await query("DELETE FROM grades");
-  await query("DELETE FROM qa_log");
-  await resetExamWorld();
-  await rescheduleLectures();
+export async function POST(request: NextRequest) {
+  const gate = await requireAdminApi();
+  if (gate instanceof Response) return gate;
+
+  // A restart is per-student — wiping globally would destroy every learner's
+  // progress. The admin panel must say which student (their studentId).
+  const body = await request.json().catch(() => ({}));
+  const sid = body?.sid as string | undefined;
+  if (!sid) {
+    return Response.json(
+      { error: "sid is required — a restart targets one student's semester." },
+      { status: 400 }
+    );
+  }
+
+  await query("DELETE FROM attendance WHERE student_id = $1", [sid]);
+  await query("DELETE FROM grades WHERE student_id = $1", [sid]);
+  await query("DELETE FROM qa_log WHERE student_id = $1", [sid]);
+  await resetExamWorld(sid);
+  await rescheduleLectures(sid);
   return Response.json({ ok: true });
 }

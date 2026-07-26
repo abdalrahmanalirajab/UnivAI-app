@@ -5,6 +5,7 @@ import { REPO_ROOT } from "@/lib/python";
 import { spawnGeneration } from "@/lib/generation";
 import { getSetting, setSetting } from "@/lib/settings";
 import { COURSE_SIZES, DEFAULT_SIZE, isCourseSize } from "@/lib/course-size";
+import { requireAdminApi } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,9 @@ export const dynamic = "force-dynamic";
  */
 
 export async function GET() {
+  const gate = await requireAdminApi();
+  if (gate instanceof Response) return gate;
+
   const size = await getSetting("course_size");
   return Response.json({
     size: isCourseSize(size) ? size : DEFAULT_SIZE,
@@ -23,10 +27,20 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const gate = await requireAdminApi();
+  if (gate instanceof Response) return gate;
+
   const body = await request.json().catch(() => ({}));
   const size = body?.size;
   const mode = body?.mode;
+  const sid = body?.sid as string | undefined;
 
+  if (!sid) {
+    return Response.json(
+      { error: "sid is required — regeneration targets one student's book." },
+      { status: 400 }
+    );
+  }
   if (!isCourseSize(size)) {
     return Response.json({ error: "size must be one of XS, S, M, L, XL" }, { status: 400 });
   }
@@ -35,7 +49,8 @@ export async function POST(request: NextRequest) {
   }
 
   const book = await queryOne<{ id: number; filename: string; status: string }>(
-    "SELECT id, filename, status FROM books ORDER BY id DESC LIMIT 1"
+    "SELECT id, filename, status FROM books WHERE student_id = $1 ORDER BY id DESC LIMIT 1",
+    [sid]
   );
   if (!book) {
     return Response.json({ error: "No book uploaded — there is nothing to regenerate." }, { status: 409 });
@@ -55,7 +70,7 @@ export async function POST(request: NextRequest) {
       book.id,
     ]
   );
-  spawnGeneration(path.join(REPO_ROOT, "uploads", book.filename), book.id, mode === "quizzes");
+  spawnGeneration(path.join(REPO_ROOT, "uploads", sid, book.filename), book.id, mode === "quizzes");
 
   return Response.json({ ok: true, size, mode });
 }

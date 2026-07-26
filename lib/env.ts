@@ -30,4 +30,14 @@ export const env = {
   LIVEKIT_URL: read("LIVEKIT_URL") || read("NEXT_PUBLIC_LIVEKIT_URL"),
   LIVEKIT_API_KEY: read("LIVEKIT_API_KEY"),
   LIVEKIT_API_SECRET: read("LIVEKIT_API_SECRET"),
+
+  // Auth (Better Auth). See docs/auth-plan.md + docs/auth-contract.md.
+  BETTER_AUTH_SECRET: read("BETTER_AUTH_SECRET"),
+  BETTER_AUTH_URL: read("BETTER_AUTH_URL", "http://localhost:3100"),
+  // The single account auto-promoted to super_admin on signup.
+  SUPER_ADMIN_EMAIL: read("SUPER_ADMIN_EMAIL").trim().toLowerCase(),
+  // Empty RESEND_API_KEY => reset/verify links are logged to the console instead
+  // of emailed (dev fallback); see lib/email.ts.
+  RESEND_API_KEY: read("RESEND_API_KEY"),
+  EMAIL_FROM: read("EMAIL_FROM", "UnivAI <onboarding@resend.dev>"),
 };

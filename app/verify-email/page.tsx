@@ -21,7 +21,7 @@ export default function VerifyEmailPage() {
   const handleResend = async () => {
     if (cooldown > 0) return;
     await authClient.sendVerificationEmail({
-      email,
+      email: email ?? "",
       callbackURL: "/login?verified=1",
     });
     setCooldown(30);

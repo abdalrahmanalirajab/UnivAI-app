@@ -3,6 +3,7 @@ import { AccessToken } from "livekit-server-sdk";
 import { queryOne } from "@/lib/db";
 import { stampJoin } from "@/lib/attendance";
 import { getLectures, BLOCKED_MESSAGE } from "@/lib/lectures";
+import { requireUserApi } from "@/lib/session";
 import { env } from "@/lib/env";
 
 export const dynamic = "force-dynamic";
@@ -14,18 +15,22 @@ export const dynamic = "force-dynamic";
  * student on-time, late or absent exactly as the demo requires.
  */
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const gate = await requireUserApi();
+  if (gate instanceof Response) return gate;
+  const sid = gate.studentId;
+
   const { id } = await context.params;
   const lectureId = Number(id);
 
   const lecture = await queryOne<{ id: number; week: number; title: string }>(
-    "SELECT id, week, title FROM lectures WHERE id = $1",
-    [lectureId]
+    "SELECT id, week, title FROM lectures WHERE id = $1 AND student_id = $2",
+    [lectureId, sid]
   );
   if (!lecture) return Response.json({ error: "No such lecture." }, { status: 404 });
 
   // The doors close halfway through, and a finished lecture cannot be reopened.
   // The UI disables the button; this makes the rule real.
-  const schedule = await getLectures();
+  const schedule = await getLectures(sid);
   const entry = schedule.find((item) => item.id === lectureId);
   if (entry && !entry.joinable) {
     return Response.json(
@@ -46,14 +51,17 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   }
 
   // Attendance is recorded the moment the student asks to enter the room.
-  const record = await stampJoin(lectureId);
+  const record = await stampJoin(sid, lectureId);
 
-  const room = `lecture-week-${lecture.week}`;
+  // Room name carries the owner so the voice worker loads THIS student's course
+  // (lectures/<sid>/) and queries RAG under their namespace. Parsed back with
+  // /^lecture-(?<sid>.+)-week-(?<week>\d+)$/ in UnivAI-live/worker.py.
+  const room = `lecture-${sid}-week-${lecture.week}`;
   const token = new AccessToken(apiKey, apiSecret, {
-    identity: "student",
-    name: "Student",
+    identity: sid,
+    name: gate.name,
     // The voice worker reads this to know which script to speak.
-    metadata: JSON.stringify({ lectureId, week: lecture.week }),
+    metadata: JSON.stringify({ lectureId, week: lecture.week, sid }),
   });
   token.addGrant({ room, roomJoin: true, canPublish: true, canSubscribe: true });
 
@@ -61,6 +69,8 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     token: await token.toJwt(),
     url,
     room,
+    // The client builds this student's slide path: /slides/<sid>/week-N/.
+    studentId: sid,
     lecture: { id: lecture.id, week: lecture.week, title: lecture.title },
     attendance: record
       ? { status: record.status, lateMinutes: record.lateMinutes }
