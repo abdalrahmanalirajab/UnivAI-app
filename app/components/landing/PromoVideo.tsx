@@ -27,13 +27,24 @@ export default function PromoVideo() {
             {promoVideo.heading}
           </Typography>
           <Paper variant="outlined">
-            <Box sx={{ aspectRatio: "16 / 9", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              {VIDEO.src ? null : (
-                <IconButton aria-label={promoVideo.playAriaLabel}>
-                  <PlayArrow />
-                </IconButton>
-              )}
-              {/* Reserved: captions / transcript link */}
+            <Box position="relative" width="100%" pt="56.25%">
+              <Box
+                position="absolute"
+                top={0}
+                left={0}
+                width="100%"
+                height="100%"
+                display="flex"
+                alignItems="center"
+                justifyContent="center"
+              >
+                {VIDEO.src ? null : (
+                  <IconButton aria-label={promoVideo.playAriaLabel}>
+                    <PlayArrow />
+                  </IconButton>
+                )}
+                {/* Reserved: captions / transcript link */}
+              </Box>
             </Box>
           </Paper>
           <Typography variant="body2" color="text.secondary">
