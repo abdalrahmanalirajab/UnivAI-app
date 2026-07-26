@@ -6,18 +6,18 @@ import Divider from "@mui/material/Divider";
 import Link from "@mui/material/Link";
 import content from "./content";
 
-const PRODUCT_LINKS: { label: string; href: string }[] = [
-  { label: "Upload", href: "/upload" },
-  { label: "Schedule", href: "/schedule" },
-  { label: "Exams", href: "/exams" },
-  { label: "Dashboard", href: "/dashboard" },
-];
+const PRODUCT_HREF: Record<string, string> = {
+  Upload: "/upload",
+  Schedule: "/schedule",
+  Exams: "/exams",
+  Dashboard: "/dashboard",
+};
 
-const ACCOUNT_LINKS: { label: string; href: string }[] = [
-  { label: "Login", href: "/login" },
-  { label: "Register", href: "/register" },
-  { label: "Profile", href: "/profile" },
-];
+const ACCOUNT_HREF: Record<string, string> = {
+  Login: "/login",
+  Register: "/register",
+  Profile: "/profile",
+};
 
 export default function Footer() {
   const { footer } = content;
@@ -33,14 +33,14 @@ export default function Footer() {
                 <Typography variant="subtitle2" component="h4">
                   {footer.productHeading}
                 </Typography>
-                {PRODUCT_LINKS.map((link) => (
+                {footer.productLinks.map((label) => (
                   <Link
-                    key={link.href}
-                    href={link.href}
+                    key={label}
+                    href={PRODUCT_HREF[label]}
                     color="text.secondary"
                     underline="hover"
                   >
-                    {link.label}
+                    {label}
                   </Link>
                 ))}
               </Stack>
@@ -50,14 +50,14 @@ export default function Footer() {
                 <Typography variant="subtitle2" component="h4">
                   {footer.accountHeading}
                 </Typography>
-                {ACCOUNT_LINKS.map((link) => (
+                {footer.accountLinks.map((label) => (
                   <Link
-                    key={link.href}
-                    href={link.href}
+                    key={label}
+                    href={ACCOUNT_HREF[label]}
                     color="text.secondary"
                     underline="hover"
                   >
-                    {link.label}
+                    {label}
                   </Link>
                 ))}
               </Stack>

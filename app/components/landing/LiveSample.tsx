@@ -30,7 +30,7 @@ export default function LiveSample() {
                 <CardContent>
                   <Stack spacing={2}>
                     <Typography variant="overline" color="text.secondary">
-                      Lecture slide
+                      {liveSample.lectureSlideLabel}
                     </Typography>
                     <Paper variant="outlined">
                       <Typography
@@ -38,7 +38,7 @@ export default function LiveSample() {
                         color="text.secondary"
                         align="center"
                       >
-                        Slide preview placeholder
+                        {liveSample.slidePlaceholder}
                       </Typography>
                     </Paper>
                   </Stack>
@@ -50,20 +50,20 @@ export default function LiveSample() {
                 <CardContent>
                   <Stack spacing={2}>
                     <Typography variant="overline" color="text.secondary">
-                      Quiz question
+                      {liveSample.quizQuestionLabel}
                     </Typography>
                     <Typography variant="body2">
-                      Which of the following best describes X?
+                      {liveSample.quizQuestion}
                     </Typography>
                     <Divider />
                     <Typography variant="body2" color="text.secondary">
-                      A. First option
+                      {liveSample.quizOptionA}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
-                      B. Second option
+                      {liveSample.quizOptionB}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
-                      C. Third option
+                      {liveSample.quizOptionC}
                     </Typography>
                   </Stack>
                 </CardContent>
@@ -74,14 +74,13 @@ export default function LiveSample() {
                 <CardContent>
                   <Stack spacing={2}>
                     <Typography variant="overline" color="text.secondary">
-                      Cited answer
+                      {liveSample.citedAnswerLabel}
                     </Typography>
                     <Typography variant="body2">
-                      The concept was introduced in Chapter 3, where the author
-                      explains that…
+                      {liveSample.citedAnswer}
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
-                      Source: page 42
+                      {liveSample.sourceText}
                     </Typography>
                   </Stack>
                 </CardContent>

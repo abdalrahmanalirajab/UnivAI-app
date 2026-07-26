@@ -33,6 +33,16 @@ export type LandingContent = {
     heading: string;
     subheading: string;
     ctaLabel: string;
+    lectureSlideLabel: string;
+    slidePlaceholder: string;
+    quizQuestionLabel: string;
+    quizQuestion: string;
+    quizOptionA: string;
+    quizOptionB: string;
+    quizOptionC: string;
+    citedAnswerLabel: string;
+    citedAnswer: string;
+    sourceText: string;
   };
   secondAudience: {
     heading: string;
@@ -143,6 +153,17 @@ const content: LandingContent = {
     subheading:
       "See the lecture room — slides, narration, the raise-hand queue, and the cited Q&A sidebar — all running on a real uploaded book.",
     ctaLabel: "Try your own",
+    lectureSlideLabel: "Lecture slide",
+    slidePlaceholder: "Slide preview placeholder",
+    quizQuestionLabel: "Quiz question",
+    quizQuestion: "Which of the following best describes X?",
+    quizOptionA: "A. First option",
+    quizOptionB: "B. Second option",
+    quizOptionC: "C. Third option",
+    citedAnswerLabel: "Cited answer",
+    citedAnswer:
+      "The concept was introduced in Chapter 3, where the author explains that\u2026",
+    sourceText: "Source: page 42",
   },
 
   secondAudience: {
