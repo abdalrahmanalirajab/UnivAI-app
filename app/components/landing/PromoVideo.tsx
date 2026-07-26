@@ -11,7 +11,6 @@ import content from "./content";
 const VIDEO = {
   src: null as string | null,
   poster: null as string | null,
-  caption: "Promo video coming soon.",
   provider: "self-hosted" as "self-hosted" | "embed",
 };
 
@@ -30,14 +29,14 @@ export default function PromoVideo() {
               {VIDEO.src ? (
                 null
               ) : (
-                <IconButton aria-label="Play promo video">
+                <IconButton aria-label={promoVideo.playAriaLabel}>
                   <PlayArrow />
                 </IconButton>
               )}
             </Typography>
           </Paper>
           <Typography variant="body2" color="text.secondary">
-            {VIDEO.caption}
+            {promoVideo.caption}
           </Typography>
           {/* Reserved: captions / transcript link */}
         </Stack>

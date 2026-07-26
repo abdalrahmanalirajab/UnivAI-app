@@ -89,7 +89,7 @@ export default function LiveSample() {
             </Grid>
           </Grid>
           <Button variant="contained" href="/register?next=/upload">
-            Try your own
+            {liveSample.ctaLabel}
           </Button>
         </Stack>
       </Container>

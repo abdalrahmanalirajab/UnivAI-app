@@ -27,7 +27,7 @@ export default function SecondAudience() {
               </Button>
             </Grid>
             <Grid>
-              <Chip label="Coming soon" size="small" />
+              <Chip label={secondAudience.comingSoonLabel} size="small" />
             </Grid>
           </Grid>
         </Stack>

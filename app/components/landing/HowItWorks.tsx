@@ -20,7 +20,7 @@ const ICON_MAP = {
 };
 
 export default function HowItWorks() {
-  const { steps } = content.howItWorks;
+  const { heading, steps } = content.howItWorks;
   const [inView, setInView] = useState(false);
   const [visibleCount, setVisibleCount] = useState(0);
   const sectionRef = useRef<HTMLElement | null>(null);
@@ -62,7 +62,7 @@ export default function HowItWorks() {
       <Container maxWidth="lg">
         <Stack spacing={4}>
           <Typography variant="h2" component="p">
-            How it works
+            {heading}
           </Typography>
           <Grid container spacing={4}>
             {steps.map((step, index) => {

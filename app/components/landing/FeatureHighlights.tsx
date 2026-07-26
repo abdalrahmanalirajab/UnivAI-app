@@ -8,17 +8,18 @@ import Chip from "@mui/material/Chip";
 import content from "./content";
 
 export default function FeatureHighlights() {
-  const { featureHighlights } = content;
+  const { heading, comingSoonLabel, learnMoreLabel, items } =
+    content.featureHighlights;
 
   return (
     <section aria-label="FeatureHighlights">
       <Container maxWidth="lg">
         <Stack spacing={4}>
           <Typography variant="h2" component="p">
-            Feature highlights
+            {heading}
           </Typography>
           <Stack spacing={6}>
-            {featureHighlights.map((feature, index) => (
+            {items.map((feature, index) => (
               <Grid
                 key={feature.title}
                 container
@@ -43,7 +44,7 @@ export default function FeatureHighlights() {
                       </Grid>
                       {feature.comingSoon && (
                         <Grid>
-                          <Chip label="Coming soon" size="small" />
+                          <Chip label={comingSoonLabel} size="small" />
                         </Grid>
                       )}
                     </Grid>
@@ -52,7 +53,7 @@ export default function FeatureHighlights() {
                     </Typography>
                     {feature.comingSoon ? (
                       <Button variant="outlined" disabled>
-                        Learn more
+                        {learnMoreLabel}
                       </Button>
                     ) : feature.linkLabel ? (
                       <Typography variant="button" color="text.secondary">

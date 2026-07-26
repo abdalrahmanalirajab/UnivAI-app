@@ -10,16 +10,16 @@ import ExpandMore from "@mui/icons-material/ExpandMore";
 import content from "./content";
 
 export default function Faq() {
-  const { faq } = content;
+  const { heading, items } = content.faq;
 
   return (
     <section aria-label="Faq">
       <Container maxWidth="lg">
         <Stack spacing={2}>
           <Typography variant="h2" component="p">
-            Frequently asked questions
+            {heading}
           </Typography>
-          {faq.map((item) => (
+          {items.map((item) => (
             <Accordion key={item.question}>
               <AccordionSummary expandIcon={<ExpandMore />}>
                 <Typography variant="subtitle1">{item.question}</Typography>

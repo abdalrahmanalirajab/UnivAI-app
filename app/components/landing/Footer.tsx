@@ -4,8 +4,23 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import Divider from "@mui/material/Divider";
 import Link from "@mui/material/Link";
+import content from "./content";
+
+const PRODUCT_LINKS: { label: string; href: string }[] = [
+  { label: "Upload", href: "/upload" },
+  { label: "Schedule", href: "/schedule" },
+  { label: "Exams", href: "/exams" },
+  { label: "Dashboard", href: "/dashboard" },
+];
+
+const ACCOUNT_LINKS: { label: string; href: string }[] = [
+  { label: "Login", href: "/login" },
+  { label: "Register", href: "/register" },
+  { label: "Profile", href: "/profile" },
+];
 
 export default function Footer() {
+  const { footer } = content;
   const year = new Date().getFullYear();
 
   return (
@@ -16,81 +31,75 @@ export default function Footer() {
             <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <Stack spacing={1}>
                 <Typography variant="subtitle2" component="h4">
-                  Product
+                  {footer.productHeading}
                 </Typography>
-                <Link href="/upload" color="text.secondary" underline="hover">
-                  Upload
-                </Link>
-                <Link href="/schedule" color="text.secondary" underline="hover">
-                  Schedule
-                </Link>
-                <Link href="/exams" color="text.secondary" underline="hover">
-                  Exams
-                </Link>
-                <Link href="/dashboard" color="text.secondary" underline="hover">
-                  Dashboard
-                </Link>
+                {PRODUCT_LINKS.map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    color="text.secondary"
+                    underline="hover"
+                  >
+                    {link.label}
+                  </Link>
+                ))}
               </Stack>
             </Grid>
             <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <Stack spacing={1}>
                 <Typography variant="subtitle2" component="h4">
-                  Account
+                  {footer.accountHeading}
                 </Typography>
-                <Link href="/login" color="text.secondary" underline="hover">
-                  Login
-                </Link>
-                <Link href="/register" color="text.secondary" underline="hover">
-                  Register
-                </Link>
-                <Link href="/profile" color="text.secondary" underline="hover">
-                  Profile
-                </Link>
+                {ACCOUNT_LINKS.map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    color="text.secondary"
+                    underline="hover"
+                  >
+                    {link.label}
+                  </Link>
+                ))}
               </Stack>
             </Grid>
             <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <Stack spacing={1}>
                 <Typography variant="subtitle2" component="h4">
-                  About
+                  {footer.aboutHeading}
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  The idea
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Team
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  GitHub
-                </Typography>
+                {footer.aboutLinks.map((label) => (
+                  <Typography key={label} variant="body2" color="text.secondary">
+                    {label}
+                  </Typography>
+                ))}
               </Stack>
             </Grid>
             <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <Stack spacing={1}>
                 <Typography variant="subtitle2" component="h4">
-                  Legal
+                  {footer.legalHeading}
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Privacy
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Terms
-                </Typography>
+                {footer.legalLinks.map((label) => (
+                  <Typography key={label} variant="body2" color="text.secondary">
+                    {label}
+                  </Typography>
+                ))}
               </Stack>
             </Grid>
           </Grid>
           <Divider />
           <Stack spacing={1}>
             <Typography variant="h6" align="center">
-              UnivAI
+              {footer.brand}
             </Typography>
             <Typography variant="body2" color="text.secondary" align="center">
-              One Book, One Month
+              {footer.tagline}
             </Typography>
             <Typography variant="body2" color="text.secondary" align="center">
-              Made by the Jamieh team
+              {footer.madeBy}
             </Typography>
             <Typography variant="caption" color="text.secondary" align="center">
-              &copy; {year} UnivAI
+              {footer.copyrightFormat.replace("{year}", String(year))}
             </Typography>
           </Stack>
         </Stack>
