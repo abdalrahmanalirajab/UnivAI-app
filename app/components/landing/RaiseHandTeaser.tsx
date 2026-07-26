@@ -17,6 +17,13 @@ export default function RaiseHandTeaser() {
   const [displayedText, setDisplayedText] = useState("");
   const indexRef = useRef(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const reducedMotionRef = useRef(false);
+
+  useEffect(() => {
+    reducedMotionRef.current = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+  }, []);
 
   const handleRaiseHand = () => {
     if (raised) return;
@@ -27,6 +34,11 @@ export default function RaiseHandTeaser() {
     if (!raised) {
       setDisplayedText("");
       indexRef.current = 0;
+      return;
+    }
+
+    if (reducedMotionRef.current) {
+      setDisplayedText(FULL_ANSWER);
       return;
     }
 

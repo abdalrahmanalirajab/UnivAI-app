@@ -55,9 +55,9 @@ export default function FeatureHighlights() {
                         Learn more
                       </Button>
                     ) : feature.linkLabel ? (
-                      <Button variant="outlined">
+                      <Typography variant="button" color="text.secondary">
                         {feature.linkLabel}
-                      </Button>
+                      </Typography>
                     ) : null}
                   </Stack>
                 </Grid>
