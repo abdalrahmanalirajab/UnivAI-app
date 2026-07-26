@@ -9,6 +9,7 @@ import Paper from "@mui/material/Paper";
 import Fade from "@mui/material/Fade";
 import Link from "next/link";
 import { useSession } from "@/lib/auth-client";
+import RaiseHandTeaser from "./RaiseHandTeaser";
 import content from "./content";
 
 export default function Hero() {
@@ -78,47 +79,50 @@ export default function Hero() {
           </Stack>
         </Grid>
         <Grid size={{ xs: 12, md: 6 }}>
-          <Paper variant="outlined">
-            <Fade in={!showAfter} unmountOnExit>
-              <Stack spacing={1}>
-                <Typography variant="overline" color="text.secondary">
-                  Your textbook
-                </Typography>
-                <Paper variant="outlined">
-                  <Typography variant="body2" color="text.secondary" align="center">
-                    Book cover placeholder
+          <Stack spacing={2}>
+            <Paper variant="outlined">
+              <Fade in={!showAfter} unmountOnExit>
+                <Stack spacing={1}>
+                  <Typography variant="overline" color="text.secondary">
+                    Your textbook
                   </Typography>
-                </Paper>
-              </Stack>
-            </Fade>
-            <Fade in={showAfter} unmountOnExit>
-              <Stack spacing={1}>
-                <Typography variant="overline" color="text.secondary">
-                  Your semester
-                </Typography>
-                <Paper variant="outlined">
-                  <Typography variant="caption" color="text.secondary">
-                    Lecture 1 – Introduction
+                  <Paper variant="outlined">
+                    <Typography variant="body2" color="text.secondary" align="center">
+                      Book cover placeholder
+                    </Typography>
+                  </Paper>
+                </Stack>
+              </Fade>
+              <Fade in={showAfter} unmountOnExit>
+                <Stack spacing={1}>
+                  <Typography variant="overline" color="text.secondary">
+                    Your semester
                   </Typography>
-                </Paper>
-                <Paper variant="outlined">
-                  <Typography variant="caption" color="text.secondary">
-                    Lecture 2 – Core concepts
-                  </Typography>
-                </Paper>
-                <Paper variant="outlined">
-                  <Typography variant="caption" color="text.secondary">
-                    Lecture 3 – Advanced topics
-                  </Typography>
-                </Paper>
-                <Paper variant="outlined">
-                  <Typography variant="caption" color="text.secondary">
-                    Quiz – Week 1 review
-                  </Typography>
-                </Paper>
-              </Stack>
-            </Fade>
-          </Paper>
+                  <Paper variant="outlined">
+                    <Typography variant="caption" color="text.secondary">
+                      Lecture 1 – Introduction
+                    </Typography>
+                  </Paper>
+                  <Paper variant="outlined">
+                    <Typography variant="caption" color="text.secondary">
+                      Lecture 2 – Core concepts
+                    </Typography>
+                  </Paper>
+                  <Paper variant="outlined">
+                    <Typography variant="caption" color="text.secondary">
+                      Lecture 3 – Advanced topics
+                    </Typography>
+                  </Paper>
+                  <Paper variant="outlined">
+                    <Typography variant="caption" color="text.secondary">
+                      Quiz – Week 1 review
+                    </Typography>
+                  </Paper>
+                </Stack>
+              </Fade>
+            </Paper>
+            <RaiseHandTeaser />
+          </Stack>
         </Grid>
       </Grid>
     </section>
