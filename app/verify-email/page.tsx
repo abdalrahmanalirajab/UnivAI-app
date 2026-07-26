@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import AuthCard from "@/app/components/AuthCard";
 import Typography from "@mui/material/Typography";
 import Button from "@mui/material/Button";
 import { authClient } from "@/lib/auth-client";
 
-export default function VerifyEmailPage() {
+function VerifyEmailForm() {
   const searchParams = useSearchParams();
   const email = searchParams.get("email");
   const [cooldown, setCooldown] = useState(0);
@@ -41,5 +41,13 @@ export default function VerifyEmailPage() {
         {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend email"}
       </Button>
     </AuthCard>
+  );
+}
+
+export default function VerifyEmailPage() {
+  return (
+    <Suspense fallback={null}>
+      <VerifyEmailForm />
+    </Suspense>
   );
 }
