@@ -135,7 +135,7 @@ export default function CollectionsPage() {
               <Typography variant="body2" color="text.secondary">
                 A collection holds the PDFs you want to build a programme from.
               </Typography>
-              <Stack direction="row" spacing={2} alignItems="center">
+              <Stack direction="row" spacing={2}>
                 <TextField
                   label="Collection name"
                   size="small"
