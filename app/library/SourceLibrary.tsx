@@ -73,7 +73,7 @@ export default function SourceLibrary({ documents, now, onRemove }: Props) {
                 </Typography>
               </TableCell>
               <TableCell>
-                <Stack direction="row" spacing={1} alignItems="center">
+                <Stack direction="row" spacing={1}>
                   <Chip
                     size="small"
                     color={STATUS_COLOR[doc.status] ?? "default"}
