@@ -1,5 +1,6 @@
 import { spawn } from "child_process";
 import path from "path";
+import { INTEGRATION_ROOT } from "./paths";
 
 /**
  * Bridge from Next.js to the repo's Python side.
@@ -8,7 +9,7 @@ import path from "path";
  * over MCP, so there is no HTTP endpoint to POST an upload to.
  */
 
-export const REPO_ROOT = path.resolve(process.cwd(), "..");
+export const REPO_ROOT = INTEGRATION_ROOT;
 export const VENV_PYTHON =
   process.platform === "win32"
     ? path.join(REPO_ROOT, ".venv", "Scripts", "python.exe")

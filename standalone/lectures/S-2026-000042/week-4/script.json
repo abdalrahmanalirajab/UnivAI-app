@@ -1,0 +1,9 @@
+{
+  "lectureId": "week-4",
+  "title": "Stable Contracts",
+  "segments": [
+    {"slide": 1, "text": "Shared contracts keep repository boundaries compatible.", "citations": [{"page": 4}]},
+    {"slide": 2, "text": "Lecture messages preserve their type and state vocabulary.", "citations": [{"page": 4}]},
+    {"slide": 3, "text": "Exam automation reports evidence and policy state, not guilt.", "citations": [{"page": 4}]}
+  ]
+}

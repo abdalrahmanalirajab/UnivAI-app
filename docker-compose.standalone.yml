@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: univai-app-standalone-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: univai
+      POSTGRES_PASSWORD: univai
+      POSTGRES_DB: univai_app_standalone
+    ports:
+      - "5434:5432"
+    volumes:
+      - univai-app-standalone:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U univai -d univai_app_standalone"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  univai-app-standalone:

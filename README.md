@@ -1,5 +1,54 @@
 # UnivAI-app — the Face (port 3100)
 
+## Standalone development
+
+Standalone mode keeps the real Next.js application, PostgreSQL, Better Auth,
+signed session cookie, tenant-scoped queries, virtual clock, pages, and API
+guards. It replaces only Agent/RAG generation, Exam, and LiveKit with explicit
+deterministic adapters.
+
+```powershell
+npm install
+npm run dev:standalone
+```
+
+Open `http://localhost:3100/login` and sign in normally with:
+
+- Email: `learner@univai.local`
+- Password: `LearnLocal123!`
+
+The account is created through Better Auth's public signup API, then marked
+verified in the isolated local database. It is not an authentication bypass.
+PostgreSQL runs on `127.0.0.1:5434` in `univai_app_standalone`.
+
+Useful commands are `npm run standalone:seed`, `npm run standalone:reset`,
+`npm run standalone:down`, `npm run smoke:standalone`, `npm test`,
+`npm run lint`, and `npm run build`.
+
+The idempotent seed contains one learner, a project-authored book, four weekly
+lectures, attendance/progress, a grade, deterministic Exam states, and a local
+lecture simulation. `/api/health` reports database and adapter readiness.
+`/dev/scenarios` lists the supported `UNIVAI_SCENARIO` values.
+
+The standalone upload path still checks PDF extension, size, and `%PDF-` magic
+bytes, but does not store uploaded content, start Python, call MCP, or download
+a model. The lecture simulator uses the App-visible message/state vocabulary
+with silent audio and scripted transcripts.
+
+Standalone adapters require `UNIVAI_MODE=standalone` and are rejected in
+production. No real key, book, transcript, or user data is committed.
+
+## Integrated mode
+
+`npm run dev` under the main UnivAI checkout remains integrated mode. Set
+`UNIVAI_INTEGRATION_ROOT` only for a non-standard composition path; otherwise
+the validated parent fallback remains. Integrated mode keeps Agent MCP,
+generator subprocess, shared lectures, Exam Mongo/HTTP, and LiveKit contracts.
+
+This directory is a Git submodule. Merge App changes here first, then update
+the main UnivAI gitlink. Local submodule changes are not automatically
+included in a main-repository commit.
+
 Every page, every API route, and all integration glue for UnivAI: dashboard,
 auth flows, exam callbacks, LiveKit tokens, course upload, and the virtual
 clock. Frontend is **pure MUI**: no `sx`, no `styled()`, no CSS files.

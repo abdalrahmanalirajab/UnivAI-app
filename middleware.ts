@@ -25,6 +25,10 @@ const PUBLIC_PATHS = new Set([
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const hasSession = Boolean(getSessionCookie(req));
+  const standaloneDevPage =
+    process.env.UNIVAI_MODE === "standalone" &&
+    process.env.NODE_ENV !== "production" &&
+    pathname === "/dev/scenarios";
 
   // Signed-in users have no business on the login/register screens.
   if (hasSession && (pathname === "/login" || pathname === "/register")) {
@@ -32,7 +36,7 @@ export function middleware(req: NextRequest) {
   }
 
   // Guests may only be on a public page; everything else → login.
-  if (!hasSession && !PUBLIC_PATHS.has(pathname)) {
+  if (!hasSession && !PUBLIC_PATHS.has(pathname) && !standaloneDevPage) {
     const url = new URL("/login", req.url);
     url.searchParams.set("redirect", pathname);
     return NextResponse.redirect(url);

@@ -1,0 +1,9 @@
+{
+  "lectureId": "week-1",
+  "title": "Evidence and Sources",
+  "segments": [
+    {"slide": 1, "text": "Welcome to the project-authored standalone course.", "citations": [{"page": 1}]},
+    {"slide": 2, "text": "Reliable answers cite supplied learning material and refuse unsupported claims.", "citations": [{"page": 1}]},
+    {"slide": 3, "text": "Source metadata makes the answer traceable.", "citations": [{"page": 1}]}
+  ]
+}
