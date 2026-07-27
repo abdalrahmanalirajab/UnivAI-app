@@ -132,7 +132,9 @@ export async function DELETE(
     String(collectionId),
     doc.filename,
   );
-  await fs.rm(docPath).catch(() => {});
+  await fs.rm(docPath).catch((err: unknown) => {
+    console.error("Failed to remove document file:", docPath, err);
+  });
   await removeDocument(documentId, gate.studentId);
 
   return Response.json({ removed: true });
