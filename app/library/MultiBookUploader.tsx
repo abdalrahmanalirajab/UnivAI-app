@@ -104,15 +104,13 @@ export default function MultiBookUploader({ collectionId, onDocumentsChange }: P
                   key={entry.id}
                   direction="row"
                   spacing={2}
-                  alignItems="center"
-                  justifyContent="space-between"
                 >
                   <Typography variant="body2" noWrap>
                     {entry.file.name}
                   </Typography>
 
                   {entry.status === "uploading" ? (
-                    <Stack direction="row" spacing={1} alignItems="center">
+                    <Stack direction="row" spacing={1}>
                       <LinearProgress />
                       <Typography variant="caption" color="text.secondary">
                         Uploading…
@@ -121,7 +119,7 @@ export default function MultiBookUploader({ collectionId, onDocumentsChange }: P
                   ) : entry.status === "done" ? (
                     <Chip size="small" color="success" label="Uploaded" />
                   ) : (
-                    <Stack direction="row" spacing={1} alignItems="center">
+                    <Stack direction="row" spacing={1}>
                       <Chip size="small" color="error" label="Failed" />
                       <Typography variant="caption" color="error">
                         {entry.error}
