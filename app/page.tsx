@@ -12,19 +12,20 @@ import Faq from "@/app/components/landing/Faq";
 import Footer from "@/app/components/landing/Footer";
 import content from "@/app/components/landing/content";
 
+// TODO: replace with real production domain once decided
 export const metadata: Metadata = {
   title: "UnivAI — Upload a textbook. Get a university.",
   description: content.hero.subhead,
   openGraph: {
     title: "UnivAI — Upload a textbook. Get a university.",
     description: content.hero.subhead,
-    url: "https://univai.app",
+    url: "/",
     siteName: "UnivAI",
     locale: "en_US",
     type: "website",
     images: [
       {
-        url: "https://univai.app/og-image.png",
+        url: "/og-image.png",
         width: 1200,
         height: 630,
         alt: "UnivAI",
@@ -35,7 +36,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "UnivAI — Upload a textbook. Get a university.",
     description: content.hero.subhead,
-    images: ["https://univai.app/og-image.png"],
+    images: ["/og-image.png"],
   },
 };
 
@@ -46,13 +47,13 @@ const jsonLd = {
       "@type": "Organization",
       name: "UnivAI",
       description: content.trustStrip.line,
-      url: "https://univai.app",
+      url: "/",
     },
     {
       "@type": "Product",
       name: "UnivAI",
       description: content.hero.subhead,
-      url: "https://univai.app",
+      url: "/",
       offers: {
         "@type": "Offer",
         description: "Upload one book and go through the full semester at no cost.",
