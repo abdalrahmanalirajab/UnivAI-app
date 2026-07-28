@@ -6,6 +6,7 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import Button from "@mui/material/Button";
 import AppBar from "@mui/material/AppBar";
+import Toolbar from "@mui/material/Toolbar";
 import { useSession } from "@/lib/auth-client";
 import content from "./content";
 
@@ -22,23 +23,28 @@ export default function FinalCta() {
       component="section"
       aria-label="FinalCta"
     >
-      <Container maxWidth="lg">
-        <Stack spacing={2}>
-          <Typography variant="h2" component="p" align="center">
-            {finalCta.heading}
-          </Typography>
-          <Grid container justifyContent="center">
-            <Grid>
-              <Button
-                variant="contained"
-                href={user ? "/upload" : "/register?next=/upload"}
-              >
-                {user ? "Upload a book" : "Start free"}
-              </Button>
+      <Toolbar>
+        <Container maxWidth="lg">
+          <Stack spacing={2}>
+            <Typography variant="h2" component="p" align="center">
+              {finalCta.heading}
+            </Typography>
+            <Grid container>
+              <Grid size="grow" />
+              <Grid>
+                <Button
+                  variant="contained"
+                  color="inherit"
+                  href={user ? "/upload" : "/register?next=/upload"}
+                >
+                  {user ? "Upload a book" : "Start free"}
+                </Button>
+              </Grid>
+              <Grid size="grow" />
             </Grid>
-          </Grid>
-        </Stack>
-      </Container>
+          </Stack>
+        </Container>
+      </Toolbar>
     </AppBar>
   );
 }

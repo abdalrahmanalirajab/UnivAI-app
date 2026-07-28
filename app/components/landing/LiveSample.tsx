@@ -1,10 +1,10 @@
 import Container from "@mui/material/Container";
+import Box from "@mui/material/Box";
 import Grid from "@mui/material/Grid";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
-import Paper from "@mui/material/Paper";
 import Divider from "@mui/material/Divider";
 import Button from "@mui/material/Button";
 import content from "./content";
@@ -13,7 +13,7 @@ export default function LiveSample() {
   const { liveSample } = content;
 
   return (
-    <section aria-label="LiveSample">
+    <Box component="section" aria-label="Live product sample" id="live-sample">
       <Container maxWidth="lg">
         <Stack spacing={4}>
           <Stack spacing={1}>
@@ -32,15 +32,12 @@ export default function LiveSample() {
                     <Typography variant="overline" color="text.secondary">
                       {liveSample.lectureSlideLabel}
                     </Typography>
-                    <Paper variant="outlined">
-                      <Typography
-                        variant="body2"
-                        color="text.secondary"
-                        align="center"
-                      >
-                        {liveSample.slidePlaceholder}
-                      </Typography>
-                    </Paper>
+                    <Typography variant="h6" align="center">
+                      {liveSample.slidePlaceholder}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" align="center">
+                      A lecture slide generated from the uploaded sources.
+                    </Typography>
                   </Stack>
                 </CardContent>
               </Card>
@@ -92,6 +89,6 @@ export default function LiveSample() {
           </Button>
         </Stack>
       </Container>
-    </section>
+    </Box>
   );
 }

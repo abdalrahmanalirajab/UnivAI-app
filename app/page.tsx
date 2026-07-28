@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Stack from "@mui/material/Stack";
+import Box from "@mui/material/Box";
 import Hero from "@/app/components/landing/Hero";
 import TrustStrip from "@/app/components/landing/TrustStrip";
 import HowItWorks from "@/app/components/landing/HowItWorks";
@@ -23,20 +24,11 @@ export const metadata: Metadata = {
     siteName: "UnivAI",
     locale: "en_US",
     type: "website",
-    images: [
-      {
-        url: "/og-image.png",
-        width: 1200,
-        height: 630,
-        alt: "UnivAI",
-      },
-    ],
   },
   twitter: {
-    card: "summary_large_image",
+    card: "summary",
     title: "UnivAI — Upload a textbook. Get a university.",
     description: content.hero.subhead,
-    images: ["/og-image.png"],
   },
 };
 
@@ -64,7 +56,7 @@ const jsonLd = {
 
 export default function Home() {
   return (
-    <main>
+    <Box component="main">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
@@ -81,6 +73,6 @@ export default function Home() {
         <Faq />
         <Footer />
       </Stack>
-    </main>
+    </Box>
   );
 }

@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Grid from "@mui/material/Grid";
+import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import Button from "@mui/material/Button";
-import Paper from "@mui/material/Paper";
+import Card from "@mui/material/Card";
+import CardContent from "@mui/material/CardContent";
 import Fade from "@mui/material/Fade";
 import Link from "next/link";
 import { useSession } from "@/lib/auth-client";
@@ -14,7 +16,7 @@ import content from "./content";
 
 export default function Hero() {
   const handleScroll = useCallback(() => {
-    document.getElementById("promo-video")?.scrollIntoView({ behavior: "smooth" });
+    document.getElementById("how-it-works")?.scrollIntoView({ behavior: "smooth" });
   }, []);
 
   const { data: session } = useSession();
@@ -43,8 +45,8 @@ export default function Hero() {
   }, []);
 
   return (
-    <section aria-label="Hero">
-      <Grid container spacing={4} alignItems="stretch">
+    <Box component="section" aria-label="Introduction">
+      <Grid container spacing={4}>
         <Grid size={{ xs: 12, md: 6 }}>
           <Stack spacing={3}>
             <Typography variant="h1" component="h1">
@@ -53,27 +55,35 @@ export default function Hero() {
             <Typography variant="body1" color="text.secondary">
               {hero.subhead}
             </Typography>
-            <Stack direction="row" spacing={2}>
-              <Button
-                variant="contained"
-                href={user ? "/upload" : "/register?next=/upload"}
-              >
-                {user ? "Upload a book" : "Start free"}
-              </Button>
-              {isGuest && (
-                <Button variant="outlined" component={Link} href="/login">
-                  Log in
+            <Grid container spacing={2}>
+              <Grid>
+                <Button
+                  variant="contained"
+                  href={user ? "/upload" : "/register?next=/upload"}
+                >
+                  {user ? "Upload a book" : "Start free"}
                 </Button>
+              </Grid>
+              {isGuest && (
+                <Grid>
+                  <Button variant="outlined" component={Link} href="/login">
+                    Log in
+                  </Button>
+                </Grid>
               )}
               {isStudent && (
-                <Button variant="outlined" component={Link} href="/dashboard">
-                  Go to dashboard
-                </Button>
+                <Grid>
+                  <Button variant="outlined" component={Link} href="/dashboard">
+                    Go to dashboard
+                  </Button>
+                </Grid>
               )}
-              <Button variant="outlined" onClick={handleScroll}>
-                {hero.ctaSecondary}
-              </Button>
-            </Stack>
+              <Grid>
+                <Button variant="outlined" onClick={handleScroll}>
+                  {hero.ctaSecondary}
+                </Button>
+              </Grid>
+            </Grid>
             <Typography variant="caption" color="text.secondary">
               {hero.microTrust}
             </Typography>
@@ -81,51 +91,52 @@ export default function Hero() {
         </Grid>
         <Grid size={{ xs: 12, md: 6 }}>
           <Stack spacing={2}>
-            <Paper variant="outlined">
-              <Fade in={!showAfter} unmountOnExit>
-                <Stack spacing={1}>
-                  <Typography variant="overline" color="text.secondary">
-                    Your textbook
-                  </Typography>
-                  <Paper variant="outlined">
-                    <Typography variant="body2" color="text.secondary" align="center">
-                      Book cover placeholder
+            <Card variant="outlined">
+              <CardContent>
+                <Fade in={!showAfter} unmountOnExit>
+                  <Stack spacing={1}>
+                    <Typography variant="overline" color="text.secondary">
+                      Your textbook
                     </Typography>
-                  </Paper>
-                </Stack>
-              </Fade>
-              <Fade in={showAfter} unmountOnExit>
-                <Stack spacing={1}>
-                  <Typography variant="overline" color="text.secondary">
-                    Your semester
-                  </Typography>
-                  <Paper variant="outlined">
-                    <Typography variant="caption" color="text.secondary">
-                      Lecture 1 – Introduction
+                    <Card variant="outlined">
+                      <CardContent>
+                        <Typography variant="h5" align="center">
+                          One source of truth
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" align="center">
+                          Upload your material and keep every lesson grounded in it.
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Stack>
+                </Fade>
+                <Fade in={showAfter} unmountOnExit>
+                  <Stack spacing={1}>
+                    <Typography variant="overline" color="text.secondary">
+                      Your semester
                     </Typography>
-                  </Paper>
-                  <Paper variant="outlined">
-                    <Typography variant="caption" color="text.secondary">
-                      Lecture 2 – Core concepts
-                    </Typography>
-                  </Paper>
-                  <Paper variant="outlined">
-                    <Typography variant="caption" color="text.secondary">
-                      Lecture 3 – Advanced topics
-                    </Typography>
-                  </Paper>
-                  <Paper variant="outlined">
-                    <Typography variant="caption" color="text.secondary">
-                      Quiz – Week 1 review
-                    </Typography>
-                  </Paper>
-                </Stack>
-              </Fade>
-            </Paper>
+                    {[
+                      "Lecture 1 – Introduction",
+                      "Lecture 2 – Core concepts",
+                      "Lecture 3 – Advanced topics",
+                      "Quiz – Week 1 review",
+                    ].map((label) => (
+                      <Card key={label} variant="outlined">
+                        <CardContent>
+                          <Typography variant="caption" color="text.secondary">
+                            {label}
+                          </Typography>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </Stack>
+                </Fade>
+              </CardContent>
+            </Card>
             <RaiseHandTeaser />
           </Stack>
         </Grid>
       </Grid>
-    </section>
+    </Box>
   );
 }

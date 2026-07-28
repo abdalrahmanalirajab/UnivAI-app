@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import Container from "@mui/material/Container";
+import Box from "@mui/material/Box";
 import Grid from "@mui/material/Grid";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
@@ -58,7 +59,7 @@ export default function HowItWorks() {
   }, [inView, steps.length]);
 
   return (
-    <section aria-label="HowItWorks" ref={sectionRef}>
+    <Box component="section" aria-label="How it works" id="how-it-works" ref={sectionRef}>
       <Container maxWidth="lg">
         <Stack spacing={4}>
           <Typography variant="h2" component="p">
@@ -83,6 +84,6 @@ export default function HowItWorks() {
           </Grid>
         </Stack>
       </Container>
-    </section>
+    </Box>
   );
 }

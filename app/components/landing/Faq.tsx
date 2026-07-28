@@ -1,6 +1,7 @@
 "use client";
 
 import Container from "@mui/material/Container";
+import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import Accordion from "@mui/material/Accordion";
@@ -13,7 +14,7 @@ export default function Faq() {
   const { heading, items } = content.faq;
 
   return (
-    <section aria-label="Faq">
+    <Box component="section" aria-label="Frequently asked questions">
       <Container maxWidth="lg">
         <Stack spacing={2}>
           <Typography variant="h2" component="p">
@@ -33,6 +34,6 @@ export default function Faq() {
           ))}
         </Stack>
       </Container>
-    </section>
+    </Box>
   );
 }

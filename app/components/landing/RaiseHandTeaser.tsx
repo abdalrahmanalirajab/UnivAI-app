@@ -4,7 +4,8 @@ import { useState, useEffect, useRef } from "react";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import Button from "@mui/material/Button";
-import Paper from "@mui/material/Paper";
+import Card from "@mui/material/Card";
+import CardContent from "@mui/material/CardContent";
 import Collapse from "@mui/material/Collapse";
 import content from "./content";
 
@@ -56,25 +57,31 @@ export default function RaiseHandTeaser() {
   }, [raised, raiseHandTeaser.fullAnswer]);
 
   return (
-    <Paper variant="outlined">
-      <Stack spacing={2}>
-        <Typography variant="overline" color="text.secondary">
-          {raiseHandTeaser.label}
-        </Typography>
-        <Paper variant="outlined">
-          <Typography variant="body2">{raiseHandTeaser.sampleQuestion}</Typography>
-        </Paper>
-        <Button variant="contained" onClick={handleRaiseHand} disabled={raised}>
-          {raiseHandTeaser.buttonLabel}
-        </Button>
-        <Collapse in={raised}>
-          <Paper variant="outlined">
-            <Typography variant="body2" color="text.secondary">
-              {displayedText}
-            </Typography>
-          </Paper>
-        </Collapse>
-      </Stack>
-    </Paper>
+    <Card variant="outlined">
+      <CardContent>
+        <Stack spacing={2}>
+          <Typography variant="overline" color="text.secondary">
+            {raiseHandTeaser.label}
+          </Typography>
+          <Card variant="outlined">
+            <CardContent>
+              <Typography variant="body2">{raiseHandTeaser.sampleQuestion}</Typography>
+            </CardContent>
+          </Card>
+          <Button variant="contained" onClick={handleRaiseHand} disabled={raised}>
+            {raiseHandTeaser.buttonLabel}
+          </Button>
+          <Collapse in={raised}>
+            <Card variant="outlined">
+              <CardContent>
+                <Typography variant="body2" color="text.secondary">
+                  {displayedText}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Collapse>
+        </Stack>
+      </CardContent>
+    </Card>
   );
 }

@@ -20,7 +20,7 @@ export default function SecondAudience() {
           <Typography variant="body1" color="text.secondary">
             {secondAudience.body}
           </Typography>
-          <Grid container spacing={1} alignItems="center">
+          <Grid container spacing={1}>
             <Grid>
               <Button variant="contained" disabled>
                 {secondAudience.ctaLabel}

@@ -1,4 +1,5 @@
 import Container from "@mui/material/Container";
+import Box from "@mui/material/Box";
 import Grid from "@mui/material/Grid";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
@@ -24,7 +25,7 @@ export default function Footer() {
   const year = new Date().getFullYear();
 
   return (
-    <section aria-label="Footer">
+    <Box component="footer" aria-label="Footer">
       <Container maxWidth="lg">
         <Stack spacing={4}>
           <Grid container spacing={4}>
@@ -104,6 +105,6 @@ export default function Footer() {
           </Stack>
         </Stack>
       </Container>
-    </section>
+    </Box>
   );
 }

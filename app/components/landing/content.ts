@@ -1,3 +1,5 @@
+type HowItWorksIcon = "Upload" | "Build" | "Attend" | "Exam";
+
 export type LandingContent = {
   hero: {
     headline: string;
@@ -11,7 +13,7 @@ export type LandingContent = {
   };
   howItWorks: {
     heading: string;
-    steps: { icon: string; label: string }[];
+    steps: { icon: HowItWorksIcon; label: string }[];
   };
   featureHighlights: {
     heading: string;
@@ -88,10 +90,10 @@ const content: LandingContent = {
   hero: {
     headline: "Upload a textbook. Get a university.",
     subhead:
-      "Drop one PDF. We build a four-week semester — lectures, quizzes, a proctored midterm, and a cited Q&A that only answers from your book. No fluff, no waiting.",
+      "Upload your source books. UnivAI turns them into a focused semester with lectures, quizzes, exams, and Q&A that cites the material or clearly refuses.",
     ctaPrimary: "Upload a book",
     ctaSecondary: "See how it works",
-    microTrust: "Trusted by students at 12+ universities",
+    microTrust: "Built for source-grounded learning, with explicit citations and refusals.",
   },
 
   trustStrip: {
@@ -115,22 +117,22 @@ const content: LandingContent = {
     items: [
       {
         title: "Voiced lectures",
-        body: "Each week is a short narrated lesson pulled from your book's own pages. No generic video — every sentence is about your material.",
+        body: "Each week is a short narrated lesson pulled from your book's own pages. Every sentence stays focused on your material.",
         linkLabel: "View sample",
       },
       {
         title: "Raise-your-hand cited Q&A",
-        body: "Ask anything during a lecture. The answer comes from your book, with the source page attached. No hallucinations, no guesswork.",
+        body: "Ask during a lecture. Every grounded answer carries its source page; unsupported questions receive a clear refusal.",
         linkLabel: null,
       },
       {
         title: "Quizzes + proctored midterm",
-        body: "Weekly multiple-choice quizzes keep you honest. The midterm is timed and proctored — just like the real thing.",
+        body: "Weekly multiple-choice quizzes keep you on track. The midterm adds a timed proctoring flow.",
         linkLabel: "See exam format",
       },
       {
         title: "The virtual clock",
-        body: "The semester runs on its own schedule — lectures unlock weekly, windows have deadlines. You cannot binge the whole course in one night (and that is the point).",
+        body: "The semester runs on its own schedule: lectures unlock weekly and assessment windows have deadlines.",
         linkLabel: null,
       },
       {
@@ -143,18 +145,18 @@ const content: LandingContent = {
   },
 
   promoVideo: {
-    heading: "Watch a month of university in five minutes",
-    caption: "Promo video coming soon.",
-    playAriaLabel: "Play promo video",
+    heading: "See the full learning flow",
+    caption: "Sources become a structured semester, live lessons, grounded Q&A, and assessments.",
+    playAriaLabel: "Explore the UnivAI learning flow",
   },
 
   liveSample: {
     heading: "What a live lecture looks like",
     subheading:
-      "See the lecture room — slides, narration, the raise-hand queue, and the cited Q&A sidebar — all running on a real uploaded book.",
+      "See the lecture room with slides, narration, the raise-hand queue, and cited Q&A based on an uploaded book.",
     ctaLabel: "Try your own",
     lectureSlideLabel: "Lecture slide",
-    slidePlaceholder: "Slide preview placeholder",
+    slidePlaceholder: "Evidence, claims, and source quality",
     quizQuestionLabel: "Quiz question",
     quizQuestion: "Which of the following best describes X?",
     quizOptionA: "A. First option",
@@ -168,7 +170,7 @@ const content: LandingContent = {
 
   secondAudience: {
     heading: "Are you an educator?",
-    body: "Assign a textbook, get a ready-made course shell. Monitor attendance, review Q&A logs, and see aggregate quiz performance — without building slides or writing questions.",
+    body: "Assign a textbook and get a ready-made course shell. Monitor attendance, review Q&A logs, and see aggregate quiz performance without building every asset yourself.",
     ctaLabel: "Learn about class mode",
     comingSoonLabel: "Coming soon",
     comingSoon: true,
@@ -190,17 +192,17 @@ const content: LandingContent = {
       {
         question: "Does the AI invent answers outside my book?",
         answer:
-          "No. The Q&A engine is grounded by retrieval-augmented generation (RAG) — it only sees the pages of your uploaded book. Every answer includes a citation you can check.",
+          "The Q&A flow retrieves relevant pages from your uploaded sources. Grounded answers include citations, while unsupported questions receive a clear refusal.",
       },
       {
         question: "Are the exams really proctored?",
         answer:
-          "The midterm is timed and uses a basic proctoring flow to deter shortcuts. Weekly quizzes are self-paced checkpoints. We treat you like an adult — but the record is honest either way.",
+          "The midterm is timed and uses a basic proctoring flow. Weekly quizzes are self-paced checkpoints.",
       },
       {
         question: "Is my book private?",
         answer:
-          "Yes. Your book is indexed in the RAG service and stored in our database. It is never shared with other users or used to train models.",
+          "Your book is stored in its own collection and access is tied to your account. Review your deployment's privacy policy before uploading sensitive material.",
       },
       {
         question: "Can I use my own AI model?",
@@ -210,7 +212,7 @@ const content: LandingContent = {
       {
         question: "Is there a free way to try it?",
         answer:
-          "Upload one book and go through the full semester at no cost. There is no credit card required to start.",
+          "You can create an account and start an upload without entering a credit card.",
       },
     ],
   },
