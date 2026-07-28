@@ -34,7 +34,7 @@
     "livekit-server-sdk": "^2.17.0",
     "moment": "^2.30.1",
     "mongodb": "^7.5.0",
-    "next": "16.2.10",
+    "next": "16.2.12",
     "pg": "^8.22.0",
     "react": "19.2.4",
     "react-dom": "19.2.4"
@@ -49,14 +49,18 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.2.10",
+    "eslint-config-next": "16.2.12",
     "jsdom": "^26.1.0",
     "tsx": "^4.20.6",
     "typescript": "^5",
     "vitest": "^4.1.10"
   },
   "allowScripts": {
-    "sharp@0.34.5": true,
+    "sharp@0.35.3": true,
     "unrs-resolver@1.12.2": true
+  },
+  "overrides": {
+    "postcss": "8.5.24",
+    "sharp": "0.35.3"
   }
 }
