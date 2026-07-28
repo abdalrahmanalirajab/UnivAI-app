@@ -39,9 +39,10 @@ type Props = {
   documents: Document[];
   now: Date | null;
   onRemove: (documentId: number) => void;
+  approved?: boolean;
 };
 
-export default function SourceLibrary({ documents, now, onRemove }: Props) {
+export default function SourceLibrary({ documents, now, onRemove, approved = false }: Props) {
   if (documents.length === 0) {
     return (
       <Typography variant="body2" color="text.secondary">
@@ -90,7 +91,8 @@ export default function SourceLibrary({ documents, now, onRemove }: Props) {
                   size="small"
                   color="error"
                   onClick={() => onRemove(doc.id)}
-                  aria-label="Remove source"
+                  disabled={approved}
+                  aria-label={approved ? "Approved — removal disabled" : "Remove source"}
                 >
                   <DeleteIcon fontSize="small" />
                 </IconButton>
