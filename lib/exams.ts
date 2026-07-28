@@ -7,6 +7,7 @@ import { now, HOUR_MS, DAY_MS } from "./clock";
 import { getLectures, LECTURES_DIR } from "./lectures";
 import { COURSE_SIZES, DEFAULT_SIZE, isCourseSize } from "./course-size";
 import { getSetting } from "./settings";
+import { isStandalone } from "./runtime";
 
 /**
  * Integration with the team's exam system (UnivAI-exam_system, port 3200).
@@ -54,6 +55,7 @@ export type ExamLink = {
  * (Collection names are mongoose's default pluralisation of the model names.)
  */
 export async function resetExamWorld(sid: string): Promise<void> {
+  if (isStandalone()) return;
   const db = await mongo();
   const link = await db.collection("univai_link").findOne<ExamLink>({ sid });
   await db.collection("univai_link").deleteMany({ sid });
@@ -256,6 +258,47 @@ export type ExamStatus = {
 
 /** Every exam with its window (virtual clock) and result, for the /exams page. */
 export async function getExamStatuses(sid: string): Promise<ExamStatus[]> {
+  if (isStandalone()) {
+    const anchor = new Date("2026-07-27T09:00:00.000Z");
+    const hour = 60 * 60 * 1000;
+    const scenario = process.env.UNIVAI_SCENARIO ?? "happy";
+    const statuses: ExamStatus[] = [1, 2, 3, 4].map((week) => ({
+      kind: "quiz",
+      week,
+      title: `Quiz ${week} - Standalone Week ${week}`,
+      opensAt: new Date(anchor.getTime() + (week - 1) * 7 * 24 * hour),
+      closesAt: new Date(anchor.getTime() + (week - 1) * 7 * 24 * hour + 24 * hour),
+      state:
+        week === 1
+          ? "submitted"
+          : week === 2 && scenario !== "empty"
+            ? "open"
+            : "locked",
+      score: week === 1 ? "4" : null,
+      maxScore: week === 1 ? "5" : null,
+      flagged: week === 4 && scenario === "exam-complete",
+      feedback: week === 1 ? "Good use of source evidence." : null,
+      report:
+        week === 1
+          ? { suspicion_score: 0, flagged: false, session_status: "completed", events: [] }
+          : null,
+    }));
+    statuses.push({
+      kind: "mid",
+      week: null,
+      title: "Midterm - Weeks 1 to 4",
+      opensAt: new Date("2026-08-18T11:00:00.000Z"),
+      closesAt: new Date("2026-08-21T11:00:00.000Z"),
+      state: scenario === "exam-pending" ? "submitted" : "locked",
+      score: scenario === "exam-pending" ? "pending" : null,
+      maxScore: scenario === "exam-pending" ? "manual review" : null,
+      flagged: false,
+      feedback: scenario === "exam-pending" ? "Pending manual grading." : null,
+      report: null,
+    });
+    return statuses;
+  }
+
   const [virtualNow, lectures] = await Promise.all([now(), getLectures(sid)]);
 
   const grades = await query<{
@@ -341,6 +384,9 @@ export async function startExam(
     throw new Error(`Not open yet — it opens after the lecture, ${status.opensAt.toISOString()}.`);
   if (status.state === "missed") throw new Error("The window for this exam has closed.");
   if (status.state === "submitted") throw new Error("You already submitted this exam.");
+  if (isStandalone()) {
+    return `/exams?standalone_attempt=${kind}-${week ?? "mid"}`;
+  }
 
   const link = await ensureExamWorld(sid, studentName);
   // Push the freshest generated questions into the bank BEFORE the exam system

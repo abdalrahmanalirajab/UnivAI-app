@@ -174,6 +174,7 @@ export default function CurriculumPage({ params }: Props) {
       ) : null}
 
       <CurriculumWorkspace
+        key={`${programme.id}:${programme.plan_version}:${programme.status}`}
         programme={programme}
         programmeId={programmeId!}
         onProgrammeUpdated={handleProgrammeUpdated}

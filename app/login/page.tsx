@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import AuthCard from "@/app/components/AuthCard";
 import { FormError } from "@/app/components/FormAlerts";
@@ -14,7 +14,7 @@ import { validateEmail } from "@/lib/validators";
 import { authClient } from "@/lib/auth-client";
 import { copyFor, type AuthError } from "@/lib/errorMap";
 
-export default function LoginPage() {
+function LoginForm() {
   const [email, setEmail] = useState("");
   const [emailError, setEmailError] = useState<string | null>(null);
   const [password, setPassword] = useState("");
@@ -34,7 +34,7 @@ export default function LoginPage() {
     setTopLevelError(null);
     setEmailNotVerified(false);
 
-    const { data, error } = await authClient.signIn.email({
+    const { error } = await authClient.signIn.email({
       email,
       password,
       rememberMe,
@@ -103,5 +103,13 @@ export default function LoginPage() {
         Forgot password?
       </Button>
     </AuthCard>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
   );
 }

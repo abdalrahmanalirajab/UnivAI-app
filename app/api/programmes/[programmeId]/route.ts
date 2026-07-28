@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 
 function parseProgrammeId(params: { programmeId: string }): number | null {
   const id = Number(params.programmeId);
-  return Number.isFinite(id) ? id : null;
+  return Number.isInteger(id) && id > 0 ? id : null;
 }
 
 export async function GET(
@@ -37,52 +37,6 @@ export async function GET(
   }
 
   return Response.json({ programme });
-}
-
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: Promise<{ programmeId: string }> },
-) {
-  const gate = await requireUserApi();
-  if (gate instanceof Response) return gate;
-
-  const { programmeId: raw } = await params;
-  const programmeId = parseProgrammeId({ programmeId: raw });
-  if (!programmeId) {
-    return Response.json({ error: "Invalid programme ID." }, { status: 400 });
-  }
-
-  let body: { plan?: unknown; planVersion?: unknown };
-  try {
-    body = await request.json();
-  } catch {
-    return Response.json({ error: "Invalid JSON body." }, { status: 400 });
-  }
-
-  const { plan, planVersion } = body;
-  if (!plan || typeof planVersion !== "number" || !Number.isInteger(planVersion) || planVersion < 1) {
-    return Response.json(
-      { error: "plan (object) and planVersion (positive integer) are required." },
-      { status: 400 },
-    );
-  }
-
-  const result = await updateProgrammePlan(
-    programmeId,
-    gate.studentId,
-    plan as ProgrammePlanV1,
-    planVersion,
-  );
-
-  if (!result.ok) {
-    const status = result.error === "Programme not found." ? 404 : 409;
-    return Response.json(
-      { error: result.error, current: result.current },
-      { status },
-    );
-  }
-
-  return Response.json({ programme: result.programme });
 }
 
 export async function PATCH(
@@ -160,7 +114,17 @@ export async function PATCH(
           { status: 400 },
         );
       }
-      updatedPlan = renameCourse(programme.plan, courseId, newTitle);
+      if (!programme.plan.courses.some((course) => course.id === courseId)) {
+        return Response.json({ error: "Course not found." }, { status: 400 });
+      }
+      const title = newTitle.trim();
+      if (title.length < 1 || title.length > 120) {
+        return Response.json(
+          { error: "newTitle must be between 1 and 120 characters." },
+          { status: 400 },
+        );
+      }
+      updatedPlan = renameCourse(programme.plan, courseId, title);
       break;
     }
     case "reorder": {
@@ -174,6 +138,21 @@ export async function PATCH(
       ) {
         return Response.json(
           { error: "semesterId (string) and courseIds (string[]) are required for reorder." },
+          { status: 400 },
+        );
+      }
+      const semester = programme.plan.semesters.find(
+        (candidate) => candidate.id === semesterId,
+      );
+      const requestedIds = new Set(courseIds);
+      if (
+        !semester ||
+        requestedIds.size !== courseIds.length ||
+        semester.course_ids.length !== courseIds.length ||
+        semester.course_ids.some((id) => !requestedIds.has(id))
+      ) {
+        return Response.json(
+          { error: "courseIds must contain each course in the semester exactly once." },
           { status: 400 },
         );
       }
@@ -195,7 +174,22 @@ export async function PATCH(
           { status: 400 },
         );
       }
-      updatedPlan = mergeCourses(programme.plan, targetCourseIds, intoTitle);
+      const uniqueTargetIds = [...new Set(targetCourseIds)];
+      const title = intoTitle.trim();
+      if (
+        uniqueTargetIds.length !== targetCourseIds.length ||
+        title.length < 1 ||
+        title.length > 120 ||
+        uniqueTargetIds.some(
+          (id) => !programme.plan.courses.some((course) => course.id === id),
+        )
+      ) {
+        return Response.json(
+          { error: "Merge courses must be unique, existing courses with a valid title." },
+          { status: 400 },
+        );
+      }
+      updatedPlan = mergeCourses(programme.plan, uniqueTargetIds, title);
       break;
     }
     case "split": {
@@ -210,7 +204,9 @@ export async function PATCH(
           (p): p is { title: string; credits: number } =>
             typeof p === "object" && p !== null &&
             typeof (p as { title?: string }).title === "string" &&
-            typeof (p as { credits?: number }).credits === "number",
+            typeof (p as { credits?: number }).credits === "number" &&
+            Number.isFinite((p as { credits: number }).credits) &&
+            (p as { credits: number }).credits > 0,
         )
       ) {
         return Response.json(
@@ -218,7 +214,28 @@ export async function PATCH(
           { status: 400 },
         );
       }
-      updatedPlan = splitCourse(programme.plan, courseId, parts);
+      const original = programme.plan.courses.find(
+        (course) => course.id === courseId,
+      );
+      const normalizedParts = parts.map((part) => ({
+        title: part.title.trim(),
+        credits: part.credits,
+      }));
+      const splitCredits = normalizedParts.reduce(
+        (total, part) => total + part.credits,
+        0,
+      );
+      if (
+        !original ||
+        normalizedParts.some((part) => part.title.length < 1 || part.title.length > 120) ||
+        Math.abs(splitCredits - original.credits) > Number.EPSILON
+      ) {
+        return Response.json(
+          { error: "Split parts must have valid titles and preserve the original credits." },
+          { status: 400 },
+        );
+      }
+      updatedPlan = splitCourse(programme.plan, courseId, normalizedParts);
       break;
     }
     case "exclude": {
@@ -228,6 +245,9 @@ export async function PATCH(
           { error: "courseId (string) is required for exclude." },
           { status: 400 },
         );
+      }
+      if (!programme.plan.courses.some((course) => course.id === courseId)) {
+        return Response.json({ error: "Course not found." }, { status: 400 });
       }
       updatedPlan = excludeCourse(programme.plan, courseId);
       break;

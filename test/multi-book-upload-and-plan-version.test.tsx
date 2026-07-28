@@ -111,7 +111,7 @@ describe("Programme plan version — stale rejection", () => {
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error).toBe("Stale plan version. Refresh and try again.");
-        expect(result.current.plan_version).toBe(2);
+        expect(result.current?.plan_version).toBe(2);
       }
     });
 
@@ -141,6 +141,26 @@ describe("Programme plan version — stale rejection", () => {
 
       expect(result.ok).toBe(true);
     });
+
+    it("rejects edits after approval", async () => {
+      const { updateProgrammePlan } = await import("@/lib/programmes");
+
+      mockQueryOne.mockResolvedValue(
+        fakeProgramme({ plan_version: 2, status: "approved" }),
+      );
+
+      const result = await updateProgrammePlan(
+        1,
+        "S-2026-000001",
+        fakeProgramme().plan,
+        2,
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toBe("Programme is already approved.");
+      }
+    });
   });
 
   describe("3e — approveProgramme", () => {
@@ -154,7 +174,7 @@ describe("Programme plan version — stale rejection", () => {
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error).toBe("Stale plan version. Refresh and try again.");
-        expect(result.current.plan_version).toBe(2);
+        expect(result.current?.plan_version).toBe(2);
       }
     });
 

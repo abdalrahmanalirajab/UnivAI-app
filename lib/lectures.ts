@@ -2,6 +2,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import { query } from "./db";
 import { now, MINUTE_MS } from "./clock";
+import { DATA_ROOT, LECTURES_ROOT } from "./paths";
 
 /**
  * Lecture content is PREMADE and committed under lectures/week-N/:
@@ -10,8 +11,8 @@ import { now, MINUTE_MS } from "./clock";
  * Nothing here generates content.
  */
 
-export const REPO_ROOT = path.resolve(process.cwd(), "..");
-export const LECTURES_DIR = path.join(REPO_ROOT, "lectures");
+export const REPO_ROOT = DATA_ROOT;
+export const LECTURES_DIR = LECTURES_ROOT;
 export const WEEKS = 4;
 
 /** How long a lecture is "on" for. */

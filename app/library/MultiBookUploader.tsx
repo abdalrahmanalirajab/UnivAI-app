@@ -6,6 +6,7 @@ import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
 import Chip from "@mui/material/Chip";
 import LinearProgress from "@mui/material/LinearProgress";
+import Input from "@mui/material/Input";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 
@@ -87,13 +88,18 @@ export default function MultiBookUploader({ collectionId, onDocumentsChange }: P
 
           <Button variant="contained" component="label" disabled={busy}>
             {busy ? "Uploading…" : "Choose PDFs"}
-            <input
-              ref={inputRef}
+            <Input
+              inputRef={inputRef}
               type="file"
-              multiple
-              accept="application/pdf,.pdf"
               hidden
-              onChange={(e) => handleFiles(e.target.files)}
+              disableUnderline
+              inputProps={{
+                multiple: true,
+                accept: "application/pdf,.pdf",
+              }}
+              onChange={(event) =>
+                handleFiles((event.target as HTMLInputElement).files)
+              }
             />
           </Button>
 

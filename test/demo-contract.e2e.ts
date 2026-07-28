@@ -48,6 +48,10 @@ async function setSession(page: Page) {
 }
 
 async function mockApis(page: Page) {
+  await page.route("**/api/clock", async (route) => {
+    await route.fulfill({ json: { now: "2026-07-28T12:00:00.000Z" } });
+  });
+
   await page.route("**/api/collections", async (route) => {
     if (route.request().method() === "GET") {
       await route.fulfill({
@@ -121,10 +125,26 @@ async function mockApis(page: Page) {
           },
         },
       });
-    } else if (method === "PUT") {
-      apiState.programmeVersion++;
+    } else if (method === "PATCH") {
       const body = JSON.parse((await route.request().postData()) || "{}");
-      apiState.programmePlan = body.plan;
+      if (body.expectedVersion !== apiState.programmeVersion) {
+        await route.fulfill({
+          status: 409,
+          json: { error: "Stale plan version.", current: null },
+        });
+        return;
+      }
+      if (body.operation === "rename") {
+        apiState.programmePlan = {
+          ...apiState.programmePlan,
+          courses: apiState.programmePlan.courses.map((course) =>
+            course.id === body.courseId
+              ? { ...course, title: body.newTitle }
+              : course,
+          ),
+        };
+      }
+      apiState.programmeVersion++;
       await route.fulfill({
         json: {
           programme: {

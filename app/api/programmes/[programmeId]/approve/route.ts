@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 function parseProgrammeId(params: { programmeId: string }): number | null {
   const id = Number(params.programmeId);
-  return Number.isFinite(id) ? id : null;
+  return Number.isInteger(id) && id > 0 ? id : null;
 }
 
 export async function POST(

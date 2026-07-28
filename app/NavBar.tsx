@@ -7,6 +7,7 @@ import Toolbar from "@mui/material/Toolbar";
 import Typography from "@mui/material/Typography";
 import Button from "@mui/material/Button";
 import Divider from "@mui/material/Divider";
+import Grid from "@mui/material/Grid";
 import Stack from "@mui/material/Stack";
 import Link from "next/link";
 import Avatar from "@mui/material/Avatar";
@@ -64,71 +65,78 @@ export default function NavBar() {
   return (
     <AppBar position="static">
       <Toolbar>
-        <Stack
-          direction="row"
-          spacing={2}
-          divider={<Divider orientation="vertical" flexItem />}
-          sx={{ flexGrow: 1, alignItems: "center" }}
-        >
-          <Typography variant="h6" component="div">
-            UnivAI
-          </Typography>
-          <Stack direction="row" spacing={1}>
-            {!user ? (
-              <>
-                <Button color="inherit" component={Link} href="/login">
-                  Login
-                </Button>
-                <Button color="inherit" component={Link} href="/register">
-                  Register
-                </Button>
-              </>
-            ) : (
-              (user.role === "student" ? STUDENT_LINKS : navLinks()).map((link) => (
-                <Button
-                  key={link.href}
-                  color="inherit"
-                  component={Link}
-                  href={link.href}
-                >
-                  {link.label}
-                </Button>
-              ))
-            )}
-          </Stack>
-        </Stack>
-        {user && (
-          <>
-            <>
-            {user.name}
-            </>
-            <IconButton onClick={(e) => setAnchorEl(e.currentTarget)}>
-              <Avatar>{user.name?.charAt(0)?.toUpperCase()}</Avatar>
-            </IconButton>
-            <Menu
-              anchorEl={anchorEl}
-              open={menuOpen}
-              onClose={() => setAnchorEl(null)}
+        <Grid container spacing={2}>
+          <Grid size="grow">
+            <Stack
+              direction="row"
+              spacing={2}
+              divider={<Divider orientation="vertical" flexItem />}
             >
-              <MenuItem disabled>
-                <Stack>
-                  <Typography variant="body1">{user.name}</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {user.studentId}
-                  </Typography>
-                </Stack>
-              </MenuItem>
-              <MenuItem
-                component={Link}
-                href="/profile"
-                onClick={() => setAnchorEl(null)}
+              <Typography variant="h6" component="div">
+                UnivAI
+              </Typography>
+              <Stack direction="row" spacing={1}>
+                {!user ? (
+                  <>
+                    <Button color="inherit" component={Link} href="/login">
+                      Login
+                    </Button>
+                    <Button color="inherit" component={Link} href="/register">
+                      Register
+                    </Button>
+                  </>
+                ) : (
+                  (user.role === "student" ? STUDENT_LINKS : navLinks()).map((link) => (
+                    <Button
+                      key={link.href}
+                      color="inherit"
+                      component={Link}
+                      href={link.href}
+                    >
+                      {link.label}
+                    </Button>
+                  ))
+                )}
+              </Stack>
+            </Stack>
+          </Grid>
+          {user ? (
+            <Grid>
+              <Stack direction="row" spacing={1}>
+                <Typography variant="body2">{user.name}</Typography>
+                <IconButton
+                  color="inherit"
+                  aria-label="Open account menu"
+                  onClick={(event) => setAnchorEl(event.currentTarget)}
+                >
+                  <Avatar>{user.name?.charAt(0)?.toUpperCase()}</Avatar>
+                </IconButton>
+              </Stack>
+              <Menu
+                anchorEl={anchorEl}
+                open={menuOpen}
+                onClose={() => setAnchorEl(null)}
               >
-                Profile
-              </MenuItem>
-              <MenuItem onClick={handleLogout}>Logout</MenuItem>
-            </Menu>
-          </>
-        )}
+                <MenuItem disabled>
+                  <Stack>
+                    <Typography variant="body1">{user.name}</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {user.studentId}
+                    </Typography>
+                  </Stack>
+                </MenuItem>
+                <MenuItem
+                  component={Link}
+                  href="/profile"
+                  onClick={() => setAnchorEl(null)}
+                >
+                  Profile
+                </MenuItem>
+                <MenuItem onClick={handleLogout}>Logout</MenuItem>
+              </Menu>
+            </Grid>
+          ) : null}
+        </Grid>
       </Toolbar>
     </AppBar>
   );

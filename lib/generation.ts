@@ -2,6 +2,7 @@ import { spawn } from "child_process";
 import { mkdirSync, openSync } from "fs";
 import path from "path";
 import { REPO_ROOT, VENV_PYTHON } from "./python";
+import { isStandalone } from "./runtime";
 
 /**
  * Fire course generation (UnivAI-Agent/generation/lecture_gen.py — the Brain
@@ -9,6 +10,12 @@ import { REPO_ROOT, VENV_PYTHON } from "./python";
  * is reported through books.progress; output lands in logs/lecture-gen.log.
  */
 export function spawnGeneration(pdfPath: string, bookId: number, quizzesOnly = false): void {
+  if (isStandalone()) {
+    console.info(
+      `[standalone] generation fixture selected for book ${bookId}; Python, Slidev, and voice were skipped`
+    );
+    return;
+  }
   mkdirSync(path.join(REPO_ROOT, "logs"), { recursive: true });
   const log = openSync(path.join(REPO_ROOT, "logs", "lecture-gen.log"), "a");
   const args = [

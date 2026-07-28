@@ -1,4 +1,4 @@
-import { query, queryOne } from "./db";
+import { queryOne } from "./db";
 import type { ProgrammePlanV1, Course } from "@/test/fixtures/programme-plan-v1";
 
 export type ProgrammeStatus = "proposed" | "approved";
@@ -18,7 +18,7 @@ export type Programme = {
 
 export type ProgrammeResult =
   | { ok: true; programme: Programme }
-  | { ok: false; error: string; current: Programme };
+  | { ok: false; error: string; current: Programme | null };
 
 const COLUMNS =
   "id, student_id, collection_id, name, status, plan_version, plan, approved_at, created_at, updated_at";
@@ -60,7 +60,10 @@ export async function updateProgrammePlan(
 ): Promise<ProgrammeResult> {
   const current = await getProgramme(programmeId, studentId);
   if (!current) {
-    return { ok: false, error: "Programme not found.", current: null as unknown as Programme };
+    return { ok: false, error: "Programme not found.", current: null };
+  }
+  if (current.status === "approved") {
+    return { ok: false, error: "Programme is already approved.", current };
   }
   if (current.plan_version !== expectedVersion) {
     return { ok: false, error: "Stale plan version. Refresh and try again.", current };
@@ -74,7 +77,7 @@ export async function updateProgrammePlan(
   );
   if (!row) {
     const refreshed = await getProgramme(programmeId, studentId);
-    return { ok: false, error: "Stale plan version. Refresh and try again.", current: refreshed! };
+    return { ok: false, error: "Stale plan version. Refresh and try again.", current: refreshed };
   }
   return { ok: true, programme: toProgramme(row) };
 }
@@ -86,7 +89,7 @@ export async function approveProgramme(
 ): Promise<ProgrammeResult> {
   const current = await getProgramme(programmeId, studentId);
   if (!current) {
-    return { ok: false, error: "Programme not found.", current: null as unknown as Programme };
+    return { ok: false, error: "Programme not found.", current: null };
   }
   if (current.status === "approved") {
     return { ok: false, error: "Programme is already approved.", current };
@@ -103,7 +106,7 @@ export async function approveProgramme(
   );
   if (!row) {
     const refreshed = await getProgramme(programmeId, studentId);
-    return { ok: false, error: "Stale plan version. Refresh and try again.", current: refreshed! };
+    return { ok: false, error: "Stale plan version. Refresh and try again.", current: refreshed };
   }
   return { ok: true, programme: toProgramme(row) };
 }
@@ -135,30 +138,46 @@ export function mergeCourses(
   targetCourseIds: string[],
   intoTitle: string,
 ): ProgrammePlanV1 {
-  const merged = plan.courses.filter((c) => targetCourseIds.includes(c.id));
+  const targetIds = [...new Set(targetCourseIds)];
+  const merged = plan.courses.filter((course) => targetIds.includes(course.id));
   if (merged.length === 0) return plan;
-  const newId = `merged_${targetCourseIds.join("_")}`;
+  const baseId = `merged_${targetIds.join("_")}`;
+  let newId = baseId;
+  let suffix = 2;
+  while (plan.courses.some((course) => course.id === newId && !targetIds.includes(course.id))) {
+    newId = `${baseId}_${suffix}`;
+    suffix += 1;
+  }
   const newCourse: Course = {
     id: newId,
-    title: intoTitle,
+    title: intoTitle.trim(),
     credits: merged.reduce((s, c) => s + c.credits, 0),
     lecture_hours: merged.reduce((s, c) => s + c.lecture_hours, 0),
     tutorial_hours: merged.reduce((s, c) => s + c.tutorial_hours, 0),
     lab_hours: merged.reduce((s, c) => s + c.lab_hours, 0),
     description: merged.map((c) => c.title).join("; "),
   };
-  const keep = plan.courses.filter((c) => !targetCourseIds.includes(c.id));
+  const keep = plan.courses.filter((c) => !targetIds.includes(c.id));
   const dedup = (ids: string[]): string[] =>
     ids
-      .map((id) => (targetCourseIds.includes(id) ? newId : id))
+      .map((id) => (targetIds.includes(id) ? newId : id))
       .filter((id, i, a) => a.indexOf(id) === i);
+  const mergedRequires = dedup(
+    plan.prerequisites
+      .filter((prerequisite) => targetIds.includes(prerequisite.course_id))
+      .flatMap((prerequisite) => prerequisite.requires),
+  ).filter((id) => id !== newId);
+  const prerequisites = plan.prerequisites
+    .filter((prerequisite) => !targetIds.includes(prerequisite.course_id))
+    .map((prerequisite) => ({ ...prerequisite, requires: dedup(prerequisite.requires) }));
+  if (mergedRequires.length > 0) {
+    prerequisites.push({ course_id: newId, requires: mergedRequires });
+  }
   return {
     ...plan,
     courses: [...keep, newCourse],
     semesters: plan.semesters.map((s) => ({ ...s, course_ids: dedup(s.course_ids) })),
-    prerequisites: plan.prerequisites
-      .filter((p) => !targetCourseIds.includes(p.course_id))
-      .map((p) => ({ ...p, requires: dedup(p.requires) })),
+    prerequisites,
     source_coverage: plan.source_coverage.map((sc) => ({
       ...sc,
       course_ids: dedup(sc.course_ids),
@@ -173,17 +192,40 @@ export function splitCourse(
 ): ProgrammePlanV1 {
   const original = plan.courses.find((c) => c.id === courseId);
   if (!original || parts.length === 0) return plan;
+  const distribute = (total: number): number[] => {
+    const base = Math.floor(total / parts.length);
+    const remainder = total - base * parts.length;
+    return parts.map((_, index) => base + (index < remainder ? 1 : 0));
+  };
+  const lectureHours = distribute(original.lecture_hours);
+  const tutorialHours = distribute(original.tutorial_hours);
+  const labHours = distribute(original.lab_hours);
   const newCourses: Course[] = parts.map((part, i) => ({
     id: `${courseId}_part_${i}`,
-    title: part.title,
+    title: part.title.trim(),
     credits: part.credits,
-    lecture_hours: Math.round(original.lecture_hours / parts.length),
-    tutorial_hours: Math.round(original.tutorial_hours / parts.length),
-    lab_hours: Math.round(original.lab_hours / parts.length),
+    lecture_hours: lectureHours[i],
+    tutorial_hours: tutorialHours[i],
+    lab_hours: labHours[i],
     description: original.description,
   }));
   const newIds = newCourses.map((c) => c.id);
   const replaceId = (id: string) => (id === courseId ? newIds : [id]);
+  const inheritedRequirements =
+    plan.prerequisites.find((prerequisite) => prerequisite.course_id === courseId)
+      ?.requires ?? [];
+  const prerequisites = plan.prerequisites
+    .filter((prerequisite) => prerequisite.course_id !== courseId)
+    .map((prerequisite) => ({
+      ...prerequisite,
+      requires: prerequisite.requires.flatMap(replaceId),
+    }));
+  prerequisites.push(
+    ...newIds.map((newCourseId) => ({
+      course_id: newCourseId,
+      requires: [...inheritedRequirements],
+    })),
+  );
   return {
     ...plan,
     courses: [...plan.courses.filter((c) => c.id !== courseId), ...newCourses],
@@ -191,12 +233,7 @@ export function splitCourse(
       ...s,
       course_ids: s.course_ids.flatMap(replaceId),
     })),
-    prerequisites: [
-      ...plan.prerequisites.filter((p) => p.course_id !== courseId),
-      ...plan.prerequisites
-        .filter((p) => p.requires.includes(courseId))
-        .map((p) => ({ ...p, requires: [...p.requires.filter((r) => r !== courseId), ...newIds] })),
-    ],
+    prerequisites: prerequisites.filter((prerequisite) => prerequisite.requires.length > 0),
     source_coverage: plan.source_coverage.map((sc) => ({
       ...sc,
       course_ids: sc.course_ids.flatMap(replaceId),
@@ -205,6 +242,8 @@ export function splitCourse(
 }
 
 export function excludeCourse(plan: ProgrammePlanV1, courseId: string): ProgrammePlanV1 {
+  const excluded = plan.courses.find((course) => course.id === courseId);
+  if (!excluded) return plan;
   return {
     ...plan,
     courses: plan.courses.filter((c) => c.id !== courseId),
@@ -212,7 +251,29 @@ export function excludeCourse(plan: ProgrammePlanV1, courseId: string): Programm
       ...s,
       course_ids: s.course_ids.filter((id) => id !== courseId),
     })),
-    prerequisites: plan.prerequisites.filter((p) => p.course_id !== courseId),
+    prerequisites: plan.prerequisites
+      .filter((prerequisite) => prerequisite.course_id !== courseId)
+      .map((prerequisite) => ({
+        ...prerequisite,
+        requires: prerequisite.requires.filter((id) => id !== courseId),
+      }))
+      .filter((prerequisite) => prerequisite.requires.length > 0),
+    workload: {
+      ...plan.workload,
+      total_credits: Math.max(0, plan.workload.total_credits - excluded.credits),
+      total_lecture_hours: Math.max(
+        0,
+        plan.workload.total_lecture_hours - excluded.lecture_hours,
+      ),
+      total_tutorial_hours: Math.max(
+        0,
+        plan.workload.total_tutorial_hours - excluded.tutorial_hours,
+      ),
+      total_lab_hours: Math.max(
+        0,
+        plan.workload.total_lab_hours - excluded.lab_hours,
+      ),
+    },
     source_coverage: plan.source_coverage.map((sc) => ({
       ...sc,
       course_ids: sc.course_ids.filter((id) => id !== courseId),

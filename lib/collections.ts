@@ -42,7 +42,7 @@ export function validateCollectionName(name: string): string | null {
 
 export function validateFilename(filename: string): string | null {
   if (filename.length < 1 || filename.length > 255) return "Filename must be between 1 and 255 characters.";
-  if (!/^[^/\\]+\.\w+$/.test(filename)) return "Filename must include an extension (e.g. document.pdf).";
+  if (!filename.toLowerCase().endsWith(".pdf")) return "Only PDF files are accepted.";
   return null;
 }
 

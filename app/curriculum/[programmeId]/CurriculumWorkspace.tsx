@@ -33,7 +33,7 @@ import EditIcon from "@mui/icons-material/Edit";
 import MergeIcon from "@mui/icons-material/Merge";
 import CallSplitIcon from "@mui/icons-material/CallSplit";
 import type { Programme } from "@/lib/programmes";
-import type { ProgrammePlanV1, Course } from "@/test/fixtures/programme-plan-v1";
+import type { Course } from "@/test/fixtures/programme-plan-v1";
 import ProgrammeGraph from "./ProgrammeGraph";
 
 type Props = {
@@ -42,115 +42,16 @@ type Props = {
   onProgrammeUpdated: (p: Programme) => void;
 };
 
-function renameCourse(plan: ProgrammePlanV1, courseId: string, newTitle: string): ProgrammePlanV1 {
-  return {
-    ...plan,
-    courses: plan.courses.map((c) => (c.id === courseId ? { ...c, title: newTitle } : c)),
-  };
-}
-
-function reorderCourses(
-  plan: ProgrammePlanV1,
-  semesterId: string,
-  courseIds: string[],
-): ProgrammePlanV1 {
-  return {
-    ...plan,
-    semesters: plan.semesters.map((s) =>
-      s.id === semesterId ? { ...s, course_ids: courseIds } : s,
-    ),
-  };
-}
-
-function mergeCourses(
-  plan: ProgrammePlanV1,
-  targetCourseIds: string[],
-  intoTitle: string,
-): ProgrammePlanV1 {
-  const merged = plan.courses.filter((c) => targetCourseIds.includes(c.id));
-  if (merged.length === 0) return plan;
-  const newId = `merged_${targetCourseIds.join("_")}`;
-  const newCourse: Course = {
-    id: newId,
-    title: intoTitle,
-    credits: merged.reduce((s, c) => s + c.credits, 0),
-    lecture_hours: merged.reduce((s, c) => s + c.lecture_hours, 0),
-    tutorial_hours: merged.reduce((s, c) => s + c.tutorial_hours, 0),
-    lab_hours: merged.reduce((s, c) => s + c.lab_hours, 0),
-    description: merged.map((c) => c.title).join("; "),
-  };
-  const keep = plan.courses.filter((c) => !targetCourseIds.includes(c.id));
-  const dedup = (ids: string[]): string[] =>
-    ids
-      .map((id) => (targetCourseIds.includes(id) ? newId : id))
-      .filter((id, i, a) => a.indexOf(id) === i);
-  return {
-    ...plan,
-    courses: [...keep, newCourse],
-    semesters: plan.semesters.map((s) => ({ ...s, course_ids: dedup(s.course_ids) })),
-    prerequisites: plan.prerequisites
-      .filter((p) => !targetCourseIds.includes(p.course_id))
-      .map((p) => ({ ...p, requires: dedup(p.requires) })),
-    source_coverage: plan.source_coverage.map((sc) => ({
-      ...sc,
-      course_ids: dedup(sc.course_ids),
-    })),
-  };
-}
-
-function splitCourse(
-  plan: ProgrammePlanV1,
-  courseId: string,
-  parts: { title: string; credits: number }[],
-): ProgrammePlanV1 {
-  const original = plan.courses.find((c) => c.id === courseId);
-  if (!original || parts.length === 0) return plan;
-  const newCourses: Course[] = parts.map((part, i) => ({
-    id: `${courseId}_part_${i}`,
-    title: part.title,
-    credits: part.credits,
-    lecture_hours: Math.round(original.lecture_hours / parts.length),
-    tutorial_hours: Math.round(original.tutorial_hours / parts.length),
-    lab_hours: Math.round(original.lab_hours / parts.length),
-    description: original.description,
-  }));
-  const newIds = newCourses.map((c) => c.id);
-  const replaceId = (id: string) => (id === courseId ? newIds : [id]);
-  return {
-    ...plan,
-    courses: [...plan.courses.filter((c) => c.id !== courseId), ...newCourses],
-    semesters: plan.semesters.map((s) => ({
-      ...s,
-      course_ids: s.course_ids.flatMap(replaceId),
-    })),
-    prerequisites: [
-      ...plan.prerequisites.filter((p) => p.course_id !== courseId),
-      ...plan.prerequisites
-        .filter((p) => p.requires.includes(courseId))
-        .map((p) => ({ ...p, requires: [...p.requires.filter((r) => r !== courseId), ...newIds] })),
-    ],
-    source_coverage: plan.source_coverage.map((sc) => ({
-      ...sc,
-      course_ids: sc.course_ids.flatMap(replaceId),
-    })),
-  };
-}
-
-function excludeCourse(plan: ProgrammePlanV1, courseId: string): ProgrammePlanV1 {
-  return {
-    ...plan,
-    courses: plan.courses.filter((c) => c.id !== courseId),
-    semesters: plan.semesters.map((s) => ({
-      ...s,
-      course_ids: s.course_ids.filter((id) => id !== courseId),
-    })),
-    prerequisites: plan.prerequisites.filter((p) => p.course_id !== courseId),
-    source_coverage: plan.source_coverage.map((sc) => ({
-      ...sc,
-      course_ids: sc.course_ids.filter((id) => id !== courseId),
-    })),
-  };
-}
+type PlanEdit =
+  | { operation: "rename"; courseId: string; newTitle: string }
+  | { operation: "reorder"; semesterId: string; courseIds: string[] }
+  | { operation: "merge"; targetCourseIds: string[]; intoTitle: string }
+  | {
+      operation: "split";
+      courseId: string;
+      parts: { title: string; credits: number }[];
+    }
+  | { operation: "exclude"; courseId: string };
 
 export default function CurriculumWorkspace({
   programme: initial,
@@ -196,15 +97,15 @@ export default function CurriculumWorkspace({
     );
   }
 
-  async function savePlan(newPlan: ProgrammePlanV1) {
+  async function savePlan(edit: PlanEdit) {
     setSaving(true);
     setError(null);
     setStaleWarning(null);
     try {
       const res = await fetch(`/api/programmes/${programmeId}`, {
-        method: "PUT",
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan: newPlan, planVersion: version }),
+        body: JSON.stringify({ ...edit, expectedVersion: version }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -236,8 +137,11 @@ export default function CurriculumWorkspace({
 
   async function submitRename() {
     if (!renameCourseId || !renameTitle.trim()) return;
-    const updated = renameCourse(plan, renameCourseId, renameTitle.trim());
-    await savePlan(updated);
+    await savePlan({
+      operation: "rename",
+      courseId: renameCourseId,
+      newTitle: renameTitle.trim(),
+    });
     setRenameOpen(false);
   }
 
@@ -261,8 +165,11 @@ export default function CurriculumWorkspace({
 
   async function submitReorder() {
     if (!reorderSemesterId) return;
-    const updated = reorderCourses(plan, reorderSemesterId, reorderIds);
-    await savePlan(updated);
+    await savePlan({
+      operation: "reorder",
+      semesterId: reorderSemesterId,
+      courseIds: reorderIds,
+    });
     setReorderOpen(false);
   }
 
@@ -284,8 +191,11 @@ export default function CurriculumWorkspace({
 
   async function submitMerge() {
     if (mergeSelected.length < 2 || !mergeTitle.trim()) return;
-    const updated = mergeCourses(plan, mergeSelected, mergeTitle.trim());
-    await savePlan(updated);
+    await savePlan({
+      operation: "merge",
+      targetCourseIds: mergeSelected,
+      intoTitle: mergeTitle.trim(),
+    });
     setMergeOpen(false);
   }
 
@@ -320,16 +230,18 @@ export default function CurriculumWorkspace({
     if (!splitCourseId) return;
     const valid = splitParts.filter((p) => p.title.trim() && p.credits > 0);
     if (valid.length < 2) return;
-    const updated = splitCourse(plan, splitCourseId, valid);
-    await savePlan(updated);
+    await savePlan({
+      operation: "split",
+      courseId: splitCourseId,
+      parts: valid,
+    });
     setSplitOpen(false);
   }
 
   // ── Exclude ──
 
   async function submitExclude(courseId: string) {
-    const updated = excludeCourse(plan, courseId);
-    await savePlan(updated);
+    await savePlan({ operation: "exclude", courseId });
   }
 
   // ── Derived data ──
