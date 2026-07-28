@@ -11,10 +11,13 @@
     "standalone:down": "tsx scripts/standalone.ts down",
     "seed:integration": "tsx scripts/integration-seed.ts",
     "smoke:standalone": "tsx scripts/standalone.ts smoke",
-    "test": "tsx --test tests/*.test.ts",
+    "test": "npm run test:standalone && npm run test:ui",
+    "test:standalone": "tsx --test tests/*.test.ts",
+    "test:ui": "vitest run",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@emotion/cache": "^11.14.0",
@@ -37,14 +40,20 @@
     "react-dom": "19.2.4"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.0",
+    "@testing-library/jest-dom": "^7.0.0",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^20",
     "@types/pg": "^8.20.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
+    "jsdom": "^26.1.0",
     "tsx": "^4.20.6",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.10"
   },
   "allowScripts": {
     "sharp@0.34.5": true,
