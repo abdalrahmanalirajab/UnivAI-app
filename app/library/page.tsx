@@ -11,6 +11,7 @@ import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useVirtualClock } from "@/lib/time";
+import Link from "next/link";
 import MultiBookUploader from "./MultiBookUploader";
 import SourceLibrary from "./SourceLibrary";
 
@@ -160,6 +161,14 @@ export default function CollectionsPage() {
           <Typography variant="subtitle1" color="text.secondary">
             Collection: {active?.name}
           </Typography>
+
+          <Button
+            variant="contained"
+            component={Link}
+            href={`/curriculum/${active!.id}`}
+          >
+            Build Curriculum
+          </Button>
 
           <SourceLibrary
             documents={documents ?? []}
