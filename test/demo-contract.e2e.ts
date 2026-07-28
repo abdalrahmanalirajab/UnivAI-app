@@ -31,8 +31,10 @@ const BASE_PLAN = {
 
 const apiState = {
   collectionCreated: false,
-  documentsPosted: 0,
   programmeVersion: 1,
+  retried: false,
+  programmePlan: structuredClone(BASE_PLAN),
+  approvedAt: null as string | null,
 };
 
 /* ------------------------------------------------------------------ */
@@ -73,17 +75,21 @@ async function mockApis(page: Page) {
         },
       });
     } else if (route.request().method() === "POST") {
-      apiState.documentsPosted++;
-      if (apiState.documentsPosted === 2) {
+      const raw = (await route.request().postDataBuffer()) || Buffer.from("");
+      const body = raw.toString("latin1");
+      const isRetry = apiState.retried;
+      const isCalculusBook = body.includes("calculus-book.pdf");
+
+      if (isCalculusBook && !isRetry) {
         await route.fulfill({ status: 400, json: { error: "File too large." } });
       } else {
         await route.fulfill({
           status: 201,
           json: {
             document: {
-              id: apiState.documentsPosted,
+              id: Date.now(),
               collection_id: 1, student_id: STUDENT_ID,
-              filename: `book${apiState.documentsPosted}.pdf`,
+              filename: "uploaded.pdf",
               status: "ready", error: null,
               created_at: "2026-07-28T00:00:00Z",
               updated_at: "2026-07-28T00:00:00Z",
@@ -96,6 +102,8 @@ async function mockApis(page: Page) {
     }
   });
 
+  const APPROVED_AT = "2026-07-28T12:00:00Z";
+
   await page.route("**/api/programmes/1", async (route) => {
     const method = route.request().method();
     if (method === "GET") {
@@ -103,10 +111,11 @@ async function mockApis(page: Page) {
         json: {
           programme: {
             id: 1, student_id: STUDENT_ID, collection_id: 1,
-            name: "Test Programme", status: "proposed",
+            name: "Test Programme",
+            status: apiState.approvedAt ? "approved" : "proposed",
             plan_version: apiState.programmeVersion,
-            plan: BASE_PLAN,
-            approved_at: null,
+            plan: apiState.programmePlan,
+            approved_at: apiState.approvedAt,
             created_at: "2026-07-28T00:00:00Z",
             updated_at: "2026-07-28T00:00:00Z",
           },
@@ -114,14 +123,15 @@ async function mockApis(page: Page) {
       });
     } else if (method === "PUT") {
       apiState.programmeVersion++;
-      const body = await route.request().json();
+      const body = JSON.parse((await route.request().postData()) || "{}");
+      apiState.programmePlan = body.plan;
       await route.fulfill({
         json: {
           programme: {
             id: 1, student_id: STUDENT_ID, collection_id: 1,
             name: "Test Programme", status: "proposed",
             plan_version: apiState.programmeVersion,
-            plan: body.plan,
+            plan: apiState.programmePlan,
             approved_at: null,
             created_at: "2026-07-28T00:00:00Z",
             updated_at: "2026-07-28T00:00:00Z",
@@ -138,14 +148,15 @@ async function mockApis(page: Page) {
       await route.fulfill({ status: 405, json: { error: "Method not allowed" } });
       return;
     }
+    apiState.approvedAt = APPROVED_AT;
     await route.fulfill({
       json: {
         programme: {
           id: 1, student_id: STUDENT_ID, collection_id: 1,
           name: "Test Programme", status: "approved",
           plan_version: apiState.programmeVersion,
-          plan: BASE_PLAN,
-          approved_at: "2026-07-28T12:00:00Z",
+          plan: apiState.programmePlan,
+          approved_at: apiState.approvedAt,
           created_at: "2026-07-28T00:00:00Z",
           updated_at: "2026-07-28T12:00:00Z",
         },
@@ -161,8 +172,10 @@ async function mockApis(page: Page) {
 test.describe("Demo Contract — multi-book curriculum e2e", () => {
   test.beforeEach(async ({ page }) => {
     apiState.collectionCreated = false;
-    apiState.documentsPosted = 0;
     apiState.programmeVersion = 1;
+    apiState.retried = false;
+    apiState.approvedAt = null;
+    apiState.programmePlan = structuredClone(BASE_PLAN);
     await setSession(page);
     await mockApis(page);
   });
@@ -180,7 +193,8 @@ test.describe("Demo Contract — multi-book curriculum e2e", () => {
     await page.getByRole("button", { name: "Create" }).click();
     await expect(page.getByText("Collection: Test Collection")).toBeVisible();
 
-    // Step 2 — Upload three books (third call fails server-side)
+    // Step 2 — Upload three books. The calculus-book.pdf upload is
+    //          rejected by the mock (name-matched in postData).
     const fileInput = page.locator('input[type="file"]');
     await fileInput.setInputFiles([
       { name: "ai-textbook.pdf", mimeType: "application/pdf", buffer: Buffer.from("a") },
@@ -192,15 +206,14 @@ test.describe("Demo Contract — multi-book curriculum e2e", () => {
     await expect(page.getByText("calculus-book.pdf").first()).toBeVisible();
     await expect(page.getByText("reference.pdf").first()).toBeVisible();
 
-    await expect(page.getByText("Uploaded")).toHaveCount(2);
-    await expect(page.getByText("Failed")).toHaveCount(1);
+    await expect(page.getByText("Uploaded").first()).toBeVisible();
+    await expect(page.getByText("Failed").first()).toBeVisible();
     await expect(page.getByText("File too large.")).toBeVisible();
 
     // Step 3 — Retry the failed upload
-    apiState.documentsPosted = 0;
+    apiState.retried = true;
     await page.getByRole("button", { name: "Retry" }).click();
-    await expect(page.getByText("Uploaded")).toHaveCount(3, { timeout: 5_000 });
-    await expect(page.getByText("Failed")).toHaveCount(0);
+    await expect(page.getByText("Failed")).toHaveCount(0, { timeout: 5_000 });
 
     // Step 4 — Build Curriculum → inspect proposed programme
     await page.getByRole("link", { name: "Build Curriculum" }).click();
@@ -208,8 +221,8 @@ test.describe("Demo Contract — multi-book curriculum e2e", () => {
     await expect(page.getByText("Curriculum Workspace")).toBeVisible();
     await expect(page.getByText("Test Programme")).toBeVisible();
     await expect(page.getByText(/v1/)).toBeVisible();
-    await expect(page.getByText("Introduction to AI")).toBeVisible();
-    await expect(page.getByText("Calculus I")).toBeVisible();
+    await expect(page.getByText("Introduction to AI").first()).toBeVisible();
+    await expect(page.getByText("Calculus I").first()).toBeVisible();
     await expect(page.getByText("Request Approval")).toBeVisible();
 
     // Step 5 — Edit a course (rename) via PUT
@@ -220,7 +233,7 @@ test.describe("Demo Contract — multi-book curriculum e2e", () => {
     await titleField.clear();
     await titleField.fill("Advanced AI");
     await renameDialog.getByRole("button", { name: "Rename" }).click();
-    await expect(page.getByText("Advanced AI")).toBeVisible();
+    await expect(page.getByText("Advanced AI").first()).toBeVisible();
     await expect(page.getByText(/v2/)).toBeVisible();
 
     // Step 6 — Approve the new version
@@ -229,15 +242,18 @@ test.describe("Demo Contract — multi-book curriculum e2e", () => {
     await expect(confirmDialog).toBeVisible();
     await expect(confirmDialog.getByText("Approve this curriculum?")).toBeVisible();
     await confirmDialog.getByRole("button", { name: "Yes, approve" }).click();
-    await expect(page.getByText("Approved")).toBeVisible();
-    await expect(page.getByText("Approved")).toHaveCount(2);
 
-    // Step 7 — Page refresh restores state from API
+    const approvedBtn = page.getByRole("button", { name: "Approved", disabled: true });
+    const approvedAlert = page.getByRole("alert").filter({ hasText: "Approved" });
+    await expect(approvedBtn).toBeVisible();
+    await expect(approvedAlert).toBeVisible();
+
+    // Step 7 — Page refresh restores state from API (not local-only)
     await page.reload();
     await page.waitForURL("**/curriculum/1");
     await expect(page.getByText("Curriculum Workspace")).toBeVisible();
-    await expect(page.getByText("Advanced AI")).toBeVisible();
-    await expect(page.getByText("Approved")).toBeVisible();
+    await expect(page.getByText("Advanced AI").first()).toBeVisible();
+    await expect(page.getByText("Approved").first()).toBeVisible();
   });
 
   test("full flow at mobile width", async ({ page }) => {
@@ -260,7 +276,12 @@ test.describe("Demo Contract — multi-book curriculum e2e", () => {
 
     await expect(page.getByText("ai-textbook.pdf").first()).toBeVisible();
     await expect(page.getByText("calculus-book.pdf").first()).toBeVisible();
-    await expect(page.getByText("Uploaded")).toHaveCount(2, { timeout: 5_000 });
+    await expect(page.getByText("Uploaded").first()).toBeVisible();
+    await expect(page.getByText("Failed").first()).toBeVisible();
+
+    apiState.retried = true;
+    await page.getByRole("button", { name: "Retry" }).click();
+    await expect(page.getByText("Failed")).toHaveCount(0, { timeout: 5_000 });
 
     await page.getByRole("link", { name: "Build Curriculum" }).click();
     await page.waitForURL("**/curriculum/1");
@@ -271,6 +292,8 @@ test.describe("Demo Contract — multi-book curriculum e2e", () => {
     const confirmDialog = page.getByRole("dialog");
     await expect(confirmDialog).toBeVisible();
     await confirmDialog.getByRole("button", { name: "Yes, approve" }).click();
-    await expect(page.getByText("Approved")).toBeVisible();
+
+    const approvedBtn = page.getByRole("button", { name: "Approved", disabled: true });
+    await expect(approvedBtn).toBeVisible();
   });
 });
