@@ -6,7 +6,9 @@ import { now } from "@/lib/clock";
 import { runPython, parseJsonLine, REPO_ROOT } from "@/lib/python";
 import { resetExamWorld } from "@/lib/exams";
 import { spawnGeneration } from "@/lib/generation";
+import { requireUserApi } from "@/lib/session";
 import { env } from "@/lib/env";
+import { isStandalone } from "@/lib/runtime";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 600;
@@ -37,27 +39,35 @@ type Book = {
 const BOOK_COLUMNS = "id, filename, title, pages, status, error, progress";
 
 export async function GET() {
+  const gate = await requireUserApi();
+  if (gate instanceof Response) return gate;
+
   const books = await query<Book & { uploaded_at: string }>(
-    `SELECT ${BOOK_COLUMNS}, uploaded_at FROM books ORDER BY id DESC`
+    `SELECT ${BOOK_COLUMNS}, uploaded_at FROM books WHERE student_id = $1 ORDER BY id DESC`,
+    [gate.studentId]
   );
   return Response.json({
     books,
     book: books[0] ?? null,
-    ragConfigured: Boolean(RAG_MCP_URL),
+    ragConfigured: isStandalone() || Boolean(RAG_MCP_URL),
   });
 }
 
-/** Everything the old course was: gone. A new book means a new semester. */
-async function resetCourse(): Promise<void> {
-  await query("DELETE FROM grades");
-  await query("DELETE FROM attendance");
-  await query("DELETE FROM qa_log");
-  await query("DELETE FROM lectures");
-  await query("DELETE FROM books");
-  await resetExamWorld();
+/** Everything this student's old course was: gone. Scoped — never touches others. */
+async function resetCourse(sid: string): Promise<void> {
+  await query("DELETE FROM grades WHERE student_id = $1", [sid]);
+  await query("DELETE FROM attendance WHERE student_id = $1", [sid]);
+  await query("DELETE FROM qa_log WHERE student_id = $1", [sid]);
+  await query("DELETE FROM lectures WHERE student_id = $1", [sid]);
+  await query("DELETE FROM books WHERE student_id = $1", [sid]);
+  await resetExamWorld(sid);
 }
 
 export async function POST(request: NextRequest) {
+  const gate = await requireUserApi();
+  if (gate instanceof Response) return gate;
+  const sid = gate.studentId;
+
   const form = await request.formData().catch(() => null);
   const file = form?.get("file");
 
@@ -82,6 +92,39 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  if (isStandalone()) {
+    await query("DELETE FROM grades WHERE student_id = $1", [sid]);
+    await query("DELETE FROM attendance WHERE student_id = $1", [sid]);
+    await query("DELETE FROM lectures WHERE student_id = $1", [sid]);
+    await query("DELETE FROM books WHERE student_id = $1", [sid]);
+    const uploadedAt = await now();
+    const safeName = file.name.replace(/[^\w.\-]+/g, "_");
+    const created = await queryOne<{ id: number }>(
+      `INSERT INTO books (student_id, filename, title, pages, status, uploaded_at, progress)
+       VALUES ($1, $2, $3, 4, 'ready', $4, 'Standalone fixture course ready')
+       RETURNING id`,
+      [sid, safeName, safeName, uploadedAt]
+    );
+    await query(
+      `INSERT INTO lectures (student_id, book_id, week, title, starts_at, status)
+       SELECT $1, $2, week, title, starts_at, 'ready'
+       FROM (VALUES
+         (1, 'Evidence and Sources', TIMESTAMPTZ '2026-07-28T10:00:00Z'),
+         (2, 'Tenant Isolation', TIMESTAMPTZ '2026-08-04T10:00:00Z'),
+         (3, 'Explicit Runtime Modes', TIMESTAMPTZ '2026-08-11T10:00:00Z'),
+         (4, 'Stable Contracts', TIMESTAMPTZ '2026-08-18T10:00:00Z')
+       ) AS fixture(week, title, starts_at)`,
+      [sid, created!.id]
+    );
+    return Response.json({
+      book: await queryOne<Book>(`SELECT ${BOOK_COLUMNS} FROM books WHERE id = $1`, [
+        created!.id,
+      ]),
+      ragConfigured: true,
+      message: "Standalone upload validated; deterministic course fixture selected.",
+    });
+  }
+
   if (!RAG_MCP_URL) {
     return Response.json(
       { error: "RAG_MCP_URL is not set — the book cannot be indexed, so a course cannot be built." },
@@ -89,11 +132,15 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Replacing? The old book must leave the RAG first, or the lecturer would
-  // keep answering from it. A clear that fails aborts the upload — loudly.
-  const existing = await queryOne<{ count: string }>("SELECT COUNT(*)::text AS count FROM books");
+  // Replacing? This student's old book must leave THEIR RAG namespace first, or
+  // the lecturer would keep answering from it. A clear that fails aborts loudly.
+  // The user_id (sid) scopes the clear to this student's namespace only.
+  const existing = await queryOne<{ count: string }>(
+    "SELECT COUNT(*)::text AS count FROM books WHERE student_id = $1",
+    [sid]
+  );
   if (Number(existing?.count ?? 0) > 0) {
-    const cleared = await runPython("services/rag-tools/rag_admin.py", ["clear"]);
+    const cleared = await runPython("services/rag-tools/rag_admin.py", ["clear", sid]);
     const clearedPayload = parseJsonLine<{ ok: boolean; removed?: number; error?: string }>(
       cleared.stdout
     );
@@ -107,9 +154,10 @@ export async function POST(request: NextRequest) {
       );
     }
   }
-  await resetCourse();
+  await resetCourse(sid);
 
-  const uploadsDir = path.join(REPO_ROOT, "uploads");
+  // Per-student uploads dir so two students' identically-named files never clash.
+  const uploadsDir = path.join(REPO_ROOT, "uploads", sid);
   await fs.mkdir(uploadsDir, { recursive: true });
   const safeName = file.name.replace(/[^\w.\-]+/g, "_");
   const destination = path.join(uploadsDir, safeName);
@@ -117,16 +165,16 @@ export async function POST(request: NextRequest) {
 
   const uploadedAt = await now();
   const created = await queryOne<{ id: number }>(
-    `INSERT INTO books (filename, status, uploaded_at, progress)
-     VALUES ($1, 'ingesting', $2, 'Indexing the book in the RAG service…') RETURNING id`,
-    [safeName, uploadedAt]
+    `INSERT INTO books (student_id, filename, status, uploaded_at, progress)
+     VALUES ($1, $2, 'ingesting', $3, 'Indexing the book in the RAG service…') RETURNING id`,
+    [sid, safeName, uploadedAt]
   );
   const bookId = created!.id;
 
   // A full textbook takes the RAG service a while to chunk and embed on this
   // machine — a 600-page book measured ~29 minutes. The MCP client must stay
   // connected the whole time: their server aborts the ingest on disconnect.
-  const result = await runPython("services/rag-tools/rag_ingest.py", [destination], 60 * 60_000);
+  const result = await runPython("services/rag-tools/rag_ingest.py", [destination, sid], 60 * 60_000);
   const payload = parseJsonLine<{ ok: boolean; message?: string; error?: string }>(result.stdout);
 
   if (!payload?.ok) {

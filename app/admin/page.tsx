@@ -11,6 +11,7 @@ import CircularProgress from "@mui/material/CircularProgress";
 import Divider from "@mui/material/Divider";
 import Grid from "@mui/material/Grid";
 import LinearProgress from "@mui/material/LinearProgress";
+import MenuItem from "@mui/material/MenuItem";
 import Stack from "@mui/material/Stack";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
@@ -26,8 +27,14 @@ import { formatCountdown, formatDateTime, formatLateness, formatRelative } from 
 type CourseSize = "XS" | "S" | "M" | "L" | "XL";
 type SizeInfo = { slides: number; quizPaper: number; midPaper: number; blurb: string };
 
+type Student = { sid: string; name: string; email: string; role: string };
+
 type AdminState = {
   clock: { now: string; offsetMs: number };
+  // Always present; the per-student blocks below are empty until one is picked.
+  students?: Student[];
+  needsStudent?: boolean;
+  sid?: string;
   books: Array<Record<string, unknown>>;
   lectures: Array<{ id: number; week: number; title: string; starts_at: string; status: string }>;
   attendance: Array<{
@@ -74,17 +81,32 @@ export default function AdminPage() {
   const [isoInput, setIsoInput] = useState("");
   const [size, setSize] = useState<CourseSize>("XS");
   const [sizes, setSizes] = useState<Record<CourseSize, SizeInfo> | null>(null);
+  // Multi-tenant: the panel inspects/acts on ONE student at a time.
+  const [selectedSid, setSelectedSid] = useState<string>("");
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/admin/state", { cache: "no-store" });
+      const url = selectedSid
+        ? `/api/admin/state?sid=${encodeURIComponent(selectedSid)}`
+        : "/api/admin/state";
+      const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) throw new Error(await res.text());
-      setState(await res.json());
+      const raw = await res.json();
+      // Normalize the per-student arrays so the render never touches undefined
+      // (they're absent until a student is selected).
+      setState({
+        ...raw,
+        books: raw.books ?? [],
+        lectures: raw.lectures ?? [],
+        attendance: raw.attendance ?? [],
+        grades: raw.grades ?? [],
+        qaLog: raw.qaLog ?? [],
+      });
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "failed to load state");
     }
-  }, []);
+  }, [selectedSid]);
 
   useEffect(() => {
     load();
@@ -98,7 +120,7 @@ export default function AdminPage() {
   }, [load]);
 
   const building =
-    state?.books.some((book) => book.status === "generating" || book.status === "ingesting") ??
+    state?.books?.some((book) => book.status === "generating" || book.status === "ingesting") ??
     false;
 
   // While a build runs, keep the book status fresh so the admin sees it finish.
@@ -114,7 +136,7 @@ export default function AdminPage() {
       const res = await fetch("/api/admin/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ size, mode }),
+        body: JSON.stringify({ size, mode, sid: selectedSid }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "regeneration failed to start");
@@ -130,7 +152,11 @@ export default function AdminPage() {
   async function restartSemester() {
     setBusy(true);
     try {
-      const res = await fetch("/api/admin/restart", { method: "POST" });
+      const res = await fetch("/api/admin/restart", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sid: selectedSid }),
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "restart failed");
       setError(null);
@@ -171,8 +197,9 @@ export default function AdminPage() {
   return (
     <Stack spacing={3}>
       <Typography variant="h4">Admin — SUDO</Typography>
-      <Alert severity="warning">
-        No authentication. Local demo only — never deploy this page publicly.
+      <Alert severity="info">
+        Admin only. The virtual clock is shared by everyone; the book, course,
+        attendance and grades below belong to the student you select.
       </Alert>
 
       {error ? <Alert severity="error">{error}</Alert> : null}
@@ -181,6 +208,35 @@ export default function AdminPage() {
           {notice}
         </Alert>
       ) : null}
+
+      <Card variant="outlined">
+        <CardContent>
+          <Stack spacing={2}>
+            <Typography variant="h6">Student</Typography>
+            <TextField
+              select
+              label="Inspect student"
+              size="small"
+              value={selectedSid}
+              onChange={(event) => setSelectedSid(event.target.value)}
+            >
+              <MenuItem value="">
+                <em>— select a student —</em>
+              </MenuItem>
+              {(state?.students ?? []).map((student) => (
+                <MenuItem key={student.sid} value={student.sid}>
+                  {student.name} · {student.sid} · {student.role}
+                </MenuItem>
+              ))}
+            </TextField>
+            {!selectedSid ? (
+              <Typography variant="body2" color="text.secondary">
+                Pick a student to see and manage their book, course and records.
+              </Typography>
+            ) : null}
+          </Stack>
+        </CardContent>
+      </Card>
 
       <Card variant="outlined">
         <CardContent>
@@ -275,7 +331,7 @@ export default function AdminPage() {
                 <Button
                   variant="contained"
                   color="warning"
-                  disabled={busy || building}
+                  disabled={busy || building || !selectedSid}
                   onClick={restartSemester}
                 >
                   Restart semester
@@ -339,7 +395,7 @@ export default function AdminPage() {
               color="primary"
               value={size}
               onChange={(_event, value) => value && setSize(value as CourseSize)}
-              disabled={busy || building}
+              disabled={busy || building || !selectedSid}
             >
               {(["XS", "S", "M", "L", "XL"] as CourseSize[]).map((option) => (
                 <ToggleButton key={option} value={option}>
@@ -359,7 +415,7 @@ export default function AdminPage() {
               <Grid>
                 <Button
                   variant="contained"
-                  disabled={busy || building}
+                  disabled={busy || building || !selectedSid}
                   onClick={() => regenerate("full")}
                 >
                   Regenerate course

@@ -11,9 +11,12 @@ import {
   MINUTE_MS,
 } from "@/lib/clock";
 import { queryOne } from "@/lib/db";
+import { requireAdminApi } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
+// Reading the virtual time is open to everyone (unauthenticated pages show it);
+// only mutating the clock is privileged.
 export async function GET() {
   const [virtualNow, offsetMs] = await Promise.all([now(), getOffsetMs()]);
   return Response.json({ now: virtualNow.toISOString(), offsetMs });
@@ -27,6 +30,9 @@ export async function GET() {
  *   { action: "reset" }
  */
 export async function POST(request: NextRequest) {
+  const gate = await requireAdminApi();
+  if (gate instanceof Response) return gate;
+
   const body = await request.json().catch(() => ({}));
   const action = body?.action as string | undefined;
 

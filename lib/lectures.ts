@@ -2,6 +2,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import { query } from "./db";
 import { now, MINUTE_MS } from "./clock";
+import { DATA_ROOT, LECTURES_ROOT } from "./paths";
 
 /**
  * Lecture content is PREMADE and committed under lectures/week-N/:
@@ -10,8 +11,8 @@ import { now, MINUTE_MS } from "./clock";
  * Nothing here generates content.
  */
 
-export const REPO_ROOT = path.resolve(process.cwd(), "..");
-export const LECTURES_DIR = path.join(REPO_ROOT, "lectures");
+export const REPO_ROOT = DATA_ROOT;
+export const LECTURES_DIR = LECTURES_ROOT;
 export const WEEKS = 4;
 
 /** How long a lecture is "on" for. */
@@ -43,9 +44,19 @@ export type Lecture = {
   completed: boolean;
 };
 
-export async function readScript(week: number): Promise<Script | null> {
+/**
+ * Per-student on-disk course layout: lectures/<studentId>/week-N/. Each learner
+ * uploads their own book and gets their own generated slides, script and audio,
+ * so the content is namespaced by studentId (matches UnivAI-Agent generation and
+ * the UnivAI-live worker). studentId (S-YYYY-NNNNNN) is filesystem-safe.
+ */
+export function lectureDir(sid: string, week: number): string {
+  return path.join(LECTURES_DIR, sid, `week-${week}`);
+}
+
+export async function readScript(sid: string, week: number): Promise<Script | null> {
   try {
-    const raw = await fs.readFile(path.join(LECTURES_DIR, `week-${week}`, "script.json"), "utf-8");
+    const raw = await fs.readFile(path.join(lectureDir(sid, week), "script.json"), "utf-8");
     return JSON.parse(raw) as Script;
   } catch {
     return null;
@@ -62,39 +73,46 @@ function firstLectureStart(virtualNow: Date): Date {
   return start;
 }
 
-/** Seed the 4-week schedule: one lecture a week, starting tomorrow 10:00 virtual time. */
-export async function ensureSchedule(): Promise<void> {
-  const existing = await query<{ count: string }>("SELECT COUNT(*)::text AS count FROM lectures");
+/** Seed one student's 4-week schedule: a lecture a week from tomorrow 10:00 virtual. */
+export async function ensureSchedule(sid: string): Promise<void> {
+  const existing = await query<{ count: string }>(
+    "SELECT COUNT(*)::text AS count FROM lectures WHERE student_id = $1",
+    [sid]
+  );
   if (Number(existing[0]?.count ?? 0) >= WEEKS) return;
 
   const start = firstLectureStart(await now());
 
   for (let week = 1; week <= WEEKS; week++) {
-    const script = await readScript(week);
+    const script = await readScript(sid, week);
     const startsAt = new Date(start.getTime() + (week - 1) * WEEK_MS);
     await query(
-      `INSERT INTO lectures (week, title, starts_at, status) VALUES ($1, $2, $3, 'ready')
-       ON CONFLICT (week) DO NOTHING`,
-      [week, script?.title ?? `Week ${week}`, startsAt]
+      `INSERT INTO lectures (student_id, week, title, starts_at, status) VALUES ($1, $2, $3, $4, 'ready')
+       ON CONFLICT (student_id, week) DO NOTHING`,
+      [sid, week, script?.title ?? `Week ${week}`, startsAt]
     );
   }
 }
 
 /**
- * Move the whole schedule to a fresh start (same cadence as ensureSchedule:
- * tomorrow 10:00 virtual time, then weekly). Used by the admin's semester
- * restart — the lecture rows and their generated content stay.
+ * Move one student's schedule to a fresh start (same cadence as ensureSchedule:
+ * tomorrow 10:00 virtual time, then weekly). Used by the semester restart — the
+ * lecture rows and their generated content stay.
  */
-export async function rescheduleLectures(): Promise<void> {
+export async function rescheduleLectures(sid: string): Promise<void> {
   const start = firstLectureStart(await now());
   for (let week = 1; week <= WEEKS; week++) {
     const startsAt = new Date(start.getTime() + (week - 1) * WEEK_MS);
-    await query("UPDATE lectures SET starts_at = $1 WHERE week = $2", [startsAt, week]);
+    await query("UPDATE lectures SET starts_at = $1 WHERE week = $2 AND student_id = $3", [
+      startsAt,
+      week,
+      sid,
+    ]);
   }
 }
 
-export async function getLectures(): Promise<Lecture[]> {
-  await ensureSchedule();
+export async function getLectures(sid: string): Promise<Lecture[]> {
+  await ensureSchedule(sid);
   const virtualNow = await now();
 
   const rows = await query<{
@@ -107,8 +125,10 @@ export async function getLectures(): Promise<Lecture[]> {
   }>(
     `SELECT l.id, l.week, l.title, l.starts_at, a.joined_at, a.completed_at
        FROM lectures l
-       LEFT JOIN attendance a ON a.lecture_id = l.id
-      ORDER BY l.week ASC`
+       LEFT JOIN attendance a ON a.lecture_id = l.id AND a.student_id = $1
+      WHERE l.student_id = $1
+      ORDER BY l.week ASC`,
+    [sid]
   );
 
   return rows.map((row) => {

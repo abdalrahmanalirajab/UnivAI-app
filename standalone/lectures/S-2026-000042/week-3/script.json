@@ -1,0 +1,9 @@
+{
+  "lectureId": "week-3",
+  "title": "Explicit Runtime Modes",
+  "segments": [
+    {"slide": 1, "text": "Standalone and integrated modes are selected explicitly.", "citations": [{"page": 3}]},
+    {"slide": 2, "text": "Missing services never silently activate fixture providers.", "citations": [{"page": 3}]},
+    {"slide": 3, "text": "Production rejects standalone-only routes and data.", "citations": [{"page": 3}]}
+  ]
+}

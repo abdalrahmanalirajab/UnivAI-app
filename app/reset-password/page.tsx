@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import AuthCard from "@/app/components/AuthCard";
 import { FormError } from "@/app/components/FormAlerts";
@@ -14,7 +14,7 @@ import {
 import { authClient } from "@/lib/auth-client";
 import { copyFor, type AuthError } from "@/lib/errorMap";
 
-export default function ResetPasswordPage() {
+function ResetPasswordForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
@@ -37,9 +37,9 @@ export default function ResetPasswordPage() {
     setTopLevelError(null);
     setTokenExpired(false);
 
-    const { data, error } = await authClient.resetPassword({
+    const { error } = await authClient.resetPassword({
       newPassword,
-      token,
+      token: token ?? "",
     });
 
     if (error) {
@@ -97,5 +97,13 @@ export default function ResetPasswordPage() {
         Reset password
       </Button>
     </AuthCard>
+  );
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={null}>
+      <ResetPasswordForm />
+    </Suspense>
   );
 }

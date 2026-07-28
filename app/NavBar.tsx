@@ -66,11 +66,12 @@ export default function NavBar() {
           direction="row"
           spacing={2}
           divider={<Divider orientation="vertical" flexItem />}
+          sx={{ flexGrow: 1, alignItems: "center" }}
         >
           <Typography variant="h6" component="div">
             UnivAI
           </Typography>
-          <Stack direction="row" spacing={1} alignItems="center">
+          <Stack direction="row" spacing={1}>
             {!user ? (
               <>
                 <Button color="inherit" component={Link} href="/login">
@@ -81,46 +82,51 @@ export default function NavBar() {
                 </Button>
               </>
             ) : (
-              <>
-                {(user.role === "student" ? STUDENT_LINKS : navLinks()).map((link) => (
-                  <Button
-                    key={link.href}
-                    color="inherit"
-                    component={Link}
-                    href={link.href}
-                  >
-                    {link.label}
-                  </Button>
-                ))}
-                <IconButton onClick={(e) => setAnchorEl(e.currentTarget)}>
-                  <Avatar>{user.name?.charAt(0)?.toUpperCase()}</Avatar>
-                </IconButton>
-                <Menu
-                  anchorEl={anchorEl}
-                  open={menuOpen}
-                  onClose={() => setAnchorEl(null)}
+              (user.role === "student" ? STUDENT_LINKS : navLinks()).map((link) => (
+                <Button
+                  key={link.href}
+                  color="inherit"
+                  component={Link}
+                  href={link.href}
                 >
-                  <MenuItem disabled>
-                    <Stack>
-                      <Typography variant="body1">{user.name}</Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        {user.studentId}
-                      </Typography>
-                    </Stack>
-                  </MenuItem>
-                  <MenuItem
-                    component={Link}
-                    href="/profile"
-                    onClick={() => setAnchorEl(null)}
-                  >
-                    Profile
-                  </MenuItem>
-                  <MenuItem onClick={handleLogout}>Logout</MenuItem>
-                </Menu>
-              </>
+                  {link.label}
+                </Button>
+              ))
             )}
           </Stack>
         </Stack>
+        {user && (
+          <>
+            <>
+            {user.name}
+            </>
+            <IconButton onClick={(e) => setAnchorEl(e.currentTarget)}>
+              <Avatar>{user.name?.charAt(0)?.toUpperCase()}</Avatar>
+            </IconButton>
+            <Menu
+              anchorEl={anchorEl}
+              open={menuOpen}
+              onClose={() => setAnchorEl(null)}
+            >
+              <MenuItem disabled>
+                <Stack>
+                  <Typography variant="body1">{user.name}</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {user.studentId}
+                  </Typography>
+                </Stack>
+              </MenuItem>
+              <MenuItem
+                component={Link}
+                href="/profile"
+                onClick={() => setAnchorEl(null)}
+              >
+                Profile
+              </MenuItem>
+              <MenuItem onClick={handleLogout}>Logout</MenuItem>
+            </Menu>
+          </>
+        )}
       </Toolbar>
     </AppBar>
   );

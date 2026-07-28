@@ -7,6 +7,7 @@ import { now, HOUR_MS, DAY_MS } from "./clock";
 import { getLectures, LECTURES_DIR } from "./lectures";
 import { COURSE_SIZES, DEFAULT_SIZE, isCourseSize } from "./course-size";
 import { getSetting } from "./settings";
+import { isStandalone } from "./runtime";
 
 /**
  * Integration with the team's exam system (UnivAI-exam_system, port 3200).
@@ -36,6 +37,9 @@ async function mongo(): Promise<Db> {
 }
 
 export type ExamLink = {
+  /** The app's tenant key (user.studentId, S-YYYY-NNNNNN). */
+  sid: string;
+  /** The exam system's own Mongo student _id (string). */
   student_id: string;
   curriculum_id: string;
   /** week -> chapter id, so webhook payloads can be mapped back to a week */
@@ -44,28 +48,34 @@ export type ExamLink = {
 };
 
 /**
- * Wipe the seeded exam world. Used when the book is replaced: the chapters,
- * exams and question banks all describe a course that no longer exists.
+ * Wipe ONE student's seeded exam world (used when they replace their book).
+ * Scoped by owner so re-uploading never destroys another student's exams. We
+ * delete their link + their chapters' question banks, and the docs owned by
+ * their exam-system student / curriculum where the owner field is known.
  * (Collection names are mongoose's default pluralisation of the model names.)
  */
-export async function resetExamWorld(): Promise<void> {
+export async function resetExamWorld(sid: string): Promise<void> {
+  if (isStandalone()) return;
   const db = await mongo();
-  const collections = [
-    "univai_link",
-    "question_banks",
-    "exams",
-    "examsessions",
-    "examchapters",
-    "proctoringevents",
-    "gradehistories",
-    "integrityappeals",
-    "enrollments",
-    "chapters",
-    "curricula",
-  ];
-  await Promise.all(
-    collections.map((name) => db.collection(name).deleteMany({}).catch(() => undefined))
-  );
+  const link = await db.collection("univai_link").findOne<ExamLink>({ sid });
+  await db.collection("univai_link").deleteMany({ sid });
+  if (!link) return;
+
+  const chapterIds = link.chapters.map((c) => c.chapter_id);
+  // Find this student's exams (stamped with student_sid by the exam system),
+  // then cascade their sessions + proctoring events by exam id.
+  const exams = await db
+    .collection("exams")
+    .find({ student_sid: sid }, { projection: { _id: 1 } })
+    .toArray();
+  const examIds = exams.map((e) => e._id);
+
+  await Promise.all([
+    db.collection("exams").deleteMany({ student_sid: sid }).catch(() => undefined),
+    db.collection("examsessions").deleteMany({ exam_id: { $in: examIds } }).catch(() => undefined),
+    db.collection("proctoringevents").deleteMany({ exam_id: { $in: examIds } }).catch(() => undefined),
+    db.collection("question_banks").deleteMany({ chapter_id: { $in: chapterIds } }).catch(() => undefined),
+  ]);
 }
 
 /**
@@ -81,7 +91,7 @@ export async function syncQuestionBanks(link: ExamLink): Promise<void> {
     let parsed: { title?: string; questions?: unknown[] } | null = null;
     try {
       const raw = await fs.readFile(
-        path.join(LECTURES_DIR, `week-${chapter.week}`, "quiz.json"),
+        path.join(LECTURES_DIR, link.sid, `week-${chapter.week}`, "quiz.json"),
         "utf-8"
       );
       parsed = JSON.parse(raw);
@@ -106,37 +116,40 @@ export async function syncQuestionBanks(link: ExamLink): Promise<void> {
   }
 }
 
-/** Seed the exam system's world once, and remember the ids. */
-export async function ensureExamWorld(): Promise<ExamLink> {
+/** Seed one student's exam world once, and remember the ids (keyed by sid). */
+export async function ensureExamWorld(sid: string, studentName: string): Promise<ExamLink> {
   const db = await mongo();
   const links = db.collection("univai_link");
 
-  const existing = await links.findOne<ExamLink & { _id: unknown }>({});
+  const existing = await links.findOne<ExamLink & { _id: unknown }>({ sid });
   if (existing?.mid_exam_id) return existing;
 
-  const lectures = await getLectures();
-  const studentName = env.STUDENT_NAME;
+  const lectures = await getLectures(sid);
 
   // Student, Curriculum, Chapters, Enrollment — shapes match the exam system's
   // mongoose models (mongoose validates app-side; the DB accepts plain docs).
+  // The app's studentId (sid) is stamped on the exam-system student so results
+  // route back to the right owner.
   const students = db.collection("students");
-  let student = await students.findOne({ name: studentName });
+  let student = await students.findOne({ sid });
   if (!student) {
     const inserted = await students.insertOne({
       name: studentName,
+      sid,
       createdAt: new Date(),
       updatedAt: new Date(),
     });
-    student = { _id: inserted.insertedId, name: studentName };
+    student = { _id: inserted.insertedId, name: studentName, sid };
   }
 
   const book = await queryOne<{ title: string | null; filename: string }>(
-    "SELECT title, filename FROM books ORDER BY id DESC LIMIT 1"
+    "SELECT title, filename FROM books WHERE student_id = $1 ORDER BY id DESC LIMIT 1",
+    [sid]
   );
   const courseTitle = book?.title ?? book?.filename ?? "UnivAI Course";
 
   const curricula = db.collection("curricula");
-  let curriculum = await curricula.findOne({ title: courseTitle });
+  let curriculum = await curricula.findOne({ title: courseTitle, owner_student_id: student._id });
   if (!curriculum) {
     const inserted = await curricula.insertOne({
       title: courseTitle,
@@ -211,12 +224,13 @@ export async function ensureExamWorld(): Promise<ExamLink> {
   }
 
   const link: ExamLink = {
+    sid,
     student_id: student._id.toString(),
     curriculum_id: curriculum._id.toString(),
     chapters,
     mid_exam_id: midExamId,
   };
-  await links.updateOne({}, { $set: link }, { upsert: true });
+  await links.updateOne({ sid }, { $set: link }, { upsert: true });
   return link;
 }
 
@@ -243,8 +257,49 @@ export type ExamStatus = {
 };
 
 /** Every exam with its window (virtual clock) and result, for the /exams page. */
-export async function getExamStatuses(): Promise<ExamStatus[]> {
-  const [virtualNow, lectures] = await Promise.all([now(), getLectures()]);
+export async function getExamStatuses(sid: string): Promise<ExamStatus[]> {
+  if (isStandalone()) {
+    const anchor = new Date("2026-07-27T09:00:00.000Z");
+    const hour = 60 * 60 * 1000;
+    const scenario = process.env.UNIVAI_SCENARIO ?? "happy";
+    const statuses: ExamStatus[] = [1, 2, 3, 4].map((week) => ({
+      kind: "quiz",
+      week,
+      title: `Quiz ${week} - Standalone Week ${week}`,
+      opensAt: new Date(anchor.getTime() + (week - 1) * 7 * 24 * hour),
+      closesAt: new Date(anchor.getTime() + (week - 1) * 7 * 24 * hour + 24 * hour),
+      state:
+        week === 1
+          ? "submitted"
+          : week === 2 && scenario !== "empty"
+            ? "open"
+            : "locked",
+      score: week === 1 ? "4" : null,
+      maxScore: week === 1 ? "5" : null,
+      flagged: week === 4 && scenario === "exam-complete",
+      feedback: week === 1 ? "Good use of source evidence." : null,
+      report:
+        week === 1
+          ? { suspicion_score: 0, flagged: false, session_status: "completed", events: [] }
+          : null,
+    }));
+    statuses.push({
+      kind: "mid",
+      week: null,
+      title: "Midterm - Weeks 1 to 4",
+      opensAt: new Date("2026-08-18T11:00:00.000Z"),
+      closesAt: new Date("2026-08-21T11:00:00.000Z"),
+      state: scenario === "exam-pending" ? "submitted" : "locked",
+      score: scenario === "exam-pending" ? "pending" : null,
+      maxScore: scenario === "exam-pending" ? "manual review" : null,
+      flagged: false,
+      feedback: scenario === "exam-pending" ? "Pending manual grading." : null,
+      report: null,
+    });
+    return statuses;
+  }
+
+  const [virtualNow, lectures] = await Promise.all([now(), getLectures(sid)]);
 
   const grades = await query<{
     kind: string;
@@ -254,7 +309,10 @@ export async function getExamStatuses(): Promise<ExamStatus[]> {
     flagged: boolean;
     feedback: string | null;
     report: ProctoringReport | null;
-  }>("SELECT kind, week, score, max_score, flagged, feedback, report FROM grades");
+  }>(
+    "SELECT kind, week, score, max_score, flagged, feedback, report FROM grades WHERE student_id = $1",
+    [sid]
+  );
 
   const statuses: ExamStatus[] = [];
 
@@ -312,22 +370,30 @@ export async function getExamStatuses(): Promise<ExamStatus[]> {
   return statuses;
 }
 
-/** Start (or resume) an exam and return the URL the student takes it at. */
-export async function startExam(kind: "quiz" | "mid", week: number | null): Promise<string> {
-  const statuses = await getExamStatuses();
+/** Start (or resume) one student's exam and return the URL they take it at. */
+export async function startExam(
+  sid: string,
+  studentName: string,
+  kind: "quiz" | "mid",
+  week: number | null
+): Promise<string> {
+  const statuses = await getExamStatuses(sid);
   const status = statuses.find((s) => s.kind === kind && s.week === week);
   if (!status) throw new Error("No such exam.");
   if (status.state === "locked")
     throw new Error(`Not open yet — it opens after the lecture, ${status.opensAt.toISOString()}.`);
   if (status.state === "missed") throw new Error("The window for this exam has closed.");
   if (status.state === "submitted") throw new Error("You already submitted this exam.");
+  if (isStandalone()) {
+    return `/exams?standalone_attempt=${kind}-${week ?? "mid"}`;
+  }
 
-  const link = await ensureExamWorld();
+  const link = await ensureExamWorld(sid, studentName);
   // Push the freshest generated questions into the bank BEFORE the exam system
   // assembles the exam — this is what makes the quiz be about the lecture.
   await syncQuestionBanks(link);
 
-  // The admin's course-size dial decides how big the paper is.
+  // Course-size dial decides how big the paper is (global default for now).
   const sizeValue = await getSetting("course_size");
   const paper = COURSE_SIZES[isCourseSize(sizeValue) ? sizeValue : DEFAULT_SIZE];
 
@@ -339,6 +405,9 @@ export async function startExam(kind: "quiz" | "mid", week: number | null): Prom
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         student_id: link.student_id,
+        // Carried through so the exam system can echo it in the result webhook,
+        // routing the grade back to this owner (see /api/exams/callback).
+        student_sid: sid,
         chapter_id: chapter.chapter_id,
         question_count: paper.quizPaper,
       }),
@@ -352,21 +421,24 @@ export async function startExam(kind: "quiz" | "mid", week: number | null): Prom
   const res = await fetch(`${EXAM_SYSTEM_URL}/api/exams/mid/${link.mid_exam_id}/start`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question_count: paper.midPaper }),
+    body: JSON.stringify({ question_count: paper.midPaper, student_sid: sid }),
   });
   const exam = await res.json();
   if (!res.ok) throw new Error(exam.error ?? "The exam system refused to start the midterm.");
   return `${EXAM_SYSTEM_URL}/exam/${link.mid_exam_id}`;
 }
 
-/** Map a webhook payload back to (kind, week) using the seeded link doc. */
+/** Map a webhook payload back to (kind, week) using that owner's link doc. */
 export async function resolveWeek(payload: {
   type: string;
   chapter_id: string | null;
   exam_id: string;
+  student_sid?: string;
 }): Promise<{ kind: "quiz" | "midterm"; week: number | null }> {
   const db = await mongo();
-  const link = await db.collection("univai_link").findOne<ExamLink>({});
+  const link = await db
+    .collection("univai_link")
+    .findOne<ExamLink>(payload.student_sid ? { sid: payload.student_sid } : {});
   if (payload.type === "quiz" && payload.chapter_id && link) {
     const chapter = link.chapters.find((c) => c.chapter_id === payload.chapter_id);
     return { kind: "quiz", week: chapter?.week ?? null };

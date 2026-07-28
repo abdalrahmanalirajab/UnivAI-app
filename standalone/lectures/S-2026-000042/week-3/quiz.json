@@ -1,0 +1,1 @@
+{"week":3,"title":"Explicit Runtime Modes","questions":[{"prompt":"When should fixtures activate?","type":"mcq","options":["A) Only explicit standalone mode","B) Any network error","C) Production","D) Missing secrets"],"correct_option":"A","source":"lecture"}]}

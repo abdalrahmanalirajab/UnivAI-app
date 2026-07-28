@@ -1,11 +1,15 @@
 import { NextRequest } from "next/server";
 import { getExamStatuses, startExam } from "@/lib/exams";
+import { requireUserApi } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 /** All exams with their windows (virtual clock) and results. */
 export async function GET() {
-  const statuses = await getExamStatuses();
+  const gate = await requireUserApi();
+  if (gate instanceof Response) return gate;
+
+  const statuses = await getExamStatuses(gate.studentId);
   return Response.json({
     exams: statuses.map((status) => ({
       ...status,
@@ -17,6 +21,9 @@ export async function GET() {
 
 /** Start an exam: body { kind: "quiz", week: 2 } or { kind: "mid" }. Returns the URL to take it. */
 export async function POST(request: NextRequest) {
+  const gate = await requireUserApi();
+  if (gate instanceof Response) return gate;
+
   const body = await request.json().catch(() => ({}));
   const kind = body?.kind as "quiz" | "mid" | undefined;
   const week = body?.week ?? null;
@@ -26,7 +33,12 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const url = await startExam(kind, kind === "quiz" ? Number(week) : null);
+    const url = await startExam(
+      gate.studentId,
+      gate.name,
+      kind,
+      kind === "quiz" ? Number(week) : null
+    );
     return Response.json({ url });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not start the exam.";
