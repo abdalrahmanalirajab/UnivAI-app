@@ -16,6 +16,7 @@ import MenuItem from "@mui/material/MenuItem";
 import { useSession, signOut } from "@/lib/auth-client";
 
 const ALL_LINKS = [
+  { href: "/library", label: "Library" },
   { href: "/upload", label: "Books" },
   { href: "/schedule", label: "Schedule" },
   { href: "/exams", label: "Exams" },
@@ -24,6 +25,7 @@ const ALL_LINKS = [
 ];
 
 const STUDENT_LINKS = [
+  { href: "/library", label: "Library" },
   { href: "/dashboard", label: "Dashboard" },
   { href: "/schedule", label: "Schedule" },
   { href: "/upload", label: "Upload" },
