@@ -3,18 +3,18 @@ import { promises as fs } from "fs";
 import path from "path";
 import { requireUserApi } from "@/lib/session";
 import { REPO_ROOT } from "@/lib/python";
-import { getCollection } from "@/lib/collections";
 import {
   addDocument,
+  getCollection,
   getDocument,
   listDocuments,
   removeDocument,
+  validateFilename,
 } from "@/lib/collections";
 
 export const dynamic = "force-dynamic";
 
 const MAX_BYTES = 60 * 1024 * 1024;
-const PDF_MAGIC = "%PDF-";
 
 function parseCollectionId(params: { collectionId: string }): number | null {
   const id = Number(params.collectionId);
@@ -67,20 +67,17 @@ export async function POST(
   if (!file || typeof file === "string") {
     return Response.json({ error: "No file uploaded." }, { status: 400 });
   }
-  if (!file.name.toLowerCase().endsWith(".pdf")) {
-    return Response.json({ error: "Only PDF files are accepted." }, { status: 400 });
+
+  const safeName = file.name.replace(/[^\w.\-]+/g, "_");
+
+  const validationMsg = validateFilename(safeName);
+  if (validationMsg) {
+    return Response.json({ error: validationMsg }, { status: 400 });
   }
+
   if (file.size > MAX_BYTES) {
     return Response.json(
       { error: `That file is ${(file.size / 1e6).toFixed(1)} MB. The limit is 60 MB.` },
-      { status: 400 },
-    );
-  }
-
-  const bytes = Buffer.from(await file.arrayBuffer());
-  if (bytes.subarray(0, 5).toString("latin1") !== PDF_MAGIC) {
-    return Response.json(
-      { error: "That file is not a real PDF — its contents do not start with %PDF-." },
       { status: 400 },
     );
   }
@@ -93,12 +90,17 @@ export async function POST(
     String(collectionId),
   );
   await fs.mkdir(uploadsDir, { recursive: true });
-  const safeName = file.name.replace(/[^\w.\-]+/g, "_");
   const destination = path.join(uploadsDir, safeName);
+  const bytes = Buffer.from(await file.arrayBuffer());
   await fs.writeFile(destination, bytes);
 
-  const document = await addDocument(collectionId, gate.studentId, safeName);
-  return Response.json({ document }, { status: 201 });
+  const result = await addDocument(collectionId, gate.studentId, safeName);
+  if (!result.ok) {
+    await fs.rm(destination).catch(() => {});
+    return Response.json({ error: result.error }, { status: 500 });
+  }
+
+  return Response.json({ document: result.document }, { status: 201 });
 }
 
 export async function DELETE(
@@ -132,10 +134,10 @@ export async function DELETE(
     String(collectionId),
     doc.filename,
   );
-  await fs.rm(docPath).catch((err: unknown) => {
-    console.error("Failed to remove document file:", docPath, err);
-  });
+
   await removeDocument(documentId, gate.studentId);
+
+  await fs.rm(docPath).catch(() => {});
 
   return Response.json({ removed: true });
 }

@@ -1,6 +1,10 @@
 import { NextRequest } from "next/server";
 import { requireUserApi } from "@/lib/session";
-import { createCollection, listCollections } from "@/lib/collections";
+import {
+  createCollection,
+  listCollections,
+  validateCollectionName,
+} from "@/lib/collections";
 
 export const dynamic = "force-dynamic";
 
@@ -24,17 +28,19 @@ export async function POST(request: NextRequest) {
   }
 
   const { name } = body;
-  if (typeof name !== "string" || name.trim().length === 0) {
-    return Response.json({ error: "Name is required." }, { status: 400 });
-  }
-  const trimmed = name.trim();
-  if (trimmed.length > 200) {
-    return Response.json(
-      { error: "Name must be at most 200 characters." },
-      { status: 400 },
-    );
+  if (typeof name !== "string") {
+    return Response.json({ error: "Name must be a string." }, { status: 400 });
   }
 
-  const collection = await createCollection(gate.studentId, trimmed);
-  return Response.json({ collection }, { status: 201 });
+  const validationMsg = validateCollectionName(name);
+  if (validationMsg) {
+    return Response.json({ error: validationMsg }, { status: 400 });
+  }
+
+  const result = await createCollection(gate.studentId, name);
+  if (!result.ok) {
+    return Response.json({ error: result.error }, { status: 400 });
+  }
+
+  return Response.json({ collection: result.collection }, { status: 201 });
 }
