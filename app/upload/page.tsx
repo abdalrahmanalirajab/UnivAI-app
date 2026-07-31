@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import Alert from "@mui/material/Alert";
 import AlertTitle from "@mui/material/AlertTitle";
 import Button from "@mui/material/Button";
@@ -18,6 +19,7 @@ import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
 import Link from "next/link";
 import { formatDateTime, formatRelative, useVirtualClock } from "@/lib/time";
+import { useOnboarding } from "@/app/OnboardingProvider";
 
 type Book = {
   id: number;
@@ -47,12 +49,15 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 export default function BooksPage() {
+  const router = useRouter();
+  const { refresh: refreshOnboarding } = useOnboarding();
   const [books, setBooks] = useState<Book[] | null>(null);
   const now = useVirtualClock();
   const [ragConfigured, setRagConfigured] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const completedRedirect = useRef(false);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/upload", { cache: "no-store" });
@@ -74,6 +79,15 @@ export default function BooksPage() {
     const poll = setInterval(load, 3_000);
     return () => clearInterval(poll);
   }, [working, load]);
+
+  useEffect(() => {
+    if (book?.status !== "ready" || completedRedirect.current) return;
+    completedRedirect.current = true;
+    void refreshOnboarding().finally(() => {
+      router.replace("/schedule");
+      router.refresh();
+    });
+  }, [book?.status, refreshOnboarding, router]);
 
   async function upload(file: File) {
     setBusy(true);

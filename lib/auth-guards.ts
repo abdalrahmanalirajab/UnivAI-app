@@ -4,15 +4,10 @@ import { createAuthMiddleware, APIError, getSessionFromCtx } from "better-auth/a
  * Global `hooks.before` guards (docs/auth-plan.md §6). Wired as Better Auth's
  * `hooks.before`, so it runs before every endpoint; we only act on these paths.
  *
- *  1. POST /sign-up/email and POST /change-email — with `requireEmailVerification`
- *     on, Better Auth deliberately returns a *generic success* when the target
- *     email already belongs to someone (an anti-enumeration measure — see
- *     dist/api/routes/sign-up.mjs `shouldReturnGenericDuplicateResponse`, and the
- *     `findUserByEmail` short-circuit in dist/api/routes/update-user.mjs). It
- *     never creates/changes anything but responds as if it did, so the UI happily
- *     tells the person to check their inbox while the address stays taken. We want
- *     the explicit "email already exists" error, so we detect the duplicate up
- *     front and throw USER_ALREADY_EXISTS (already mapped in lib/errorMap.ts).
+ *  1. POST /sign-up/email and POST /change-email — keep duplicate-email behavior
+ *     explicit and stable across Better Auth verification modes. The UI maps
+ *     USER_ALREADY_EXISTS to the email field, so we detect the duplicate up front
+ *     and throw that code.
  *
  *  2. POST /admin/set-role and /admin/ban-user — the admin plugin has no concept
  *     of a protected role, so a super_admin can demote or ban *itself* (or any

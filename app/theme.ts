@@ -209,6 +209,12 @@ const theme = createTheme({
         ".standalone-notice": {
           paddingTop: 16,
         },
+        ".onboarding-guide": {
+          padding: 16,
+        },
+        ".onboarding-shell": {
+          paddingTop: 16,
+        },
         ".nav-shell": {
           width: "100%",
           minHeight: 72,

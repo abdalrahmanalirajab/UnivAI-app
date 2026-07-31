@@ -33,8 +33,9 @@ export const auth = betterAuth({
 
   emailAndPassword: {
     enabled: true,
-    // A fresh account can't sign in until it verifies its email (contract §6.1/6.2).
-    requireEmailVerification: true,
+    // New students keep their session while onboarding. Sensitive learning
+    // actions still require emailVerified through the application guards.
+    requireEmailVerification: false,
     minPasswordLength: 8,
     maxPasswordLength: 128,
     sendResetPassword: async ({ user, url }) => {

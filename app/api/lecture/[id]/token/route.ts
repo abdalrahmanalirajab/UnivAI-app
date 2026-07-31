@@ -3,7 +3,7 @@ import { AccessToken } from "livekit-server-sdk";
 import { queryOne } from "@/lib/db";
 import { stampJoin } from "@/lib/attendance";
 import { getLectures, BLOCKED_MESSAGE } from "@/lib/lectures";
-import { requireUserApi } from "@/lib/session";
+import { requireLearningActionApi } from "@/lib/session";
 import { env } from "@/lib/env";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
  * student on-time, late or absent exactly as the demo requires.
  */
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const gate = await requireUserApi();
+  const gate = await requireLearningActionApi();
   if (gate instanceof Response) return gate;
   const sid = gate.studentId;
 

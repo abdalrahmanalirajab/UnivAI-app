@@ -1,37 +1,71 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
-import AuthCard from "@/app/components/AuthCard";
-import Typography from "@mui/material/Typography";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
-import { authClient } from "@/lib/auth-client";
+import Typography from "@mui/material/Typography";
+import Link from "next/link";
+import AuthCard from "@/app/components/AuthCard";
+import { useHydratedSession } from "@/lib/use-hydrated-session";
 
-function VerifyEmailForm() {
-  const searchParams = useSearchParams();
-  const email = searchParams.get("email");
+function maskEmail(email: string): string {
+  const [local, domain] = email.split("@");
+  if (!domain) return "your email address";
+  const visible = local.slice(0, Math.min(2, local.length));
+  return `${visible}${"•".repeat(Math.max(3, local.length - visible.length))}@${domain}`;
+}
+
+export default function VerifyEmailPage() {
+  const router = useRouter();
+  const { data: session, isPending } = useHydratedSession();
   const [cooldown, setCooldown] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (session?.user.emailVerified) {
+      router.replace("/start");
+      router.refresh();
+    }
+  }, [router, session?.user.emailVerified]);
 
   useEffect(() => {
     if (cooldown <= 0) return;
-    const id = setInterval(() => setCooldown((c) => c - 1), 1000);
+    const id = setInterval(() => setCooldown((current) => current - 1), 1000);
     return () => clearInterval(id);
   }, [cooldown]);
 
   const handleResend = async () => {
     if (cooldown > 0) return;
-    await authClient.sendVerificationEmail({
-      email: email ?? "",
-      callbackURL: "/login?verified=1",
-    });
+    setError(null);
+    const response = await fetch("/api/verification/resend", { method: "POST" });
+    if (!response.ok) {
+      setError("Could not send the verification email. Please try again.");
+      return;
+    }
     setCooldown(30);
   };
+
+  if (isPending) return null;
+
+  if (!session?.user) {
+    return (
+      <AuthCard title="Verify your email">
+        <Alert severity="info">Log in to resend your private verification link.</Alert>
+        <Button component={Link} href="/login" variant="contained" fullWidth>
+          Log in
+        </Button>
+      </AuthCard>
+    );
+  }
 
   return (
     <AuthCard title="Check your email">
       <Typography>
-        We sent a verification link to {email}. Click it to activate your account.
+        We sent a private verification link to {maskEmail(session.user.email)}. You
+        are still logged in and can continue setting up your account.
       </Typography>
+      {error ? <Alert severity="error">{error}</Alert> : null}
       <Button
         variant="contained"
         fullWidth
@@ -40,14 +74,9 @@ function VerifyEmailForm() {
       >
         {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend email"}
       </Button>
+      <Button component={Link} href="/start" fullWidth>
+        Continue setup
+      </Button>
     </AuthCard>
-  );
-}
-
-export default function VerifyEmailPage() {
-  return (
-    <Suspense fallback={null}>
-      <VerifyEmailForm />
-    </Suspense>
   );
 }

@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { query } from "@/lib/db";
 import { now } from "@/lib/clock";
-import { requireUserApi } from "@/lib/session";
+import { requireLearningActionApi } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
  * it. A finished lecture cannot be reopened, so this is what closes the door.
  */
 export async function POST(_request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const gate = await requireUserApi();
+  const gate = await requireLearningActionApi();
   if (gate instanceof Response) return gate;
   const sid = gate.studentId;
 

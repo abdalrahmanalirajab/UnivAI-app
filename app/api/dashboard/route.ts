@@ -1,12 +1,12 @@
 import { query } from "@/lib/db";
 import { getAttendance, summarize } from "@/lib/attendance";
-import { requireUserApi } from "@/lib/session";
+import { requirePreparedSourceApi } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 /** Everything the student's dashboard shows: attendance, lateness, grades. */
 export async function GET() {
-  const gate = await requireUserApi();
+  const gate = await requirePreparedSourceApi();
   if (gate instanceof Response) return gate;
   const sid = gate.studentId;
 

@@ -36,7 +36,10 @@ import QuizOutlined from "@mui/icons-material/QuizOutlined";
 import SettingsOutlined from "@mui/icons-material/SettingsOutlined";
 import UploadFileOutlined from "@mui/icons-material/UploadFileOutlined";
 import ThemeModeMenu from "./ThemeModeMenu";
-import { useSession, signOut } from "@/lib/auth-client";
+import { signOut } from "@/lib/auth-client";
+import { useHydratedSession } from "@/lib/use-hydrated-session";
+import { getStudentNavItems } from "@/lib/onboarding-flow";
+import { useOnboarding } from "./OnboardingProvider";
 
 type NavItem = {
   href: string;
@@ -51,18 +54,19 @@ const PUBLIC_LINKS: NavItem[] = [
   { href: "/#faq", label: "Questions" },
 ];
 
-const STUDENT_LINKS: NavItem[] = [
-  { href: "/library", label: "Library", icon: FolderCopyOutlined },
-  { href: "/dashboard", label: "Dashboard", icon: DashboardOutlined },
-  { href: "/schedule", label: "Schedule", icon: EventOutlined },
-  { href: "/upload", label: "Upload", icon: UploadFileOutlined },
-  { href: "/exams", label: "Exams", icon: QuizOutlined },
-];
+const STUDENT_ICONS = {
+  upload: UploadFileOutlined,
+  schedule: EventOutlined,
+  library: FolderCopyOutlined,
+  dashboard: DashboardOutlined,
+  exams: QuizOutlined,
+} as const;
 
 export default function NavBar() {
   const router = useRouter();
   const pathname = usePathname();
-  const { data: session } = useSession();
+  const { data: session } = useHydratedSession();
+  const { state: onboarding } = useOnboarding();
   const user = session?.user;
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -88,15 +92,23 @@ export default function NavBar() {
   const navLinks = (): NavItem[] => {
     if (!user) return PUBLIC_LINKS;
 
+    const studentLinks: NavItem[] = onboarding
+      ? getStudentNavItems(onboarding).map((item) => ({
+          href: item.href,
+          label: item.label,
+          icon: STUDENT_ICONS[item.icon],
+        }))
+      : [];
+
     switch (user.role) {
       case "admin":
         return [
-          ...STUDENT_LINKS,
+          ...studentLinks,
           { href: "/admin", label: "Admin", icon: SettingsOutlined },
         ];
       case "super_admin":
         return [
-          ...STUDENT_LINKS,
+          ...studentLinks,
           { href: "/admin", label: "Admin", icon: SettingsOutlined },
           {
             href: "/admin/users",
@@ -105,7 +117,7 @@ export default function NavBar() {
           },
         ];
       default:
-        return STUDENT_LINKS;
+        return studentLinks;
     }
   };
 

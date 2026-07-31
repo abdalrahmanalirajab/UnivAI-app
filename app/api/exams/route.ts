@@ -1,12 +1,12 @@
 import { NextRequest } from "next/server";
 import { getExamStatuses, startExam } from "@/lib/exams";
-import { requireUserApi } from "@/lib/session";
+import { requireLearningActionApi } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 /** All exams with their windows (virtual clock) and results. */
 export async function GET() {
-  const gate = await requireUserApi();
+  const gate = await requireLearningActionApi();
   if (gate instanceof Response) return gate;
 
   const statuses = await getExamStatuses(gate.studentId);
@@ -21,7 +21,7 @@ export async function GET() {
 
 /** Start an exam: body { kind: "quiz", week: 2 } or { kind: "mid" }. Returns the URL to take it. */
 export async function POST(request: NextRequest) {
-  const gate = await requireUserApi();
+  const gate = await requireLearningActionApi();
   if (gate instanceof Response) return gate;
 
   const body = await request.json().catch(() => ({}));

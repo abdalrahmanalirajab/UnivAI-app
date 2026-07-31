@@ -1,12 +1,12 @@
 import { getLectures, readScript, BLOCKED_MESSAGE } from "@/lib/lectures";
 import { getAttendance } from "@/lib/attendance";
-import { requireUserApi } from "@/lib/session";
+import { requirePreparedSourceApi } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 /** The 4-week schedule, each lecture with its slide count and attendance record. */
 export async function GET() {
-  const gate = await requireUserApi();
+  const gate = await requirePreparedSourceApi();
   if (gate instanceof Response) return gate;
   const sid = gate.studentId;
 

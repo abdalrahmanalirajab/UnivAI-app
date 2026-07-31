@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useSession } from "@/lib/auth-client";
-import { authClient } from "@/lib/auth-client";
+import { authClient, useSession } from "@/lib/auth-client";
+import { useHydratedSession } from "@/lib/use-hydrated-session";
 import Typography from "@mui/material/Typography";
 import TextField from "@mui/material/TextField";
 import Divider from "@mui/material/Divider";
@@ -21,7 +21,7 @@ import Chip from "@mui/material/Chip";
 type SessionUser = NonNullable<ReturnType<typeof useSession>["data"]>["user"];
 
 export default function ProfilePage() {
-  const { data: session } = useSession();
+  const { data: session } = useHydratedSession();
 
   // useSession returns null while loading and momentarily during refetches
   // (e.g. right after updateUser). Bail out here — BEFORE any other hook — so

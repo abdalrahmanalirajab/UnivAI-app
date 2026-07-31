@@ -9,6 +9,8 @@ import CssBaseline from "@mui/material/CssBaseline";
 import AppMain from "./AppMain";
 import AppThemeProvider from "./AppThemeProvider";
 import NavBar from "./NavBar";
+import OnboardingGuide from "./OnboardingGuide";
+import OnboardingProvider from "./OnboardingProvider";
 
 const manrope = Manrope({
   subsets: ["latin"],
@@ -50,17 +52,20 @@ export default function RootLayout({
         <AppRouterCacheProvider>
           <AppThemeProvider>
             <CssBaseline enableColorScheme />
-            <Button component="a" href="#main-content" className="skip-link">
-              Skip to main content
-            </Button>
-            <NavBar />
-            {process.env.UNIVAI_MODE === "standalone" &&
-            process.env.NODE_ENV !== "production" ? (
-              <Container maxWidth="xl" className="standalone-notice">
-                <Alert severity="warning">Standalone development data</Alert>
-              </Container>
-            ) : null}
-            <AppMain>{children}</AppMain>
+            <OnboardingProvider>
+              <Button component="a" href="#main-content" className="skip-link">
+                Skip to main content
+              </Button>
+              <NavBar />
+              {process.env.UNIVAI_MODE === "standalone" &&
+              process.env.NODE_ENV !== "production" ? (
+                <Container maxWidth="xl" className="standalone-notice">
+                  <Alert severity="warning">Standalone development data</Alert>
+                </Container>
+              ) : null}
+              <OnboardingGuide />
+              <AppMain>{children}</AppMain>
+            </OnboardingProvider>
           </AppThemeProvider>
         </AppRouterCacheProvider>
       </body>

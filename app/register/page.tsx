@@ -54,11 +54,12 @@ export default function RegisterPage() {
     setPasswordError(null);
     setConfirmPasswordError(null);
 
-    const { data, error } = await authClient.signUp.email({
+    const { error } = await authClient.signUp.email({
       name,
       email,
       password,
       phone,
+      callbackURL: "/start",
     });
 
     if (error) {
@@ -74,7 +75,8 @@ export default function RegisterPage() {
       return;
     }
 
-    router.push(`/verify-email?email=${encodeURIComponent(email)}`);
+    router.push("/start");
+    router.refresh();
   };
 
   return (

@@ -15,16 +15,16 @@ import Typography from "@mui/material/Typography";
 import ArrowForwardRounded from "@mui/icons-material/ArrowForwardRounded";
 import CheckCircleRounded from "@mui/icons-material/CheckCircleRounded";
 import LockOutlined from "@mui/icons-material/LockOutlined";
-import { useSession } from "@/lib/auth-client";
+import { useHydratedSession } from "@/lib/use-hydrated-session";
 import content from "./content";
 
 export default function Hero() {
-  const { data: session } = useSession();
+  const { data: session } = useHydratedSession();
   const user = session?.user;
   const { hero } = content;
 
-  const primaryHref = user ? "/upload" : "/register?next=/upload";
-  const primaryLabel = user ? "Upload a book" : hero.ctaPrimary;
+  const primaryHref = user ? "/start" : "/register";
+  const primaryLabel = user ? "Continue learning" : hero.ctaPrimary;
 
   return (
     <Box component="section" aria-labelledby="hero-heading" className="hero-section">

@@ -21,7 +21,6 @@ function LoginForm() {
   const [rememberMe, setRememberMe] = useState(false);
   const [topLevelError, setTopLevelError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [emailNotVerified, setEmailNotVerified] = useState(false);
 
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -32,7 +31,6 @@ function LoginForm() {
   const handleSubmit = async () => {
     setSubmitting(true);
     setTopLevelError(null);
-    setEmailNotVerified(false);
 
     const { error } = await authClient.signIn.email({
       email,
@@ -43,24 +41,21 @@ function LoginForm() {
     if (error) {
       const mapped = copyFor(error as AuthError);
       setTopLevelError(mapped.message);
-      if (error.code === "EMAIL_NOT_VERIFIED") {
-        setEmailNotVerified(true);
-      }
       setSubmitting(false);
       return;
     }
 
-    router.push(redirectParam || "/dashboard");
+    const safeRedirect =
+      redirectParam?.startsWith("/") && !redirectParam.startsWith("//")
+        ? redirectParam
+        : "/start";
+    router.push(safeRedirect);
+    router.refresh();
   };
 
   return (
     <AuthCard title="Log in">
       <FormError message={topLevelError} />
-      {emailNotVerified && (
-        <Button component={Link} href={`/verify-email?email=${encodeURIComponent(email)}`} fullWidth>
-          Verify email
-        </Button>
-      )}
       <TextField
         label="Email"
         name="email"

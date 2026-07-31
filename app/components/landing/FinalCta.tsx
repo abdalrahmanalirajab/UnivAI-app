@@ -7,11 +7,11 @@ import Container from "@mui/material/Container";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import ArrowForwardRounded from "@mui/icons-material/ArrowForwardRounded";
-import { useSession } from "@/lib/auth-client";
+import { useHydratedSession } from "@/lib/use-hydrated-session";
 import content from "./content";
 
 export default function FinalCta() {
-  const { data: session } = useSession();
+  const { data: session } = useHydratedSession();
   const user = session?.user;
   const { finalCta } = content;
 
@@ -47,10 +47,10 @@ export default function FinalCta() {
               color="secondary"
               size="large"
               component={Link}
-              href={user ? "/upload" : "/register?next=/upload"}
+              href={user ? "/start" : "/register"}
               endIcon={<ArrowForwardRounded />}
             >
-              {user ? "Upload a book" : finalCta.ctaLabel}
+              {user ? "Continue learning" : finalCta.ctaLabel}
             </Button>
           </Stack>
         </Box>
