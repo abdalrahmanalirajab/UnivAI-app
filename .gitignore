@@ -47,3 +47,4 @@ next-env.d.ts
 public/slides/
 standalone/uploads/
 .standalone/
+.codex-run/

@@ -13,6 +13,7 @@ import Typography from "@mui/material/Typography";
 import AutoAwesomeOutlined from "@mui/icons-material/AutoAwesomeOutlined";
 import PanToolAltOutlined from "@mui/icons-material/PanToolAltOutlined";
 import content from "./content";
+import SyncedVoicePlayer from "./SyncedVoicePlayer";
 
 export default function RaiseHandTeaser() {
   const { raiseHandTeaser } = content;
@@ -96,12 +97,15 @@ export default function RaiseHandTeaser() {
                   color="text.secondary"
                   aria-live="polite"
                 >
-                  {displayedText}
+                  {complete ? null : displayedText}
                 </Typography>
                 {complete ? (
-                  <Alert severity="info" icon={false}>
-                    {raiseHandTeaser.sourceText}
-                  </Alert>
+                  <>
+                    <SyncedVoicePlayer answer={raiseHandTeaser.fullAnswer} />
+                    <Alert severity="info" icon={false}>
+                      {raiseHandTeaser.sourceText}
+                    </Alert>
+                  </>
                 ) : null}
               </Stack>
             </CardContent>

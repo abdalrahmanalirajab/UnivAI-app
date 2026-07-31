@@ -1,3 +1,5 @@
+"use client";
+
 import Alert from "@mui/material/Alert";
 import Avatar from "@mui/material/Avatar";
 import Box from "@mui/material/Box";

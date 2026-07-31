@@ -78,14 +78,14 @@ const content = {
     authNote: "Real-time voice and microphone access begin only after authentication.",
   },
   raiseHandTeaser: {
-    label: "Try the raise-hand flow",
-    sampleQuestion: "How can I tell whether a source really supports the claim?",
+    label: "Try the spoken-answer flow",
+    sampleQuestion: "What is the quadratic equation based on?",
     fullAnswer:
-      "Check that the passage directly addresses the claim, then evaluate the source's relevance, authority, and context. If the text does not support the claim, the answer should say so.",
-    sourceText: "Source preview: Chapter 3 · page 42",
+      "Sure, the quadratic equation is based on finding the values that make a second-degree polynomial equal to zero.",
+    sourceText: "Kokoro 82M · am_michael male voice · generated locally",
     buttonLabel: "Raise my hand",
-    workingLabel: "Finding the cited passage…",
-    answeredLabel: "Answered from the source",
+    workingLabel: "Preparing the spoken answer…",
+    answeredLabel: "Spoken answer ready",
   },
   featureHighlights: {
     eyebrow: "The whole learning loop",

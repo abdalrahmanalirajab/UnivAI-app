@@ -436,6 +436,52 @@ const theme = createTheme({
         ".source-answer": {
           borderLeft: "4px solid var(--univai-palette-secondary-main)",
         },
+        ".synced-voice-player": {
+          padding: 16,
+          borderRadius: 16,
+          backgroundColor:
+            "color-mix(in srgb, var(--univai-palette-secondary-main) 7%, var(--univai-palette-background-paper))",
+          border:
+            "1px solid color-mix(in srgb, var(--univai-palette-secondary-main) 24%, var(--univai-palette-divider))",
+        },
+        ".voice-audio-element": {
+          display: "none",
+        },
+        ".voice-control-row": {
+          flexWrap: "wrap",
+        },
+        ".voice-status-chip": {
+          marginLeft: "auto !important",
+        },
+        ".synced-transcript": {
+          lineHeight: 1.9,
+          fontWeight: 650,
+        },
+        ".synced-word": {
+          display: "inline",
+          borderRadius: 6,
+          boxDecorationBreak: "clone",
+          WebkitBoxDecorationBreak: "clone",
+          transition:
+            "color 100ms ease, background-color 100ms ease, box-shadow 100ms ease",
+        },
+        ".synced-word-active": {
+          color: "var(--univai-palette-secondary-contrastText)",
+          backgroundColor: "var(--univai-palette-secondary-main)",
+          boxShadow:
+            "0 0 0 3px color-mix(in srgb, var(--univai-palette-secondary-main) 22%, transparent)",
+        },
+        ".voice-timeline-row": {
+          width: "100%",
+        },
+        ".voice-timeline": {
+          flex: 1,
+        },
+        ".voice-time": {
+          minWidth: 34,
+          color: "var(--univai-palette-text-secondary)",
+          fontVariantNumeric: "tabular-nums",
+        },
         ".family-guardrail": {
           height: "100%",
           borderColor:
@@ -554,6 +600,10 @@ const theme = createTheme({
           ".final-cta": {
             padding: 32,
             borderRadius: 24,
+          },
+          ".voice-status-chip": {
+            width: "100%",
+            marginLeft: "0 !important",
           },
           ".footer-bottom": {
             alignItems: "flex-start",

@@ -1,0 +1,92 @@
+[
+  {
+    "word": "Sure,",
+    "start": 0.0,
+    "end": 0.3
+  },
+  {
+    "word": "the",
+    "start": 0.42,
+    "end": 0.62
+  },
+  {
+    "word": "quadratic",
+    "start": 0.62,
+    "end": 0.98
+  },
+  {
+    "word": "equation",
+    "start": 0.98,
+    "end": 1.62
+  },
+  {
+    "word": "is",
+    "start": 1.62,
+    "end": 2.34
+  },
+  {
+    "word": "based",
+    "start": 2.34,
+    "end": 2.62
+  },
+  {
+    "word": "on",
+    "start": 2.62,
+    "end": 2.86
+  },
+  {
+    "word": "finding",
+    "start": 2.86,
+    "end": 3.26
+  },
+  {
+    "word": "the",
+    "start": 3.26,
+    "end": 3.5
+  },
+  {
+    "word": "values",
+    "start": 3.5,
+    "end": 3.92
+  },
+  {
+    "word": "that",
+    "start": 3.92,
+    "end": 4.28
+  },
+  {
+    "word": "make",
+    "start": 4.28,
+    "end": 4.54
+  },
+  {
+    "word": "a",
+    "start": 4.54,
+    "end": 4.9
+  },
+  {
+    "word": "second-degree",
+    "start": 4.9,
+    "end": 5.68
+  },
+  {
+    "word": "polynomial",
+    "start": 5.68,
+    "end": 6.16
+  },
+  {
+    "word": "equal",
+    "start": 6.16,
+    "end": 6.94
+  },
+  {
+    "word": "to",
+    "start": 6.94,
+    "end": 7.22
+  },
+  {
+    "word": "zero.",
+    "start": 7.22,
+    "end": 7.44
+  }
+]
