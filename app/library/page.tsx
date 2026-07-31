@@ -134,7 +134,7 @@ export default function CollectionsPage() {
             <Stack spacing={2}>
               <Typography variant="subtitle1">Create your first collection</Typography>
               <Typography variant="body2" color="text.secondary">
-                A collection holds the PDFs you want to build a programme from.
+                Keep related study materials together.
               </Typography>
               <Stack direction="row" spacing={2}>
                 <TextField

@@ -21,7 +21,7 @@ test("premade answer follows play, pause, seek, rewind, and replay", async ({
   });
 
   await page.goto("/");
-  await page.getByRole("button", { name: "Raise my hand" }).click();
+  await page.getByRole("button", { name: "Ask the question" }).click();
 
   const player = page.locator(".synced-voice-player");
   await expect(player).toBeVisible();
@@ -90,7 +90,7 @@ test("premade answer controls stay inside a mobile viewport", async ({
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
-  await page.getByRole("button", { name: "Raise my hand" }).click();
+  await page.getByRole("button", { name: "Ask the question" }).click();
   await expect(page.locator(".synced-voice-player")).toBeVisible();
 
   const hasOverflow = await page.evaluate(

@@ -45,10 +45,10 @@ type NavItem = {
 };
 
 const PUBLIC_LINKS: NavItem[] = [
-  { href: "/#how-it-works", label: "How it works" },
-  { href: "/#live-preview", label: "Live preview" },
+  { href: "/#how-it-works", label: "Why UnivAI" },
+  { href: "/#live-preview", label: "Preview" },
   { href: "/#for-families", label: "For families" },
-  { href: "/#faq", label: "FAQ" },
+  { href: "/#faq", label: "Questions" },
 ];
 
 const STUDENT_LINKS: NavItem[] = [
@@ -133,7 +133,7 @@ export default function NavBar() {
                     UnivAI
                   </Typography>
                   <Typography variant="caption" className="brand-tagline">
-                    Learn from what you trust
+                    Clearer learning
                   </Typography>
                 </Stack>
               </Stack>

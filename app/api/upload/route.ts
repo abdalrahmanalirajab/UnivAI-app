@@ -147,7 +147,7 @@ export async function POST(request: NextRequest) {
     if (!clearedPayload?.ok) {
       return Response.json(
         {
-          error: "Could not clear the previous book out of the RAG service.",
+          error: "Could not prepare the new course.",
           detail: clearedPayload?.error ?? cleared.stderr.trim().split("\n").slice(-2).join(" "),
         },
         { status: 502 }
@@ -166,7 +166,7 @@ export async function POST(request: NextRequest) {
   const uploadedAt = await now();
   const created = await queryOne<{ id: number }>(
     `INSERT INTO books (student_id, filename, status, uploaded_at, progress)
-     VALUES ($1, $2, 'ingesting', $3, 'Indexing the book in the RAG service…') RETURNING id`,
+     VALUES ($1, $2, 'ingesting', $3, 'Preparing your book…') RETURNING id`,
     [sid, safeName, uploadedAt]
   );
   const bookId = created!.id;
@@ -184,14 +184,14 @@ export async function POST(request: NextRequest) {
       [detail, bookId]
     );
     return Response.json(
-      { error: "The RAG service could not index this book.", detail },
+      { error: "Could not prepare this book.", detail },
       { status: 502 }
     );
   }
 
   await query(
     `UPDATE books SET status = 'generating', title = $1,
-        progress = 'Indexed. Generating the 4-week course from the book…' WHERE id = $2`,
+        progress = 'Preparing your four-week course…' WHERE id = $2`,
     [safeName, bookId]
   );
   spawnGeneration(destination, bookId);

@@ -10,17 +10,17 @@ import Container from "@mui/material/Container";
 import Grid from "@mui/material/Grid";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
-import CalendarMonthOutlined from "@mui/icons-material/CalendarMonthOutlined";
+import EmojiEventsOutlined from "@mui/icons-material/EmojiEventsOutlined";
 import FamilyRestroomOutlined from "@mui/icons-material/FamilyRestroomOutlined";
+import FlagOutlined from "@mui/icons-material/FlagOutlined";
 import PolicyOutlined from "@mui/icons-material/PolicyOutlined";
-import SourceOutlined from "@mui/icons-material/SourceOutlined";
-import TaskAltOutlined from "@mui/icons-material/TaskAltOutlined";
+import TrendingUpOutlined from "@mui/icons-material/TrendingUpOutlined";
 import content from "./content";
 
 const ICONS = [
-  SourceOutlined,
-  CalendarMonthOutlined,
-  TaskAltOutlined,
+  FlagOutlined,
+  TrendingUpOutlined,
+  EmojiEventsOutlined,
 ];
 
 export default function SecondAudience() {
@@ -89,7 +89,7 @@ export default function SecondAudience() {
           </Grid>
 
           <Alert
-            severity="warning"
+            severity="info"
             icon={<PolicyOutlined />}
             className="family-guardrail"
           >
@@ -100,7 +100,7 @@ export default function SecondAudience() {
                 </Typography>
                 <Chip
                   size="small"
-                  color="warning"
+                  color="info"
                   variant="outlined"
                   label={families.guardrailStatus}
                 />

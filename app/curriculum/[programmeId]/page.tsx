@@ -184,10 +184,8 @@ export default function CurriculumPage({ params }: Props) {
         <DialogTitle>Approve this curriculum?</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            Approval is a permanent action. Once approved, the system will begin
-            expensive generation of lecture content, slides, and assessments from
-            this plan. This cannot be undone and the curriculum can no longer be
-            edited.
+            Approval is final. Your course will be prepared from this plan, and the
+            curriculum can no longer be edited.
           </DialogContentText>
           <DialogContentText>
             Are you sure you want to approve &ldquo;{programme.name}&rdquo;?

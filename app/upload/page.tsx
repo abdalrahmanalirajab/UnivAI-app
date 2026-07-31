@@ -83,7 +83,7 @@ export default function BooksPage() {
       body.append("file", file);
       const res = await fetch("/api/upload", { method: "POST", body });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail ? `${data.error} (${data.detail})` : data.error);
+      if (!res.ok) throw new Error(data.error ?? "Could not prepare this book.");
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed.");
@@ -131,7 +131,7 @@ export default function BooksPage() {
 
       {!ragConfigured ? (
         <Alert severity="info">
-          RAG_MCP_URL is not set, so a book would be stored but never indexed.
+          Book preparation is not available right now.
         </Alert>
       ) : null}
 
@@ -218,8 +218,8 @@ export default function BooksPage() {
                 <Stack spacing={2}>
                   <Typography variant="subtitle1">Study a different book</Typography>
                   <Typography variant="body2" color="text.secondary">
-                    Replacing the book starts a NEW course: the old book leaves the RAG,
-                    and the schedule, attendance, grades and quizzes are all reset.
+                    Replacing the book starts a new course and clears the current
+                    schedule, progress, grades, and quizzes.
                   </Typography>
                   <Stack direction="row" spacing={2}>
                     {chooseButton("Replace the book", "outlined")}
@@ -228,7 +228,7 @@ export default function BooksPage() {
                   {busy ? (
                     <Stack spacing={1}>
                       <Typography variant="body2" color="text.secondary">
-                        Clearing the old book and indexing the new one…
+                        Preparing your new course…
                       </Typography>
                       <LinearProgress />
                     </Stack>
@@ -241,8 +241,7 @@ export default function BooksPage() {
       ) : (
         <Stack spacing={3}>
           <Typography variant="body1" color="text.secondary">
-            One textbook PDF. It is indexed by the RAG service, then the 4-week course —
-            lectures, narration and quizzes — is generated from its pages.
+            Choose one textbook to begin. We will prepare your first four weeks.
           </Typography>
 
           <Card variant="outlined">
@@ -252,7 +251,7 @@ export default function BooksPage() {
                 {busy ? (
                   <Stack spacing={1}>
                     <Typography variant="body2" color="text.secondary">
-                      Sending the book to the RAG service for indexing…
+                      Preparing your book…
                     </Typography>
                     <LinearProgress />
                   </Stack>

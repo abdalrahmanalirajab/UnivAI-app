@@ -12,10 +12,10 @@ import Footer from "@/app/components/landing/Footer";
 import content from "@/app/components/landing/content";
 
 export const metadata: Metadata = {
-  title: "Turn one book into a guided semester",
+  title: "Clearer learning. Steadier progress.",
   description: content.hero.subhead,
   openGraph: {
-    title: "UnivAI — Turn one book into a guided semester",
+    title: "UnivAI — Clearer learning. Steadier progress.",
     description: content.hero.subhead,
     siteName: "UnivAI",
     locale: "en_US",
@@ -31,7 +31,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "UnivAI — Turn one book into a guided semester",
+    title: "UnivAI — Clearer learning. Steadier progress.",
     description: content.hero.subhead,
     images: ["/images/family-learning-hero.webp"],
   },

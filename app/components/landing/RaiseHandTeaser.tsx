@@ -64,7 +64,7 @@ export default function RaiseHandTeaser() {
         onClick={handleRaiseHand}
         disabled={raised}
       >
-        {raised ? "Hand raised" : raiseHandTeaser.buttonLabel}
+        {raised ? "Question sent" : raiseHandTeaser.buttonLabel}
       </Button>
 
       <Collapse in={raised}>

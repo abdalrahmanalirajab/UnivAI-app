@@ -21,17 +21,17 @@ export const metadata: Metadata = {
     process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
   ),
   title: {
-    default: "UnivAI — Turn one book into a guided semester",
+    default: "UnivAI — Clearer learning. Steadier progress.",
     template: "%s | UnivAI",
   },
   description:
-    "Build a structured, source-grounded learning path from a trusted book, with lessons, cited Q&A, practice, and assessments.",
+    "A focused learning experience that helps learners build momentum and gives families greater confidence.",
   applicationName: "UnivAI",
   keywords: [
-    "AI learning",
-    "source-grounded education",
-    "independent learning",
-    "textbook course builder",
+    "learning platform",
+    "student progress",
+    "family learning",
+    "education",
   ],
 };
 

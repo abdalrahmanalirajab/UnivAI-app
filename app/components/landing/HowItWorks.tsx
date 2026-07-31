@@ -7,17 +7,17 @@ import Container from "@mui/material/Container";
 import Grid from "@mui/material/Grid";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
-import AutoStoriesOutlined from "@mui/icons-material/AutoStoriesOutlined";
-import CloudUploadOutlined from "@mui/icons-material/CloudUploadOutlined";
-import ForumOutlined from "@mui/icons-material/ForumOutlined";
+import FlagOutlined from "@mui/icons-material/FlagOutlined";
+import LightbulbOutlined from "@mui/icons-material/LightbulbOutlined";
 import TaskAltOutlined from "@mui/icons-material/TaskAltOutlined";
+import TrendingUpOutlined from "@mui/icons-material/TrendingUpOutlined";
 import content from "./content";
 
 const ICONS = [
-  CloudUploadOutlined,
-  AutoStoriesOutlined,
-  ForumOutlined,
+  FlagOutlined,
+  LightbulbOutlined,
   TaskAltOutlined,
+  TrendingUpOutlined,
 ];
 
 export default function HowItWorks() {

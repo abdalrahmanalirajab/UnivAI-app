@@ -7,21 +7,21 @@ import Container from "@mui/material/Container";
 import Grid from "@mui/material/Grid";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
-import AccountTreeOutlined from "@mui/icons-material/AccountTreeOutlined";
-import CalendarMonthOutlined from "@mui/icons-material/CalendarMonthOutlined";
+import AutoAwesomeOutlined from "@mui/icons-material/AutoAwesomeOutlined";
+import ExploreOutlined from "@mui/icons-material/ExploreOutlined";
 import FamilyRestroomOutlined from "@mui/icons-material/FamilyRestroomOutlined";
-import GraphicEqOutlined from "@mui/icons-material/GraphicEqOutlined";
 import QuizOutlined from "@mui/icons-material/QuizOutlined";
-import QuestionAnswerOutlined from "@mui/icons-material/QuestionAnswerOutlined";
+import TrendingUpOutlined from "@mui/icons-material/TrendingUpOutlined";
+import TuneOutlined from "@mui/icons-material/TuneOutlined";
 import content from "./content";
 
 const ICONS = [
-  GraphicEqOutlined,
-  QuestionAnswerOutlined,
-  CalendarMonthOutlined,
+  ExploreOutlined,
+  TuneOutlined,
+  TrendingUpOutlined,
   QuizOutlined,
-  AccountTreeOutlined,
   FamilyRestroomOutlined,
+  AutoAwesomeOutlined,
 ];
 
 export default function FeatureHighlights() {
@@ -58,7 +58,6 @@ export default function FeatureHighlights() {
           <Grid container spacing={2.5}>
             {featureHighlights.items.map((feature, index) => {
               const Icon = ICONS[index];
-              const planned = feature.status === "Planned";
               return (
                 <Grid key={feature.title} size={{ xs: 12, md: 6, lg: 4 }}>
                   <Card className="feature-card">
@@ -71,7 +70,7 @@ export default function FeatureHighlights() {
                           <Chip
                             size="small"
                             className="nav-actions"
-                            color={planned ? "warning" : "success"}
+                            color="success"
                             variant="outlined"
                             label={feature.status}
                           />
