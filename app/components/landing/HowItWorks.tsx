@@ -1,83 +1,79 @@
-"use client";
-
-import { useState, useEffect, useRef } from "react";
-import Container from "@mui/material/Container";
+import Avatar from "@mui/material/Avatar";
 import Box from "@mui/material/Box";
+import Card from "@mui/material/Card";
+import CardContent from "@mui/material/CardContent";
+import Chip from "@mui/material/Chip";
+import Container from "@mui/material/Container";
 import Grid from "@mui/material/Grid";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
-import Grow from "@mui/material/Grow";
-import CloudUpload from "@mui/icons-material/CloudUpload";
-import AutoStories from "@mui/icons-material/AutoStories";
-import QuestionAnswer from "@mui/icons-material/QuestionAnswer";
-import Assignment from "@mui/icons-material/Assignment";
+import AutoStoriesOutlined from "@mui/icons-material/AutoStoriesOutlined";
+import CloudUploadOutlined from "@mui/icons-material/CloudUploadOutlined";
+import ForumOutlined from "@mui/icons-material/ForumOutlined";
+import TaskAltOutlined from "@mui/icons-material/TaskAltOutlined";
 import content from "./content";
 
-const ICON_MAP = {
-  Upload: CloudUpload,
-  Build: AutoStories,
-  Attend: QuestionAnswer,
-  Exam: Assignment,
-};
+const ICONS = [
+  CloudUploadOutlined,
+  AutoStoriesOutlined,
+  ForumOutlined,
+  TaskAltOutlined,
+];
 
 export default function HowItWorks() {
-  const { heading, steps } = content.howItWorks;
-  const [inView, setInView] = useState(false);
-  const [visibleCount, setVisibleCount] = useState(0);
-  const sectionRef = useRef<HTMLElement | null>(null);
-
-  useEffect(() => {
-    const el = sectionRef.current;
-    if (!el) return;
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setInView(true);
-          observer.disconnect();
-        }
-      },
-      { threshold: 0.2 },
-    );
-
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-
-  useEffect(() => {
-    if (!inView) return;
-
-    const interval = setInterval(() => {
-      setVisibleCount((prev) => {
-        if (prev < steps.length) return prev + 1;
-        clearInterval(interval);
-        return prev;
-      });
-    }, 200);
-
-    return () => clearInterval(interval);
-  }, [inView, steps.length]);
+  const { howItWorks } = content;
 
   return (
-    <Box component="section" aria-label="How it works" id="how-it-works" ref={sectionRef}>
-      <Container maxWidth="lg">
-        <Stack spacing={4}>
-          <Typography variant="h2" component="p">
-            {heading}
-          </Typography>
-          <Grid container spacing={4}>
-            {steps.map((step, index) => {
-              const Icon = ICON_MAP[step.icon];
+    <Box
+      component="section"
+      id="how-it-works"
+      aria-labelledby="how-it-works-heading"
+      className="landing-section"
+    >
+      <Container maxWidth="xl">
+        <Stack spacing={5}>
+          <Stack spacing={2} className="section-heading">
+            <Chip
+              color="primary"
+              variant="outlined"
+              label={howItWorks.eyebrow}
+              className="eyebrow-chip"
+            />
+            <Typography id="how-it-works-heading" variant="h2">
+              {howItWorks.heading}
+            </Typography>
+            <Typography
+              variant="body1"
+              color="text.secondary"
+              className="section-copy"
+            >
+              {howItWorks.body}
+            </Typography>
+          </Stack>
+
+          <Grid container spacing={2.5}>
+            {howItWorks.steps.map((step, index) => {
+              const Icon = ICONS[index];
               return (
-                <Grid size={{ xs: 12, sm: 6, md: 3 }} key={step.label}>
-                  <Grow in={index < visibleCount} timeout={400}>
-                    <Stack spacing={1}>
-                      <Icon />
-                      <Typography variant="body2" align="center">
-                        {step.label}
-                      </Typography>
-                    </Stack>
-                  </Grow>
+                <Grid key={step.title} size={{ xs: 12, sm: 6, lg: 3 }}>
+                  <Card className="step-card">
+                    <CardContent>
+                      <Stack spacing={2.5}>
+                        <Stack direction="row" className="align-center">
+                          <Avatar className="step-number">{index + 1}</Avatar>
+                          <Icon color="primary" className="nav-actions" />
+                        </Stack>
+                        <Stack spacing={1}>
+                          <Typography variant="h5" component="h3">
+                            {step.title}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            {step.body}
+                          </Typography>
+                        </Stack>
+                      </Stack>
+                    </CardContent>
+                  </Card>
                 </Grid>
               );
             })}

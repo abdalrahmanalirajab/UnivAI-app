@@ -1,12 +1,12 @@
 "use client";
 
+import Link from "next/link";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
 import Container from "@mui/material/Container";
-import Grid from "@mui/material/Grid";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
-import Button from "@mui/material/Button";
-import AppBar from "@mui/material/AppBar";
-import Toolbar from "@mui/material/Toolbar";
+import ArrowForwardRounded from "@mui/icons-material/ArrowForwardRounded";
 import { useSession } from "@/lib/auth-client";
 import content from "./content";
 
@@ -16,35 +16,45 @@ export default function FinalCta() {
   const { finalCta } = content;
 
   return (
-    <AppBar
-      position="static"
-      color="primary"
-      elevation={0}
+    <Box
       component="section"
-      aria-label="FinalCta"
+      aria-labelledby="final-cta-heading"
+      className="landing-section"
     >
-      <Toolbar>
-        <Container maxWidth="lg">
-          <Stack spacing={2}>
-            <Typography variant="h2" component="p" align="center">
+      <Container maxWidth="lg">
+        <Box className="final-cta">
+          <Stack spacing={3} className="align-center text-center">
+            <Typography variant="overline" color="inherit">
+              {finalCta.eyebrow}
+            </Typography>
+            <Typography
+              id="final-cta-heading"
+              variant="h2"
+              color="inherit"
+              className="section-heading"
+            >
               {finalCta.heading}
             </Typography>
-            <Grid container>
-              <Grid size="grow" />
-              <Grid>
-                <Button
-                  variant="contained"
-                  color="inherit"
-                  href={user ? "/upload" : "/register?next=/upload"}
-                >
-                  {user ? "Upload a book" : "Start free"}
-                </Button>
-              </Grid>
-              <Grid size="grow" />
-            </Grid>
+            <Typography
+              variant="body1"
+              color="inherit"
+              className="section-copy"
+            >
+              {finalCta.body}
+            </Typography>
+            <Button
+              variant="contained"
+              color="secondary"
+              size="large"
+              component={Link}
+              href={user ? "/upload" : "/register?next=/upload"}
+              endIcon={<ArrowForwardRounded />}
+            >
+              {user ? "Upload a book" : finalCta.ctaLabel}
+            </Button>
           </Stack>
-        </Container>
-      </Toolbar>
-    </AppBar>
+        </Box>
+      </Container>
+    </Box>
   );
 }

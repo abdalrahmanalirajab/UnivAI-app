@@ -1,37 +1,113 @@
+import Alert from "@mui/material/Alert";
+import Avatar from "@mui/material/Avatar";
+import Box from "@mui/material/Box";
+import Card from "@mui/material/Card";
+import CardContent from "@mui/material/CardContent";
+import Chip from "@mui/material/Chip";
 import Container from "@mui/material/Container";
 import Grid from "@mui/material/Grid";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
-import Button from "@mui/material/Button";
-import Chip from "@mui/material/Chip";
-import Paper from "@mui/material/Paper";
+import CalendarMonthOutlined from "@mui/icons-material/CalendarMonthOutlined";
+import FamilyRestroomOutlined from "@mui/icons-material/FamilyRestroomOutlined";
+import PolicyOutlined from "@mui/icons-material/PolicyOutlined";
+import SourceOutlined from "@mui/icons-material/SourceOutlined";
+import TaskAltOutlined from "@mui/icons-material/TaskAltOutlined";
 import content from "./content";
 
+const ICONS = [
+  SourceOutlined,
+  CalendarMonthOutlined,
+  TaskAltOutlined,
+];
+
 export default function SecondAudience() {
-  const { secondAudience } = content;
+  const { families } = content;
 
   return (
-    <Paper square component="section" aria-label="SecondAudience">
-      <Container maxWidth="lg">
-        <Stack spacing={2}>
-          <Typography variant="h2" component="p">
-            {secondAudience.heading}
-          </Typography>
-          <Typography variant="body1" color="text.secondary">
-            {secondAudience.body}
-          </Typography>
-          <Grid container spacing={1}>
-            <Grid>
-              <Button variant="contained" disabled>
-                {secondAudience.ctaLabel}
-              </Button>
+    <Box
+      component="section"
+      id="for-families"
+      aria-labelledby="families-heading"
+      className="landing-section"
+    >
+      <Container maxWidth="xl">
+        <Stack spacing={5}>
+          <Grid container spacing={4} className="align-end">
+            <Grid size={{ xs: 12, md: 8 }}>
+              <Stack spacing={2}>
+                <Chip
+                  color="primary"
+                  variant="outlined"
+                  icon={<FamilyRestroomOutlined />}
+                  label={families.eyebrow}
+                  className="eyebrow-chip"
+                />
+                <Typography id="families-heading" variant="h2">
+                  {families.heading}
+                </Typography>
+              </Stack>
             </Grid>
-            <Grid>
-              <Chip label={secondAudience.comingSoonLabel} size="small" />
+            <Grid size={{ xs: 12, md: 4 }}>
+              <Typography variant="body1" color="text.secondary">
+                {families.body}
+              </Typography>
             </Grid>
           </Grid>
+
+          <Typography variant="overline" color="text.secondary">
+            {families.visibleHeading}
+          </Typography>
+
+          <Grid container spacing={2.5}>
+            {families.visibleItems.map((item, index) => {
+              const Icon = ICONS[index];
+              return (
+                <Grid key={item.title} size={{ xs: 12, md: 4 }}>
+                  <Card className="feature-card">
+                    <CardContent>
+                      <Stack spacing={2}>
+                        <Avatar variant="rounded" className="feature-icon">
+                          <Icon />
+                        </Avatar>
+                        <Stack spacing={1}>
+                          <Typography variant="h5" component="h3">
+                            {item.title}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            {item.body}
+                          </Typography>
+                        </Stack>
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              );
+            })}
+          </Grid>
+
+          <Alert
+            severity="warning"
+            icon={<PolicyOutlined />}
+            className="family-guardrail"
+          >
+            <Stack spacing={0.75}>
+              <Stack direction="row" spacing={1} className="align-center">
+                <Typography variant="subtitle1">
+                  {families.guardrailTitle}
+                </Typography>
+                <Chip
+                  size="small"
+                  color="warning"
+                  variant="outlined"
+                  label={families.guardrailStatus}
+                />
+              </Stack>
+              <Typography variant="body2">{families.guardrailBody}</Typography>
+            </Stack>
+          </Alert>
         </Stack>
       </Container>
-    </Paper>
+    </Box>
   );
 }

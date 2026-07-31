@@ -1,6 +1,4 @@
 import type { Metadata } from "next";
-import Stack from "@mui/material/Stack";
-import Box from "@mui/material/Box";
 import Hero from "@/app/components/landing/Hero";
 import TrustStrip from "@/app/components/landing/TrustStrip";
 import HowItWorks from "@/app/components/landing/HowItWorks";
@@ -13,66 +11,62 @@ import Faq from "@/app/components/landing/Faq";
 import Footer from "@/app/components/landing/Footer";
 import content from "@/app/components/landing/content";
 
-// TODO: replace with real production domain once decided
 export const metadata: Metadata = {
-  title: "UnivAI — Upload a textbook. Get a university.",
+  title: "Turn one book into a guided semester",
   description: content.hero.subhead,
   openGraph: {
-    title: "UnivAI — Upload a textbook. Get a university.",
+    title: "UnivAI — Turn one book into a guided semester",
     description: content.hero.subhead,
-    url: "/",
     siteName: "UnivAI",
     locale: "en_US",
     type: "website",
+    images: [
+      {
+        url: "/images/family-learning-hero.webp",
+        width: 1600,
+        height: 800,
+        alt: "A parent and student learning together with a book and laptop",
+      },
+    ],
   },
   twitter: {
-    card: "summary",
-    title: "UnivAI — Upload a textbook. Get a university.",
+    card: "summary_large_image",
+    title: "UnivAI — Turn one book into a guided semester",
     description: content.hero.subhead,
+    images: ["/images/family-learning-hero.webp"],
   },
 };
 
 const jsonLd = {
   "@context": "https://schema.org",
-  "@graph": [
-    {
-      "@type": "Organization",
-      name: "UnivAI",
-      description: content.trustStrip.line,
-      url: "/",
-    },
-    {
-      "@type": "Product",
-      name: "UnivAI",
-      description: content.hero.subhead,
-      url: "/",
-      offers: {
-        "@type": "Offer",
-        description: "Upload one book and go through the full semester at no cost.",
-      },
-    },
-  ],
+  "@type": "SoftwareApplication",
+  name: "UnivAI",
+  applicationCategory: "EducationalApplication",
+  operatingSystem: "Web",
+  description: content.hero.subhead,
+  audience: {
+    "@type": "EducationalAudience",
+    educationalRole: ["student", "teacher", "parent"],
+  },
 };
 
 export default function Home() {
   return (
-    <Box component="main">
+    <>
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      <Stack spacing={4}>
-        <Hero />
-        <TrustStrip />
-        <HowItWorks />
-        <FeatureHighlights />
-        <PromoVideo />
-        <LiveSample />
-        <SecondAudience />
-        <FinalCta />
-        <Faq />
-        <Footer />
-      </Stack>
-    </Box>
+      <Hero />
+      <TrustStrip />
+      <HowItWorks />
+      <LiveSample />
+      <FeatureHighlights />
+      <PromoVideo />
+      <SecondAudience />
+      <FinalCta />
+      <Faq />
+      <Footer />
+    </>
   );
 }
