@@ -34,7 +34,7 @@ function LoginForm() {
     setTopLevelError(null);
     setEmailNotVerified(false);
 
-    const { data, error } = await authClient.signIn.email({
+    const { error } = await authClient.signIn.email({
       email,
       password,
       rememberMe,

@@ -8,6 +8,7 @@ import { resetExamWorld } from "@/lib/exams";
 import { spawnGeneration } from "@/lib/generation";
 import { requireUserApi } from "@/lib/session";
 import { env } from "@/lib/env";
+import { isStandalone } from "@/lib/runtime";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 600;
@@ -48,7 +49,7 @@ export async function GET() {
   return Response.json({
     books,
     book: books[0] ?? null,
-    ragConfigured: Boolean(RAG_MCP_URL),
+    ragConfigured: isStandalone() || Boolean(RAG_MCP_URL),
   });
 }
 
@@ -89,6 +90,39 @@ export async function POST(request: NextRequest) {
       { error: "That file is not a real PDF — its contents do not start with %PDF-." },
       { status: 400 }
     );
+  }
+
+  if (isStandalone()) {
+    await query("DELETE FROM grades WHERE student_id = $1", [sid]);
+    await query("DELETE FROM attendance WHERE student_id = $1", [sid]);
+    await query("DELETE FROM lectures WHERE student_id = $1", [sid]);
+    await query("DELETE FROM books WHERE student_id = $1", [sid]);
+    const uploadedAt = await now();
+    const safeName = file.name.replace(/[^\w.\-]+/g, "_");
+    const created = await queryOne<{ id: number }>(
+      `INSERT INTO books (student_id, filename, title, pages, status, uploaded_at, progress)
+       VALUES ($1, $2, $3, 4, 'ready', $4, 'Standalone fixture course ready')
+       RETURNING id`,
+      [sid, safeName, safeName, uploadedAt]
+    );
+    await query(
+      `INSERT INTO lectures (student_id, book_id, week, title, starts_at, status)
+       SELECT $1, $2, week, title, starts_at, 'ready'
+       FROM (VALUES
+         (1, 'Evidence and Sources', TIMESTAMPTZ '2026-07-28T10:00:00Z'),
+         (2, 'Tenant Isolation', TIMESTAMPTZ '2026-08-04T10:00:00Z'),
+         (3, 'Explicit Runtime Modes', TIMESTAMPTZ '2026-08-11T10:00:00Z'),
+         (4, 'Stable Contracts', TIMESTAMPTZ '2026-08-18T10:00:00Z')
+       ) AS fixture(week, title, starts_at)`,
+      [sid, created!.id]
+    );
+    return Response.json({
+      book: await queryOne<Book>(`SELECT ${BOOK_COLUMNS} FROM books WHERE id = $1`, [
+        created!.id,
+      ]),
+      ragConfigured: true,
+      message: "Standalone upload validated; deterministic course fixture selected.",
+    });
   }
 
   if (!RAG_MCP_URL) {

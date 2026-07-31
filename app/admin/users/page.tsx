@@ -137,7 +137,7 @@ export default function AdminUsersPage() {
                   {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : "—"}
                 </TableCell>
                 <TableCell>
-                  <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
+                  <Stack direction="row" spacing={2}>
                   {user.role === "super_admin" ? (
                     "super_admin"
                   ) : (
@@ -169,7 +169,6 @@ export default function AdminUsersPage() {
                     variant="outlined"
                     size="small"
                     color={user.banned ? "success" : "error"}
-                    sx={{ ml: "auto" }}
                     onClick={() => {
                       if (user.banned) {
                         handleUnban(i);

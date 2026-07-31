@@ -9,15 +9,34 @@ import path from "path";
  * compiles down to `undefined`. Read the parsed values from here instead —
  * they are resolved at runtime.
  */
-const parsed =
-  config({ path: path.resolve(process.cwd(), "..", ".env"), quiet: true }).parsed ?? {};
+const mode = (process.env.UNIVAI_MODE ?? "integrated").trim().toLowerCase();
+if (mode === "standalone" && process.env.NODE_ENV === "production") {
+  throw new Error(
+    "UNIVAI_MODE=standalone is development-only and cannot run with NODE_ENV=production."
+  );
+}
+const envPath =
+  mode === "standalone"
+    ? path.resolve(process.cwd(), ".env.local")
+    : process.env.UNIVAI_INTEGRATION_ROOT
+      ? path.resolve(process.env.UNIVAI_INTEGRATION_ROOT, ".env")
+      : path.resolve(process.cwd(), "..", ".env");
+const parsed = config({ path: envPath, quiet: true }).parsed ?? {};
 
 function read(name: string, fallback = ""): string {
   return parsed[name] ?? process.env[name] ?? fallback;
 }
 
 export const env = {
-  DATABASE_URL: read("DATABASE_URL", "postgresql://univai:univai@localhost:5433/univai"),
+  UNIVAI_MODE: read("UNIVAI_MODE", "integrated"),
+  DATA_ROOT: read("UNIVAI_DATA_ROOT"),
+  INTEGRATION_ROOT: read("UNIVAI_INTEGRATION_ROOT"),
+  DATABASE_URL: read(
+    "DATABASE_URL",
+    mode === "standalone"
+      ? "postgresql://univai:univai@127.0.0.1:5434/univai_app_standalone"
+      : "postgresql://univai:univai@localhost:5433/univai"
+  ),
 
   // The team's RAG service (UnivAI-Agent). This app only consumes it.
   RAG_MCP_URL: read("RAG_MCP_URL"),

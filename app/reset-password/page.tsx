@@ -37,7 +37,7 @@ function ResetPasswordForm() {
     setTopLevelError(null);
     setTokenExpired(false);
 
-    const { data, error } = await authClient.resetPassword({
+    const { error } = await authClient.resetPassword({
       newPassword,
       token: token ?? "",
     });

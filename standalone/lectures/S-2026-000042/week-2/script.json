@@ -1,0 +1,9 @@
+{
+  "lectureId": "week-2",
+  "title": "Tenant Isolation",
+  "segments": [
+    {"slide": 1, "text": "Each learner owns a separate data namespace.", "citations": [{"page": 2}]},
+    {"slide": 2, "text": "Every query filters by the authenticated learner identifier.", "citations": [{"page": 2}]},
+    {"slide": 3, "text": "A second learner cannot list or retrieve the first learner's records.", "citations": [{"page": 2}]}
+  ]
+}
