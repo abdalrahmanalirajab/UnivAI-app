@@ -33,11 +33,29 @@ test("rejects a missing launch URL", () => {
   );
 });
 
-test("rejects launch URLs from another origin", () => {
+test("rebases an internal Exam service origin onto the configured public origin", () => {
+  assert.equal(
+    requireTrustedExamLaunchUrl(
+      { launch_url: `http://exam-system:3000/exam/exam-123#attempt_token=${TOKEN}` },
+      EXAM_ORIGIN
+    ),
+    `${EXAM_ORIGIN}/exam/exam-123#attempt_token=${TOKEN}`
+  );
+});
+
+test("does not preserve credentials or an invalid exam path", () => {
   assert.throws(
     () =>
       requireTrustedExamLaunchUrl(
-        { launch_url: `https://attacker.example/exam/exam-123#attempt_token=${TOKEN}` },
+        { launch_url: `http://user:password@exam-system:3000/exam/exam-123#attempt_token=${TOKEN}` },
+        EXAM_ORIGIN
+      ),
+    /untrusted launch URL/
+  );
+  assert.throws(
+    () =>
+      requireTrustedExamLaunchUrl(
+        { launch_url: `http://exam-system:3000/admin#attempt_token=${TOKEN}` },
         EXAM_ORIGIN
       ),
     /untrusted launch URL/

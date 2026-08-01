@@ -31,12 +31,7 @@ export function requireTrustedExamLaunchUrl(
     throw new Error("The exam system returned an invalid launch URL.");
   }
 
-  if (
-    launch.origin !== expectedOrigin.origin ||
-    launch.username ||
-    launch.password ||
-    !/^\/exam\/[^/]+$/.test(launch.pathname)
-  ) {
+  if (launch.username || launch.password || !/^\/exam\/[^/]+$/.test(launch.pathname)) {
     throw new Error("The exam system returned an untrusted launch URL.");
   }
 
@@ -50,5 +45,10 @@ export function requireTrustedExamLaunchUrl(
     throw new Error("The exam system did not provide a valid access token.");
   }
 
-  return launch.toString();
+  // Reverse proxies can make the Exam service describe itself with an internal
+  // origin. Never send the browser there and never trust that returned origin:
+  // rebuild the validated path and token on our configured public Exam origin.
+  const trustedLaunch = new URL(launch.pathname, expectedOrigin.origin);
+  trustedLaunch.hash = `attempt_token=${encodeURIComponent(attemptToken)}`;
+  return trustedLaunch.toString();
 }
