@@ -8,6 +8,7 @@ import { getLectures, LECTURES_DIR } from "./lectures";
 import { COURSE_SIZES, DEFAULT_SIZE, isCourseSize } from "./course-size";
 import { getSetting } from "./settings";
 import { isStandalone } from "./runtime";
+import { requireTrustedExamLaunchUrl } from "./exam-launch";
 
 /**
  * Integration with the team's exam system (UnivAI-exam_system, port 3200).
@@ -414,7 +415,7 @@ export async function startExam(
     });
     const exam = await res.json();
     if (!res.ok) throw new Error(exam.error ?? "The exam system refused to start the quiz.");
-    return `${EXAM_SYSTEM_URL}/exam/${exam._id}`;
+    return requireTrustedExamLaunchUrl(exam, EXAM_SYSTEM_URL);
   }
 
   if (!link.mid_exam_id) throw new Error("The midterm was not created yet — is the exam system running?");
@@ -425,7 +426,7 @@ export async function startExam(
   });
   const exam = await res.json();
   if (!res.ok) throw new Error(exam.error ?? "The exam system refused to start the midterm.");
-  return `${EXAM_SYSTEM_URL}/exam/${link.mid_exam_id}`;
+  return requireTrustedExamLaunchUrl(exam, EXAM_SYSTEM_URL);
 }
 
 /** Map a webhook payload back to (kind, week) using that owner's link doc. */
