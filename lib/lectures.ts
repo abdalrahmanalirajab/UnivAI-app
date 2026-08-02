@@ -76,8 +76,11 @@ function firstLectureStart(virtualNow: Date): Date {
 /**
  * How many weekly lectures the semester has, from the student's APPROVED
  * programme plan (workload.weeks_per_semester, ProgrammePlanV1) — never from
- * a fixed constant. No approved programme, or a deployment without the
- * programmes table (standalone), means there is no plan-driven schedule: 0.
+ * a fixed constant. A programme that is not yet approved is a legitimate
+ * state (the schedule is simply empty until it is); a deployment without the
+ * programmes table (standalone) has no plan at all (0). But an APPROVED
+ * programme whose plan data is missing or unusable is corruption — an
+ * explicit rejection, never a silent pass-through.
  */
 async function approvedWeekCount(sid: string): Promise<number> {
   let rows: { plan: unknown }[];
@@ -142,8 +145,53 @@ export async function rescheduleLectures(sid: string): Promise<void> {
   }
 }
 
+export type ScheduleRejection =
+  | { code: "DUPLICATE_LECTURE_WEEK"; message: string }
+  | { code: "NON_CONTIGUOUS_LECTURE_WEEKS"; message: string };
+
+/**
+ * Integrity check over one student's lecture records before they are served.
+ * Ownership is enforced by construction: the query is scoped to the caller's
+ * student id, so records belonging to any other user can never appear here
+ * (the same invariant lib/programmes.ts keeps for programmes). Duplicate
+ * (student_id, week) rows and week sequences with gaps or a missing week 1
+ * are corruption — rejected explicitly, never passed through silently.
+ * Section records are not persisted yet (SectionPackV1 is the temporary
+ * fixture contract), so they share this invariant once they are.
+ */
+export async function validateSchedule(sid: string): Promise<ScheduleRejection | null> {
+  const rows = await query<{ week: number }>(
+    "SELECT week FROM lectures WHERE student_id = $1 ORDER BY week ASC",
+    [sid]
+  );
+
+  const seen = new Set<number>();
+  for (const row of rows) {
+    if (seen.has(row.week)) {
+      return {
+        code: "DUPLICATE_LECTURE_WEEK",
+        message: `Duplicate lecture records for week ${row.week}.`,
+      };
+    }
+    seen.add(row.week);
+  }
+
+  for (let index = 0; index < rows.length; index++) {
+    if (rows[index].week !== index + 1) {
+      return {
+        code: "NON_CONTIGUOUS_LECTURE_WEEKS",
+        message: `Lecture weeks must be contiguous starting at 1; expected ${index + 1}, found ${rows[index].week}.`,
+      };
+    }
+  }
+
+  return null;
+}
+
 export async function getLectures(sid: string): Promise<Lecture[]> {
   await ensureSchedule(sid);
+  const rejection = await validateSchedule(sid);
+  if (rejection) throw new Error(`${rejection.code}: ${rejection.message}`);
   const virtualNow = await now();
 
   const rows = await query<{
