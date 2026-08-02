@@ -28,3 +28,12 @@ export type SectionPackV1 = {
   week: number;
   sections: SectionV1[];
 };
+
+/**
+ * The real, approved section records the schedule consumes today. Agent
+ * packs are not produced yet, so this stays empty: a week without an entry
+ * here never gets a section scheduled — never speculatively. When the real
+ * producer lands (or a richer demo fixture is added), extend this array
+ * without changing field names.
+ */
+export const SECTION_PACKS_V1: SectionPackV1[] = [];

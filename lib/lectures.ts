@@ -4,6 +4,11 @@ import { query } from "./db";
 import { now, MINUTE_MS } from "./clock";
 import { DATA_ROOT, LECTURES_ROOT } from "./paths";
 import type { ProgrammePlanV1 } from "@/test/fixtures/programme-plan-v1";
+import {
+  SECTION_PACKS_V1,
+  type SectionKind,
+  type SectionPackV1,
+} from "@/test/fixtures/section-pack-v1";
 
 /**
  * Lecture content is PREMADE and committed under lectures/week-N/:
@@ -29,8 +34,15 @@ export type Script = { lectureId: string; title: string; segments: Segment[] };
 /** Why a lecture cannot be opened. `null` means it can. */
 export type BlockedReason = "not_started" | "too_late" | "completed" | "missed" | null;
 
+/**
+ * Every record the schedule serves is explicitly one of these — a lecture and
+ * a section are never merged into one ambiguous kind.
+ */
+export type SessionType = "lecture" | "section";
+
 export type Lecture = {
   id: number;
+  session_type: "lecture";
   week: number;
   title: string;
   startsAt: Date;
@@ -42,6 +54,22 @@ export type Lecture = {
   joinable: boolean;
   blockedReason: BlockedReason;
   completed: boolean;
+};
+
+/**
+ * A scheduled section (tutorial/lab) that follows its lecture. Sections are
+ * produced ONLY from a real, approved SectionPack for the week — never
+ * speculatively. They are not persisted: the versioned fixture is their
+ * temporary source of truth until the Agent producer lands.
+ */
+export type Section = {
+  id: string;
+  session_type: "section";
+  week: number;
+  kind: SectionKind;
+  title: string;
+  /** Immediately after its lecture ends. */
+  startsAt: Date;
 };
 
 /**
@@ -241,6 +269,7 @@ export async function getLectures(sid: string): Promise<Lecture[]> {
 
     return {
       id: row.id,
+      session_type: "lecture",
       week: row.week,
       title: row.title,
       startsAt,
@@ -260,3 +289,37 @@ export const BLOCKED_MESSAGE: Record<NonNullable<BlockedReason>, string> = {
   missed: `You missed this lecture. The doors close ${JOIN_CUTOFF_MINUTES} minutes after it starts.`,
   completed: "You have already finished this lecture.",
 };
+
+/** The week's real, approved SectionPack — or nothing. Nothing is ever scheduled speculatively. */
+function approvedSectionPack(week: number): SectionPackV1 | null {
+  return SECTION_PACKS_V1.find((pack) => pack.week === week) ?? null;
+}
+
+/**
+ * The student's scheduled sections. A section exists ONLY when a real,
+ * approved SectionPack exists for its lecture's week (Agent-owned packs,
+ * temporarily served by the versioned fixture) — every section record starts
+ * immediately after its lecture ends. Weeks without a pack — and every week
+ * before the plan is approved — yield no section at all. Sections are not
+ * persisted, so rescheduling a lecture moves its sections with it.
+ */
+export async function getSections(sid: string): Promise<Section[]> {
+  const lectures = await getLectures(sid);
+  const sections: Section[] = [];
+  for (const lecture of lectures) {
+    const pack = approvedSectionPack(lecture.week);
+    if (!pack) continue;
+    const startsAt = new Date(lecture.endsAt.getTime());
+    for (const record of pack.sections) {
+      sections.push({
+        id: record.id,
+        session_type: "section",
+        week: record.week,
+        kind: record.kind,
+        title: record.title,
+        startsAt,
+      });
+    }
+  }
+  return sections;
+}
