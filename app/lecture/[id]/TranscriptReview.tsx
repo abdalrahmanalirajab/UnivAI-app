@@ -102,9 +102,11 @@ export default function TranscriptReview({ transcript, citations = [], onSend, o
       anchor="right"
       open={selectedCitation !== null}
       onClose={() => setSelectedCitation(null)}
-      slotProps={{ paper: { className: "drawer-paper" } }}
+      slotProps={{ paper: { className: "drawer-paper", "aria-label": "Source" } }}
     >
-      {selectedCitation ? <SourcePanel citation={selectedCitation} /> : null}
+      {selectedCitation ? (
+        <SourcePanel citation={selectedCitation} onClose={() => setSelectedCitation(null)} />
+      ) : null}
     </Drawer>
     </>
   );
