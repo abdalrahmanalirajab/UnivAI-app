@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
+import Grid from "@mui/material/Grid";
 import Stack from "@mui/material/Stack";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
@@ -133,25 +134,29 @@ export default function OutputFeedback({
         </ToggleButton>
       </ToggleButtonGroup>
 
-      <Stack direction="row" spacing={1}>
-        <ToggleButton
-          value="issue"
-          selected={issue}
-          onChange={() => setIssue((current) => !current)}
-          disabled={submitting}
-        >
-          <FlagOutlined />
-          Report an issue
-        </ToggleButton>
+      <Grid container spacing={1}>
+        <Grid>
+          <ToggleButton
+            value="issue"
+            selected={issue}
+            onChange={() => setIssue((current) => !current)}
+            disabled={submitting}
+          >
+            <FlagOutlined />
+            Report an issue
+          </ToggleButton>
+        </Grid>
 
-        <Button
-          variant="contained"
-          disabled={rating === null || submitting}
-          onClick={submit}
-        >
-          Send feedback
-        </Button>
-      </Stack>
+        <Grid>
+          <Button
+            variant="contained"
+            disabled={rating === null || submitting}
+            onClick={submit}
+          >
+            Send feedback
+          </Button>
+        </Grid>
+      </Grid>
 
       <Stack direction="row" spacing={1}>
         <Button
