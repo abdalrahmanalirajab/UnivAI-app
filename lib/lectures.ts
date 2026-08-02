@@ -137,6 +137,30 @@ async function approvedWeekCount(sid: string): Promise<number> {
   return weeks;
 }
 
+/**
+ * The plan_version of the student's CURRENT approved programme — the real
+ * version the schedule was built from. `null` when there is no approved
+ * programme yet (pre-approval or standalone); clients use it to detect that
+ * their view is behind the server's and explain it instead of silently
+ * re-fetching.
+ */
+export async function approvedPlanVersion(sid: string): Promise<number | null> {
+  let rows: { plan_version: number }[];
+  try {
+    rows = await query<{ plan_version: number }>(
+      `SELECT plan_version FROM programmes
+        WHERE student_id = $1 AND status = 'approved'
+        ORDER BY id DESC LIMIT 1`,
+      [sid]
+    );
+  } catch (error) {
+    // Older deployments (standalone) do not have the programmes table yet.
+    if ((error as { code?: string })?.code === "42P01") return null;
+    throw error;
+  }
+  return rows[0]?.plan_version ?? null;
+}
+
 /** Seed one student's schedule from the approved plan: a lecture a week from tomorrow 10:00 virtual. */
 export async function ensureSchedule(sid: string): Promise<void> {
   const weekCount = await approvedWeekCount(sid);
