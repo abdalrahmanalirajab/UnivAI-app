@@ -1,4 +1,4 @@
-import { getLectures, readScript, BLOCKED_MESSAGE } from "@/lib/lectures";
+import { getLectures, readScript, BLOCKED_MESSAGE, approvedPlanVersion } from "@/lib/lectures";
 import { getAttendance } from "@/lib/attendance";
 import { requirePreparedSourceApi } from "@/lib/session";
 
@@ -10,7 +10,11 @@ export async function GET() {
   if (gate instanceof Response) return gate;
   const sid = gate.studentId;
 
-  const [lectures, attendance] = await Promise.all([getLectures(sid), getAttendance(sid)]);
+  const [lectures, attendance, planVersion] = await Promise.all([
+    getLectures(sid),
+    getAttendance(sid),
+    approvedPlanVersion(sid),
+  ]);
 
   const detailed = await Promise.all(
     lectures.map(async (lecture) => {
@@ -41,5 +45,5 @@ export async function GET() {
     })
   );
 
-  return Response.json({ lectures: detailed });
+  return Response.json({ lectures: detailed, planVersion });
 }

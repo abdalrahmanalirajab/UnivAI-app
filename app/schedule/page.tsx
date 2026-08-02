@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
@@ -91,11 +91,19 @@ function urgency(lecture: Lecture, now: Date | null): string {
 export default function SchedulePage() {
   const [records, setRecords] = useState<ScheduleRecord[] | null>(null);
   const [selected, setSelected] = useState<Lecture | null>(null);
+  const [stale, setStale] = useState<{ from: number; to: number } | null>(null);
+  const planVersionRef = useRef<number | null>(null);
   const now = useVirtualClock();
 
   const load = useCallback(async () => {
     const res = await fetch("/api/lectures", { cache: "no-store" });
     const data = await res.json();
+    const version: number | null = data.planVersion ?? null;
+    const viewed = planVersionRef.current;
+    if (viewed !== null && version !== null && version !== viewed) {
+      setStale({ from: viewed, to: version });
+    }
+    planVersionRef.current = version;
     setRecords(data.lectures);
   }, []);
 
@@ -158,6 +166,13 @@ export default function SchedulePage() {
       {partial ? (
         <Alert severity="info">
           Generated materials are ready for {materialsReady} of {lectures.length} weeks.
+        </Alert>
+      ) : null}
+
+      {stale ? (
+        <Alert severity="warning" onClose={() => setStale(null)}>
+          A newer plan version is live — this schedule was updated from plan version {stale.from}{" "}
+          to {stale.to}.
         </Alert>
       ) : null}
 
