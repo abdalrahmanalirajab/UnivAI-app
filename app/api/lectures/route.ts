@@ -1,5 +1,6 @@
 import { getLectures, readScript, BLOCKED_MESSAGE, approvedPlanVersion } from "@/lib/lectures";
 import { getAttendance } from "@/lib/attendance";
+import { query } from "@/lib/db";
 import { requirePreparedSourceApi } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -10,10 +11,14 @@ export async function GET() {
   if (gate instanceof Response) return gate;
   const sid = gate.studentId;
 
-  const [lectures, attendance, planVersion] = await Promise.all([
+  const [lectures, attendance, planVersion, book] = await Promise.all([
     getLectures(sid),
     getAttendance(sid),
     approvedPlanVersion(sid),
+    query<{ status: string; error: string | null }>(
+      `SELECT status, error FROM books WHERE student_id = $1 ORDER BY id DESC LIMIT 1`,
+      [sid]
+    ),
   ]);
 
   const detailed = await Promise.all(
@@ -45,5 +50,9 @@ export async function GET() {
     })
   );
 
-  return Response.json({ lectures: detailed, planVersion });
+  return Response.json({
+    lectures: detailed,
+    planVersion,
+    generation: book[0] ? { status: book[0].status, error: book[0].error } : null,
+  });
 }
