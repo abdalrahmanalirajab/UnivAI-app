@@ -330,6 +330,9 @@ export default function LectureRoom({ lectureId }: Props) {
         </Typography>
         <Grid container spacing={1}>
           <Grid>
+            <Chip variant="outlined" label="lecture" />
+          </Grid>
+          <Grid>
             <Chip color={STATE_COLOR[agentState]} label={STATE_LABEL[agentState]} />
           </Grid>
           <Grid>
