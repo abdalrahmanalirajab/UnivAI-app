@@ -2,7 +2,7 @@
 
 import Chip from "@mui/material/Chip";
 import Tooltip from "@mui/material/Tooltip";
-import type { CitationV1 } from "@/test/fixtures/citation-v1";
+import { isCitationResolvable, type CitationV1 } from "@/test/fixtures/citation-v1";
 
 /**
  * Small inline marker for one citation, rendered next to generated content.
@@ -25,7 +25,7 @@ export default function CitationBubble({
   citation: CitationV1 | null;
   onOpen: (citation: CitationV1) => void;
 }) {
-  if (citation === null || citation.pages.length === 0) {
+  if (!isCitationResolvable(citation)) {
     return <Chip size="small" variant="outlined" label="Source unavailable" />;
   }
 

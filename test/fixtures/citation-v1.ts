@@ -25,3 +25,18 @@ export type CitationV1 = {
   /** Quoted excerpt. No producer exists yet — null means "source unavailable". */
   excerpt: string | null;
 };
+
+/**
+ * Rule 8: a citation is resolvable only if every page entry carries a real,
+ * valid page number (the sole producer-backed identity). Malformed entries
+ * make the citation ambiguous, so consumers render the explicit
+ * "source unavailable" state instead of guessing. Mirrors the integer
+ * checks in lib/standalone-contracts.ts `validateScript`.
+ */
+export function isCitationResolvable(citation: CitationV1 | null): citation is CitationV1 {
+  return (
+    citation !== null &&
+    citation.pages.length > 0 &&
+    citation.pages.every((entry) => Number.isInteger(entry.page) && entry.page > 0)
+  );
+}

@@ -2,7 +2,7 @@ import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
-import type { CitationV1 } from "@/test/fixtures/citation-v1";
+import { isCitationResolvable, type CitationV1 } from "@/test/fixtures/citation-v1";
 
 /**
  * Side panel showing one citation: book title, page/section, and the
@@ -17,7 +17,7 @@ import type { CitationV1 } from "@/test/fixtures/citation-v1";
  */
 
 export default function SourcePanel({ citation }: { citation: CitationV1 | null }) {
-  if (citation === null || citation.pages.length === 0) {
+  if (!isCitationResolvable(citation)) {
     return (
       <Card variant="outlined">
         <CardContent>
