@@ -31,6 +31,12 @@ import ReplayOutlined from "@mui/icons-material/ReplayOutlined";
  * missing the component renders an explicit unavailable state — it never
  * invents a value or makes a call (issue rule 8). Pass real identifiers as
  * soon as a caller can supply them.
+ *
+ * Keyboard access: every control is a native MUI button — Tab-focusable,
+ * Enter/Space activates, theme-provided focus-visible ring. MUI sets real
+ * `aria-pressed` on the toggle buttons; the thumbs group is labeled with
+ * `aria-label="Rating"`; success/error feedback renders in MUI Alerts with
+ * the default `role="alert"` so results are announced.
  */
 
 export default function OutputFeedback({
@@ -117,6 +123,7 @@ export default function OutputFeedback({
         value={rating}
         onChange={(_event, value) => setRating(value as "up" | "down" | null)}
         disabled={submitting}
+        aria-label="Rating"
       >
         <ToggleButton value="up" aria-label="Thumbs up">
           <ThumbUpOutlined />

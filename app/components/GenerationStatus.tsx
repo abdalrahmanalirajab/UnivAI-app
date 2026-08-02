@@ -12,6 +12,10 @@ import Typography from "@mui/material/Typography";
  * never rendered the same as a successful result. Any value outside the
  * known vocabulary renders an explicit "Unknown status" warning as well —
  * an unrecognized status must never read as success (issue rule 8).
+ *
+ * The status region is `role="status"`, so a state change (pending ->
+ * generating -> ready -> failed) is announced politely to assistive tech
+ * instead of changing only visually.
  */
 
 const STATUS_PRESENTATION: Record<
@@ -38,7 +42,7 @@ export default function GenerationStatus({
   const presentation = STATUS_PRESENTATION[status] ?? UNKNOWN_STATUS;
 
   return (
-    <Stack spacing={0.5}>
+    <Stack spacing={0.5} role="status">
       <Chip size="small" color={presentation.color} label={presentation.label} />
       {progress ? (
         <Typography variant="caption" color="text.secondary">
