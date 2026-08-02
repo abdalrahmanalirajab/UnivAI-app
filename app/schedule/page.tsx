@@ -2,6 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import Alert from "@mui/material/Alert";
+import AlertTitle from "@mui/material/AlertTitle";
 import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
@@ -92,6 +93,9 @@ export default function SchedulePage() {
   const [records, setRecords] = useState<ScheduleRecord[] | null>(null);
   const [selected, setSelected] = useState<Lecture | null>(null);
   const [stale, setStale] = useState<{ from: number; to: number } | null>(null);
+  const [generation, setGeneration] = useState<{ status: string; error: string | null } | null>(
+    null
+  );
   const planVersionRef = useRef<number | null>(null);
   const now = useVirtualClock();
 
@@ -104,6 +108,7 @@ export default function SchedulePage() {
       setStale({ from: viewed, to: version });
     }
     planVersionRef.current = version;
+    setGeneration(data.generation ?? null);
     setRecords(data.lectures);
   }, []);
 
@@ -140,6 +145,7 @@ export default function SchedulePage() {
 
   const materialsReady = lectures.filter((lecture) => lecture.slides > 0).length;
   const partial = materialsReady > 0 && materialsReady < lectures.length;
+  const failed = generation?.status === "failed";
 
   return (
     <Stack spacing={3}>
@@ -163,7 +169,12 @@ export default function SchedulePage() {
         </Alert>
       ) : null}
 
-      {partial ? (
+      {failed ? (
+        <Alert severity="error">
+          <AlertTitle>Course generation failed</AlertTitle>
+          {generation.error ?? "Unknown error."}
+        </Alert>
+      ) : partial ? (
         <Alert severity="info">
           Generated materials are ready for {materialsReady} of {lectures.length} weeks.
         </Alert>
