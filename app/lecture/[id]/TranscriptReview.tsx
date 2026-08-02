@@ -4,15 +4,11 @@ import { useEffect, useState } from "react";
 import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
-import Drawer from "@mui/material/Drawer";
 import Grid from "@mui/material/Grid";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import SendIcon from "@mui/icons-material/Send";
-import CitationBubble from "@/app/components/CitationBubble";
-import SourcePanel from "@/app/components/SourcePanel";
-import type { CitationV1 } from "@/test/fixtures/citation-v1";
 
 /**
  * What we heard, before it is asked.
@@ -25,14 +21,12 @@ import type { CitationV1 } from "@/test/fixtures/citation-v1";
 
 type Props = {
   transcript: string | null;
-  citations?: CitationV1[];
   onSend: (question: string) => void;
   onCancel: () => void;
 };
 
-export default function TranscriptReview({ transcript, citations = [], onSend, onCancel }: Props) {
+export default function TranscriptReview({ transcript, onSend, onCancel }: Props) {
   const [text, setText] = useState("");
-  const [selectedCitation, setSelectedCitation] = useState<CitationV1 | null>(null);
 
   useEffect(() => {
     setText(transcript ?? "");
@@ -41,8 +35,7 @@ export default function TranscriptReview({ transcript, citations = [], onSend, o
   if (transcript === null) return null;
 
   return (
-    <>
-      <Card variant="outlined">
+    <Card variant="outlined">
       <CardContent>
         <Stack spacing={2}>
           <Typography variant="overline" color="text.secondary">
@@ -84,30 +77,8 @@ export default function TranscriptReview({ transcript, citations = [], onSend, o
               </Button>
             </Grid>
           </Grid>
-
-          {citations.length ? (
-            <Grid container spacing={1}>
-              {citations.map((citation, index) => (
-                <Grid key={index}>
-                  <CitationBubble citation={citation} onOpen={setSelectedCitation} />
-                </Grid>
-              ))}
-            </Grid>
-          ) : null}
         </Stack>
       </CardContent>
     </Card>
-
-    <Drawer
-      anchor="right"
-      open={selectedCitation !== null}
-      onClose={() => setSelectedCitation(null)}
-      slotProps={{ paper: { className: "drawer-paper", "aria-label": "Source" } }}
-    >
-      {selectedCitation ? (
-        <SourcePanel citation={selectedCitation} onClose={() => setSelectedCitation(null)} />
-      ) : null}
-    </Drawer>
-    </>
   );
 }

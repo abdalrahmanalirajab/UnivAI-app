@@ -22,8 +22,7 @@ import { isCitationResolvable, type CitationV1 } from "@/test/fixtures/citation-
  * attribute to be truthful. The bubble defaults to false rather than
  * claiming an open panel it cannot see.
  *
- * Rule 8: when the citation carries no real identity (no pages — the only
- * field with a real producer today, see test/fixtures/citation-v1.ts), the
+ * Rule 8: when the citation carries no database-backed book/page identity, the
  * bubble renders an explicit "source unavailable" state instead of a
  * fabricated reference, and it is not clickable (a non-clickable Chip
  * renders a div, so it is not focusable and cannot claim to open anything).

@@ -67,6 +67,35 @@ CREATE TABLE IF NOT EXISTS qa_log (
   asked_at TIMESTAMPTZ NOT NULL,
   student_id TEXT
 );
+
+CREATE TABLE IF NOT EXISTS output_versions (
+  id BIGSERIAL PRIMARY KEY,
+  student_id TEXT NOT NULL,
+  source_qa_id BIGINT NOT NULL REFERENCES qa_log(id) ON DELETE CASCADE,
+  book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+  version INTEGER NOT NULL CHECK (version > 0),
+  trace_id TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL CHECK (status IN ('ready', 'generating', 'failed')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (student_id, source_qa_id, version)
+);
+CREATE INDEX IF NOT EXISTS output_versions_student_source_idx
+  ON output_versions(student_id, source_qa_id, version DESC);
+
+CREATE TABLE IF NOT EXISTS output_feedback (
+  id BIGSERIAL PRIMARY KEY,
+  student_id TEXT NOT NULL,
+  output_id BIGINT NOT NULL REFERENCES output_versions(id) ON DELETE CASCADE,
+  output_version TEXT NOT NULL,
+  trace_id TEXT NOT NULL,
+  rating TEXT NOT NULL CHECK (rating IN ('up', 'down')),
+  issue BOOLEAN NOT NULL DEFAULT FALSE,
+  note TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS output_feedback_student_output_idx
+  ON output_feedback(student_id, output_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 
 CREATE TABLE IF NOT EXISTS "user" (

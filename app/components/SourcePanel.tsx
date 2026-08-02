@@ -19,11 +19,9 @@ import { isCitationResolvable, type CitationV1 } from "@/test/fixtures/citation-
  * already closes on Escape and restores focus to the opening element by
  * default, so focus returns to the bubble that opened the panel.
  *
- * Rule 8: only `pages` has a real producer today (script.json segment
- * citations). `bookTitle` and `excerpt` are null until the generation
- * pipeline emits them, so each renders an explicit "…unavailable" state
- * instead of a fabricated value. A citation with no pages at all renders
- * the full source-unavailable state and nothing else.
+ * Source identity is resolved from qa_log through the owning lecture/book.
+ * A missing identity or page renders the full source-unavailable state. Older
+ * page-only rows may honestly show "Excerpt unavailable".
  */
 
 export default function SourcePanel({

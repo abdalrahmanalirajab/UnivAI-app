@@ -17,6 +17,7 @@ import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
 import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
+import Drawer from "@mui/material/Drawer";
 import Grid from "@mui/material/Grid";
 import LinearProgress from "@mui/material/LinearProgress";
 import Stack from "@mui/material/Stack";
@@ -30,6 +31,11 @@ import PanToolAltIcon from "@mui/icons-material/PanToolAlt";
 import MicMeter from "./MicMeter";
 import TranscriptReview from "./TranscriptReview";
 import OutputFeedback from "@/app/components/OutputFeedback";
+import CitationBubble from "@/app/components/CitationBubble";
+import GenerationStatus from "@/app/components/GenerationStatus";
+import SourcePanel from "@/app/components/SourcePanel";
+import type { OutputVersion } from "@/lib/feedback";
+import type { CitationV1 } from "@/test/fixtures/citation-v1";
 import { formatLateness } from "@/lib/time";
 
 /**
@@ -107,6 +113,9 @@ export default function LectureRoom({ lectureId }: Props) {
   const [title, setTitle] = useState("");
   const [attendance, setAttendance] = useState<{ status: string; lateMinutes: number } | null>(null);
   const [lastAnswer, setLastAnswer] = useState<{ question: string; answer: string; pages: number[] } | null>(null);
+  const [answerOutput, setAnswerOutput] = useState<OutputVersion | null>(null);
+  const [outputError, setOutputError] = useState<string | null>(null);
+  const [selectedCitation, setSelectedCitation] = useState<CitationV1 | null>(null);
   // What Whisper heard, waiting for the student to confirm or correct it.
   const [transcript, setTranscript] = useState<string | null>(null);
   // The raise-hand protocol: nobody unmutes unannounced. Raise your hand, the
@@ -234,6 +243,40 @@ export default function LectureRoom({ lectureId }: Props) {
       frame.src = `/slides/${sid}/week-${week}/index.html#/${slide}`;
     }
   }, [slide, week, sid]);
+
+  useEffect(() => {
+    if (!lastAnswer) {
+      setAnswerOutput(null);
+      setOutputError(null);
+      return;
+    }
+    let cancelled = false;
+    const load = async () => {
+      for (let attempt = 0; attempt < 5 && !cancelled; attempt += 1) {
+        const response = await fetch(`/api/feedback?lectureId=${lectureId}`);
+        const body = await response.json().catch(() => ({}));
+        if (response.ok && body.output) {
+          setAnswerOutput(body.output as OutputVersion);
+          setOutputError(null);
+          return;
+        }
+        if (response.status !== 404 || attempt === 4) {
+          throw new Error(body.error ?? "Could not load source metadata.");
+        }
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+    };
+    load().catch((loadError) => {
+      if (!cancelled) {
+        setOutputError(
+          loadError instanceof Error ? loadError.message : "Could not load source metadata.",
+        );
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [lastAnswer, lectureId]);
 
   async function reply(message: Record<string, unknown>) {
     await room.localParticipant.publishData(
@@ -552,23 +595,58 @@ export default function LectureRoom({ lectureId }: Props) {
                 Answer
               </Typography>
               <Typography variant="body1">{lastAnswer.answer}</Typography>
-              {lastAnswer.pages?.length ? (
+              <GenerationStatus
+                status={answerOutput?.status ?? (outputError ? "failed" : "pending")}
+                progress={
+                  answerOutput?.status === "generating"
+                    ? "Creating a new version; the previous answer remains available."
+                    : outputError
+                      ? outputError
+                      : "Loading source and output identity…"
+                }
+              />
+              {(answerOutput?.citations.length || lastAnswer.pages?.length) ? (
                 <Grid container spacing={1}>
-                  {lastAnswer.pages.map((page) => (
-                    <Grid key={page}>
-                      <Chip size="small" variant="outlined" label={`p. ${page}`} />
+                  {(answerOutput?.citations.length
+                    ? answerOutput.citations
+                    : lastAnswer.pages.map((page) => ({
+                        documentId: null,
+                        bookTitle: null,
+                        pages: [{ page }],
+                        excerpt: null,
+                      }))).map((citation, index) => (
+                    <Grid key={`${citation.documentId ?? "unknown"}-${index}`}>
+                      <CitationBubble
+                        citation={citation}
+                        expanded={selectedCitation === citation}
+                        onOpen={setSelectedCitation}
+                      />
                     </Grid>
                   ))}
                 </Grid>
               ) : null}
-              {/* No identifiers reach the client yet (the answer payload carries
-                  only question/answer/pages), so OutputFeedback renders its
-                  explicit unavailable state until they do. */}
-              <OutputFeedback />
+              <OutputFeedback
+                outputId={answerOutput?.id}
+                outputVersion={answerOutput?.output_version}
+                traceId={answerOutput?.trace_id}
+                bookId={answerOutput?.book_id}
+                onRetried={setAnswerOutput}
+              />
             </Stack>
           </CardContent>
         </Card>
       ) : null}
+
+      <Drawer
+        anchor="right"
+        open={selectedCitation !== null}
+        onClose={() => setSelectedCitation(null)}
+        slotProps={{ paper: { className: "drawer-paper", "aria-label": "Source" } }}
+      >
+        {selectedCitation ? (
+          <SourcePanel citation={selectedCitation} onClose={() => setSelectedCitation(null)} />
+        ) : null}
+      </Drawer>
 
       {/* The Lecturer's voice. autoPlay so the lecture starts by itself. */}
       <audio ref={audioRef} autoPlay />

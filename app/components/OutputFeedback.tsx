@@ -12,6 +12,7 @@ import ThumbDownOutlined from "@mui/icons-material/ThumbDownOutlined";
 import ThumbUpOutlined from "@mui/icons-material/ThumbUpOutlined";
 import FlagOutlined from "@mui/icons-material/FlagOutlined";
 import ReplayOutlined from "@mui/icons-material/ReplayOutlined";
+import type { OutputVersion } from "@/lib/feedback";
 
 /**
  * Feedback on one generated output: thumbs up/down, an issue flag, and a
@@ -22,16 +23,9 @@ import ReplayOutlined from "@mui/icons-material/ReplayOutlined";
  * { error } on 4xx, and the request body mirrors lib/feedback.ts
  * FeedbackInput exactly.
  *
- * Retry posts to the real /api/retry endpoint (3c) with the bookId of the
- * book that produced this output — response is { ok, bookId, status } on
- * 200 and { error } on 4xx.
- *
- * Identifiers are optional and default to null: no producer exists in this
- * repo yet (the generation pipeline emits no output_version/trace_id, and
- * the lecture token route returns no book_id), so when any identifier is
- * missing the component renders an explicit unavailable state — it never
- * invents a value or makes a call (issue rule 8). Pass real identifiers as
- * soon as a caller can supply them.
+ * Retry posts to /api/outputs/:outputId/retry. The route persists a new
+ * version before starting generation and returns that new identity while the
+ * previous version remains addressable.
  *
  * Keyboard access: every control is a native MUI button — Tab-focusable,
  * Enter/Space activates, theme-provided focus-visible ring. MUI sets real
@@ -41,15 +35,20 @@ import ReplayOutlined from "@mui/icons-material/ReplayOutlined";
  */
 
 export default function OutputFeedback({
+  outputId = null,
   outputVersion = null,
   traceId = null,
   bookId = null,
+  onRetried,
 }: {
+  outputId?: number | null;
   outputVersion?: string | null;
   traceId?: string | null;
   bookId?: number | null;
+  onRetried?: (output: OutputVersion) => void;
 }) {
-  const available = outputVersion !== null && traceId !== null && bookId !== null;
+  const available =
+    outputId !== null && outputVersion !== null && traceId !== null && bookId !== null;
   const [rating, setRating] = useState<"up" | "down" | null>(null);
   const [issue, setIssue] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -67,6 +66,7 @@ export default function OutputFeedback({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          output_id: outputId,
           output_version: outputVersion,
           trace_id: traceId,
           rating,
@@ -74,7 +74,7 @@ export default function OutputFeedback({
           note: null,
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? "Could not send feedback.");
       setSubmitted(true);
     } catch (err) {
@@ -89,14 +89,14 @@ export default function OutputFeedback({
     setRetrying(true);
     setError(null);
     try {
-      const res = await fetch("/api/retry", {
+      const res = await fetch(`/api/outputs/${outputId}/retry`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookId }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? "Could not retry generation.");
+      if (!data.output) throw new Error("Retry did not return a new output version.");
       setRetried(true);
+      onRetried?.(data.output as OutputVersion);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not retry generation.");
     } finally {
@@ -123,7 +123,7 @@ export default function OutputFeedback({
         exclusive
         value={rating}
         onChange={(_event, value) => setRating(value as "up" | "down" | null)}
-        disabled={submitting}
+        disabled={submitting || submitted}
         aria-label="Rating"
       >
         <ToggleButton value="up" aria-label="Thumbs up">
@@ -140,7 +140,7 @@ export default function OutputFeedback({
             value="issue"
             selected={issue}
             onChange={() => setIssue((current) => !current)}
-            disabled={submitting}
+            disabled={submitting || submitted}
           >
             <FlagOutlined />
             Report an issue
@@ -150,7 +150,7 @@ export default function OutputFeedback({
         <Grid>
           <Button
             variant="contained"
-            disabled={rating === null || submitting}
+            disabled={rating === null || submitting || submitted}
             onClick={submit}
           >
             Send feedback

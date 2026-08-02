@@ -37,5 +37,9 @@ jobs:
         run: npm run build
       - name: Test
         run: npx vitest run
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run final demo E2E
+        run: npx playwright test e2e/final-demo.spec.ts
       - name: Check whitespace
         run: git diff --check
