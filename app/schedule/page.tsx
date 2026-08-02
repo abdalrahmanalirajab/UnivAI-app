@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
@@ -13,6 +13,7 @@ import DialogTitle from "@mui/material/DialogTitle";
 import Divider from "@mui/material/Divider";
 import Grid from "@mui/material/Grid";
 import List from "@mui/material/List";
+import ListItem from "@mui/material/ListItem";
 import ListItemButton from "@mui/material/ListItemButton";
 import ListItemText from "@mui/material/ListItemText";
 import Stack from "@mui/material/Stack";
@@ -27,6 +28,8 @@ import {
 } from "@/lib/time";
 
 type Lecture = {
+  /** Set by the server; lectures whose payload predates session_type are still lectures. */
+  session_type?: "lecture";
   id: number;
   week: number;
   title: string;
@@ -40,6 +43,23 @@ type Lecture = {
   slides: number;
   attendance: { status: string; joinedAt: string | null; lateMinutes: number } | null;
 };
+
+/** A scheduled section (tutorial/lab) — appears only where a real SectionPack exists. */
+type Section = {
+  session_type: "section";
+  id: string;
+  week: number;
+  kind: string;
+  title: string;
+  /** Immediately after its lecture ends. */
+  startsAt: string;
+};
+
+type ScheduleRecord = Lecture | Section;
+
+function isSection(record: ScheduleRecord): record is Section {
+  return record.session_type === "section";
+}
 
 const STATE_COLOR = { live: "success", upcoming: "default", done: "default" } as const;
 
@@ -68,14 +88,14 @@ function urgency(lecture: Lecture, now: Date | null): string {
 }
 
 export default function SchedulePage() {
-  const [lectures, setLectures] = useState<Lecture[] | null>(null);
+  const [records, setRecords] = useState<ScheduleRecord[] | null>(null);
   const [selected, setSelected] = useState<Lecture | null>(null);
   const now = useVirtualClock();
 
   const load = useCallback(async () => {
     const res = await fetch("/api/lectures", { cache: "no-store" });
     const data = await res.json();
-    setLectures(data.lectures);
+    setRecords(data.lectures);
   }, []);
 
   useEffect(() => {
@@ -84,8 +104,9 @@ export default function SchedulePage() {
     return () => clearInterval(refresh);
   }, [load]);
 
-  if (!lectures) return <CircularProgress />;
+  if (!records) return <CircularProgress />;
 
+  const lectures = records.filter((record): record is Lecture => !isSection(record));
   const live = lectures.find((lecture) => lecture.state === "live" && lecture.joinable);
   const next = lectures.find((lecture) => lecture.state === "upcoming");
 
@@ -114,40 +135,63 @@ export default function SchedulePage() {
       <Card variant="outlined">
         <List>
           {lectures.map((lecture) => (
-            <ListItemButton key={lecture.id} onClick={() => setSelected(lecture)}>
-              <ListItemText
-                primary={`Week ${lecture.week} — ${lecture.title}`}
-                secondary={`${formatDateTime(lecture.startsAt)} · ${urgency(lecture, now)}`}
-              />
-              <Grid container spacing={1}>
-                {lecture.completed ? (
-                  <Grid>
-                    <Chip size="small" color="success" variant="outlined" label="finished" />
-                  </Grid>
-                ) : null}
-                {lecture.attendance ? (
+            <Fragment key={lecture.id}>
+              <ListItemButton onClick={() => setSelected(lecture)}>
+                <ListItemText
+                  primary={`Week ${lecture.week} — ${lecture.title}`}
+                  secondary={`${formatDateTime(lecture.startsAt)} · ${urgency(lecture, now)}`}
+                />
+                <Grid container spacing={1}>
+                  {lecture.completed ? (
+                    <Grid>
+                      <Chip size="small" color="success" variant="outlined" label="finished" />
+                    </Grid>
+                  ) : null}
+                  {lecture.attendance ? (
+                    <Grid>
+                      <Chip
+                        size="small"
+                        color={ATTENDANCE_COLOR[lecture.attendance.status] ?? "default"}
+                        label={
+                          lecture.attendance.status === "late"
+                            ? formatLateness(lecture.attendance.lateMinutes)
+                            : lecture.attendance.status.replace("_", " ")
+                        }
+                      />
+                    </Grid>
+                  ) : null}
                   <Grid>
                     <Chip
                       size="small"
-                      color={ATTENDANCE_COLOR[lecture.attendance.status] ?? "default"}
-                      label={
-                        lecture.attendance.status === "late"
-                          ? formatLateness(lecture.attendance.lateMinutes)
-                          : lecture.attendance.status.replace("_", " ")
-                      }
+                      color={STATE_COLOR[lecture.state]}
+                      variant={lecture.state === "live" ? "filled" : "outlined"}
+                      label={lecture.state}
                     />
                   </Grid>
-                ) : null}
-                <Grid>
-                  <Chip
-                    size="small"
-                    color={STATE_COLOR[lecture.state]}
-                    variant={lecture.state === "live" ? "filled" : "outlined"}
-                    label={lecture.state}
-                  />
                 </Grid>
-              </Grid>
-            </ListItemButton>
+              </ListItemButton>
+              {records
+                .filter(
+                  (record): record is Section =>
+                    isSection(record) && record.week === lecture.week
+                )
+                .map((section) => (
+                  <ListItem key={section.id}>
+                    <ListItemText
+                      primary={`Section — ${section.title}`}
+                      secondary={`${formatDateTime(section.startsAt)} · immediately after this lecture`}
+                    />
+                    <Grid container spacing={1}>
+                      <Grid>
+                        <Chip size="small" color="secondary" variant="outlined" label="section" />
+                      </Grid>
+                      <Grid>
+                        <Chip size="small" variant="outlined" label={section.kind} />
+                      </Grid>
+                    </Grid>
+                  </ListItem>
+                ))}
+            </Fragment>
           ))}
         </List>
       </Card>
