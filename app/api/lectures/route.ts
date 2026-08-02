@@ -4,7 +4,7 @@ import { requirePreparedSourceApi } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
-/** The 4-week schedule, each lecture with its slide count and attendance record. */
+/** The approved-plan schedule, each lecture with its slide count and attendance record. */
 export async function GET() {
   const gate = await requirePreparedSourceApi();
   if (gate instanceof Response) return gate;
