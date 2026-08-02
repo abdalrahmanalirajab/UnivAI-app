@@ -103,3 +103,47 @@ export const SEVEN_WEEK_PLAN_V1: ProgrammePlanV1 = {
     { document_id: 3, filename: "reference.pdf", course_ids: ["c-1", "c-2"], pages: "1–120" },
   ],
 };
+
+/**
+ * 14-week plan: exactly 14 weekly lectures (weeks 1–14) when approved — the
+ * Demo Contract's own plan: identical to test/demo-contract.e2e.ts BASE_PLAN
+ * (same courses, workload totals, source coverage and weeks_per_semester).
+ */
+export const FOURTEEN_WEEK_PLAN_V1: ProgrammePlanV1 = {
+  semesters: [
+    { id: "sem-1", name: "Semester 1", order: 1, course_ids: ["c-1", "c-2"] },
+  ],
+  courses: [
+    {
+      id: "c-1",
+      title: "Introduction to AI",
+      credits: 4,
+      lecture_hours: 30,
+      tutorial_hours: 10,
+      lab_hours: 0,
+      description: "Fundamentals of artificial intelligence.",
+    },
+    {
+      id: "c-2",
+      title: "Calculus I",
+      credits: 3,
+      lecture_hours: 20,
+      tutorial_hours: 10,
+      lab_hours: 0,
+      description: "Single-variable calculus.",
+    },
+  ],
+  prerequisites: [],
+  workload: {
+    total_credits: 7,
+    total_lecture_hours: 50,
+    total_tutorial_hours: 20,
+    total_lab_hours: 0,
+    weeks_per_semester: 14,
+  },
+  source_coverage: [
+    { document_id: 1, filename: "ai-textbook.pdf", course_ids: ["c-1"], pages: "1–350" },
+    { document_id: 2, filename: "calculus-book.pdf", course_ids: ["c-2"], pages: "1–280" },
+    { document_id: 3, filename: "reference.pdf", course_ids: ["c-1", "c-2"], pages: "1–120" },
+  ],
+};
