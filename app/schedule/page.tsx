@@ -170,7 +170,14 @@ export default function SchedulePage() {
       ) : null}
 
       {failed ? (
-        <Alert severity="error">
+        <Alert
+          severity="error"
+          action={
+            <Button component={Link} href="/upload" color="inherit" variant="outlined">
+              Upload again
+            </Button>
+          }
+        >
           <AlertTitle>Course generation failed</AlertTitle>
           {generation.error ?? "Unknown error."}
         </Alert>
