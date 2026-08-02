@@ -130,6 +130,9 @@ export default function SchedulePage() {
   const live = lectures.find((lecture) => lecture.state === "live" && lecture.joinable);
   const next = lectures.find((lecture) => lecture.state === "upcoming");
 
+  const materialsReady = lectures.filter((lecture) => lecture.slides > 0).length;
+  const partial = materialsReady > 0 && materialsReady < lectures.length;
+
   return (
     <Stack spacing={3}>
       <Typography variant="h4">Schedule</Typography>
@@ -149,6 +152,12 @@ export default function SchedulePage() {
         <Alert severity="info">
           Next lecture: week {next.week}, {formatRelative(next.startsAt, now)} (
           {formatDateTime(next.startsAt)}).
+        </Alert>
+      ) : null}
+
+      {partial ? (
+        <Alert severity="info">
+          Generated materials are ready for {materialsReady} of {lectures.length} weeks.
         </Alert>
       ) : null}
 
