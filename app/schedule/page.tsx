@@ -96,12 +96,18 @@ export default function SchedulePage() {
   const [generation, setGeneration] = useState<{ status: string; error: string | null } | null>(
     null
   );
+  const [rejected, setRejected] = useState<{ status: number; error: string } | null>(null);
   const planVersionRef = useRef<number | null>(null);
   const now = useVirtualClock();
 
   const load = useCallback(async () => {
     const res = await fetch("/api/lectures", { cache: "no-store" });
     const data = await res.json();
+    if (!res.ok) {
+      setRejected({ status: res.status, error: data.error ?? `Request failed (${res.status}).` });
+      return;
+    }
+    setRejected(null);
     const version: number | null = data.planVersion ?? null;
     const viewed = planVersionRef.current;
     if (viewed !== null && version !== null && version !== viewed) {
@@ -117,6 +123,28 @@ export default function SchedulePage() {
     const refresh = setInterval(load, 15_000);
     return () => clearInterval(refresh);
   }, [load]);
+
+  if (rejected) {
+    const unauthorized = rejected.status === 401;
+    return (
+      <Stack spacing={3}>
+        <Typography variant="h4">Schedule</Typography>
+        <Alert
+          severity="error"
+          action={
+            unauthorized ? (
+              <Button component={Link} href="/login" color="inherit" variant="outlined">
+                Sign in
+              </Button>
+            ) : null
+          }
+        >
+          <AlertTitle>{unauthorized ? "Unauthorized" : "Schedule unavailable"}</AlertTitle>
+          {rejected.error}
+        </Alert>
+      </Stack>
+    );
+  }
 
   if (!records) return <CircularProgress />;
 
