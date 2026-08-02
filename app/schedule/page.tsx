@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useState } from "react";
 import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
+import CardContent from "@mui/material/CardContent";
 import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
 import Dialog from "@mui/material/Dialog";
@@ -105,6 +106,25 @@ export default function SchedulePage() {
   }, [load]);
 
   if (!records) return <CircularProgress />;
+
+  if (records.length === 0) {
+    return (
+      <Stack spacing={3}>
+        <Typography variant="h4">Schedule</Typography>
+        <Card variant="outlined">
+          <CardContent>
+            <Stack spacing={1}>
+              <Typography variant="h6">No schedule yet</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Your schedule stays empty until your programme is approved — lectures will appear
+                here once they are scheduled from the approved plan.
+              </Typography>
+            </Stack>
+          </CardContent>
+        </Card>
+      </Stack>
+    );
+  }
 
   const lectures = records.filter((record): record is Lecture => !isSection(record));
   const live = lectures.find((lecture) => lecture.state === "live" && lecture.joinable);
