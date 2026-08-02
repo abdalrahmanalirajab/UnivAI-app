@@ -255,7 +255,7 @@ export default function BooksPage() {
       ) : (
         <Stack spacing={3}>
           <Typography variant="body1" color="text.secondary">
-            Choose one textbook to begin. We will prepare your first four weeks.
+            Choose one textbook to begin. We will prepare your course.
           </Typography>
 
           <Card variant="outlined">
