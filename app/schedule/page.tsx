@@ -97,11 +97,19 @@ export default function SchedulePage() {
     null
   );
   const [rejected, setRejected] = useState<{ status: number; error: string } | null>(null);
+  const [offline, setOffline] = useState(false);
   const planVersionRef = useRef<number | null>(null);
   const now = useVirtualClock();
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/lectures", { cache: "no-store" });
+    let res: Response;
+    try {
+      res = await fetch("/api/lectures", { cache: "no-store" });
+    } catch {
+      setOffline(true);
+      return;
+    }
+    setOffline(false);
     const data = await res.json();
     if (!res.ok) {
       setRejected({ status: res.status, error: data.error ?? `Request failed (${res.status}).` });
@@ -123,6 +131,26 @@ export default function SchedulePage() {
     const refresh = setInterval(load, 15_000);
     return () => clearInterval(refresh);
   }, [load]);
+
+  if (offline) {
+    return (
+      <Stack spacing={3}>
+        <Typography variant="h4">Schedule</Typography>
+        <Alert
+          severity="warning"
+          action={
+            <Button variant="outlined" color="inherit" onClick={load}>
+              Retry
+            </Button>
+          }
+        >
+          <AlertTitle>No connection</AlertTitle>
+          You appear to be offline. The schedule will load automatically once the connection
+          returns.
+        </Alert>
+      </Stack>
+    );
+  }
 
   if (rejected) {
     const unauthorized = rejected.status === 401;
