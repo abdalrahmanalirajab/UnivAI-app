@@ -31,9 +31,25 @@ export type SectionPackV1 = {
 
 /**
  * The real, approved section records the schedule consumes today. Agent
- * packs are not produced yet, so this stays empty: a week without an entry
- * here never gets a section scheduled — never speculatively. When the real
- * producer lands (or a richer demo fixture is added), extend this array
+ * packs are not produced yet, so the 6b richer demo fixture stands in: the
+ * 7-week Demo Contract plan (SEVEN_WEEK_PLAN_V1) pairs with two tutorial
+ * packs here — week 1 (the e2e spec advances virtual time through lecture 1
+ * and its section) and week 5 (mid-semester, this fixture's own contract).
+ * A week without an entry here never gets a section scheduled — never
+ * speculatively. When the real producer lands, extend/replace this array
  * without changing field names.
  */
-export const SECTION_PACKS_V1: SectionPackV1[] = [];
+export const SECTION_PACKS_V1: SectionPackV1[] = [
+  {
+    week: 1,
+    sections: [
+      { id: "w1-tutorial", week: 1, kind: "tutorial", title: "Introduction to AI — Tutorial" },
+    ],
+  },
+  {
+    week: 5,
+    sections: [
+      { id: "w5-tutorial", week: 5, kind: "tutorial", title: "Calculus I — Tutorial" },
+    ],
+  },
+];
