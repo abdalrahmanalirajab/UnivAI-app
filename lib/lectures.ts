@@ -3,6 +3,7 @@ import path from "path";
 import { query } from "./db";
 import { now, MINUTE_MS } from "./clock";
 import { DATA_ROOT, LECTURES_ROOT } from "./paths";
+import type { ProgrammePlanV1 } from "@/test/fixtures/programme-plan-v1";
 
 /**
  * Lecture content is PREMADE and committed under lectures/week-N/:
@@ -13,7 +14,6 @@ import { DATA_ROOT, LECTURES_ROOT } from "./paths";
 
 export const REPO_ROOT = DATA_ROOT;
 export const LECTURES_DIR = LECTURES_ROOT;
-export const WEEKS = 4;
 
 /** How long a lecture is "on" for. */
 export const LECTURE_WINDOW_MINUTES = 60;
@@ -73,17 +73,47 @@ function firstLectureStart(virtualNow: Date): Date {
   return start;
 }
 
-/** Seed one student's 4-week schedule: a lecture a week from tomorrow 10:00 virtual. */
+/**
+ * How many weekly lectures the semester has, from the student's APPROVED
+ * programme plan (workload.weeks_per_semester, ProgrammePlanV1) — never from
+ * a fixed constant. No approved programme, or a deployment without the
+ * programmes table (standalone), means there is no plan-driven schedule: 0.
+ */
+async function approvedWeekCount(sid: string): Promise<number> {
+  let rows: { plan: unknown }[];
+  try {
+    rows = await query<{ plan: unknown }>(
+      `SELECT plan FROM programmes
+        WHERE student_id = $1 AND status = 'approved'
+        ORDER BY id DESC LIMIT 1`,
+      [sid]
+    );
+  } catch (error) {
+    // Older deployments (standalone) do not have the programmes table yet.
+    // Mirrors the 42P01 handling in lib/onboarding.ts.
+    if ((error as { code?: string })?.code === "42P01") return 0;
+    throw error;
+  }
+  const plan = rows[0]?.plan as Partial<ProgrammePlanV1> | undefined;
+  const weeks = plan?.workload?.weeks_per_semester;
+  if (typeof weeks !== "number" || !Number.isInteger(weeks) || weeks < 1) {
+    throw new Error(`Approved programme for ${sid} has no valid weeks_per_semester.`);
+  }
+  return weeks;
+}
+
+/** Seed one student's schedule from the approved plan: a lecture a week from tomorrow 10:00 virtual. */
 export async function ensureSchedule(sid: string): Promise<void> {
+  const weekCount = await approvedWeekCount(sid);
   const existing = await query<{ count: string }>(
     "SELECT COUNT(*)::text AS count FROM lectures WHERE student_id = $1",
     [sid]
   );
-  if (Number(existing[0]?.count ?? 0) >= WEEKS) return;
+  if (Number(existing[0]?.count ?? 0) >= weekCount) return;
 
   const start = firstLectureStart(await now());
 
-  for (let week = 1; week <= WEEKS; week++) {
+  for (let week = 1; week <= weekCount; week++) {
     const script = await readScript(sid, week);
     const startsAt = new Date(start.getTime() + (week - 1) * WEEK_MS);
     await query(
@@ -100,8 +130,9 @@ export async function ensureSchedule(sid: string): Promise<void> {
  * lecture rows and their generated content stay.
  */
 export async function rescheduleLectures(sid: string): Promise<void> {
+  const weekCount = await approvedWeekCount(sid);
   const start = firstLectureStart(await now());
-  for (let week = 1; week <= WEEKS; week++) {
+  for (let week = 1; week <= weekCount; week++) {
     const startsAt = new Date(start.getTime() + (week - 1) * WEEK_MS);
     await query("UPDATE lectures SET starts_at = $1 WHERE week = $2 AND student_id = $3", [
       startsAt,
