@@ -6,7 +6,6 @@ import Button from "@mui/material/Button";
 import Stack from "@mui/material/Stack";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
-import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import ThumbDownOutlined from "@mui/icons-material/ThumbDownOutlined";
 import ThumbUpOutlined from "@mui/icons-material/ThumbUpOutlined";
@@ -22,24 +21,46 @@ import ReplayOutlined from "@mui/icons-material/ReplayOutlined";
  * { error } on 4xx, and the request body mirrors lib/feedback.ts
  * FeedbackInput exactly.
  *
- * Retry note: the retry endpoint (3c) does not exist in this repo yet —
- * app/api/ contains no retry route — so the retry button renders an
- * explicit disabled "Retry unavailable" state instead of calling an
- * invented URL or faking a response.
+ * Retry posts to the real /api/retry endpoint (3c) with the bookId of the
+ * book that produced this output — response is { ok, bookId, status } on
+ * 200 and { error } on 4xx.
  */
 
 export default function OutputFeedback({
   outputVersion,
   traceId,
+  bookId,
 }: {
   outputVersion: string;
   traceId: string;
+  bookId: number;
 }) {
   const [rating, setRating] = useState<"up" | "down" | null>(null);
   const [issue, setIssue] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [retried, setRetried] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  async function retry() {
+    setRetrying(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/retry", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not retry generation.");
+      setRetried(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not retry generation.");
+    } finally {
+      setRetrying(false);
+    }
+  }
 
   async function submit() {
     if (rating === null) return;
@@ -107,16 +128,22 @@ export default function OutputFeedback({
         </Button>
       </Stack>
 
-      <Tooltip title="The retry endpoint does not exist yet.">
-        <span>
-          <Button variant="outlined" startIcon={<ReplayOutlined />} disabled>
-            Retry unavailable
-          </Button>
-        </span>
-      </Tooltip>
+      <Stack direction="row" spacing={1}>
+        <Button
+          variant="outlined"
+          startIcon={<ReplayOutlined />}
+          disabled={retrying || retried}
+          onClick={retry}
+        >
+          {retried ? "Retry started" : "Retry"}
+        </Button>
+      </Stack>
 
       {submitted ? (
         <Alert severity="success">Thanks — feedback sent.</Alert>
+      ) : null}
+      {retried ? (
+        <Alert severity="info">Retry started — the course is being regenerated.</Alert>
       ) : null}
       {error ? <Alert severity="error">{error}</Alert> : null}
     </Stack>
