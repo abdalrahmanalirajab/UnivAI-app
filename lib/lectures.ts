@@ -201,6 +201,25 @@ export async function rescheduleLectures(sid: string): Promise<void> {
   }
 }
 
+/**
+ * Whether the student's current plan version has already started, by the
+ * semester's own anchor: a plan version is started once virtual time has
+ * reached its first scheduled lecture's start (the fresh-semester anchor
+ * from firstLectureStart — week 1 begins the plan, and only from then can
+ * attendance be stamped). An empty schedule (no approved plan yet) has not
+ * started. Anything that would rewrite attendance/history for a started
+ * plan must be refused at the call site, never silently no-oped.
+ */
+export async function semesterHasStarted(sid: string): Promise<boolean> {
+  const virtualNow = await now();
+  const rows = await query<{ starts_at: Date }>(
+    "SELECT MIN(starts_at) AS starts_at FROM lectures WHERE student_id = $1",
+    [sid]
+  );
+  const first = rows[0]?.starts_at;
+  return Boolean(first && virtualNow.getTime() >= new Date(first).getTime());
+}
+
 export type ScheduleRejection =
   | { code: "DUPLICATE_LECTURE_WEEK"; message: string }
   | { code: "NON_CONTIGUOUS_LECTURE_WEEKS"; message: string };

@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { query, queryOne } from "@/lib/db";
-import { rescheduleLectures } from "@/lib/lectures";
+import { rescheduleLectures, semesterHasStarted } from "@/lib/lectures";
 import { resetExamWorld } from "@/lib/exams";
 import { requireAdminApi } from "@/lib/session";
 
@@ -39,6 +39,22 @@ export async function POST(request: NextRequest) {
   );
   if (!target?.exists) {
     return Response.json({ error: "No such student." }, { status: 404 });
+  }
+
+  // A started plan's attendance and history are immutable: once virtual time
+  // has reached the first lecture, wiping attendance/grades/QA and moving the
+  // lecture times would rewrite history that already happened. Rejected
+  // explicitly — never a silent no-op.
+  const started = await semesterHasStarted(sid);
+  if (started) {
+    return Response.json(
+      {
+        error:
+          "This student's plan has already started — attendance and history cannot be rewritten.",
+        code: "PLAN_ALREADY_STARTED",
+      },
+      { status: 409 }
+    );
   }
 
   await query("DELETE FROM attendance WHERE student_id = $1", [sid]);
