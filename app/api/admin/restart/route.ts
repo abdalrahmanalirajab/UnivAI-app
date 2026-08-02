@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { query } from "@/lib/db";
+import { query, queryOne } from "@/lib/db";
 import { rescheduleLectures } from "@/lib/lectures";
 import { resetExamWorld } from "@/lib/exams";
 import { requireAdminApi } from "@/lib/session";
@@ -21,7 +21,9 @@ export async function POST(request: NextRequest) {
   if (gate instanceof Response) return gate;
 
   // A restart is per-student — wiping globally would destroy every learner's
-  // progress. The admin panel must say which student (their studentId).
+  // progress. The admin panel must say which student (their studentId), and
+  // the id is re-verified against the user table server-side: an admin action
+  // never wipes rows for a client-supplied id that does not exist here.
   const body = await request.json().catch(() => ({}));
   const sid = body?.sid as string | undefined;
   if (!sid) {
@@ -29,6 +31,14 @@ export async function POST(request: NextRequest) {
       { error: "sid is required — a restart targets one student's semester." },
       { status: 400 }
     );
+  }
+
+  const target = await queryOne<{ exists: boolean }>(
+    `SELECT EXISTS(SELECT 1 FROM "user" WHERE "studentId" = $1) AS exists`,
+    [sid]
+  );
+  if (!target?.exists) {
+    return Response.json({ error: "No such student." }, { status: 404 });
   }
 
   await query("DELETE FROM attendance WHERE student_id = $1", [sid]);
