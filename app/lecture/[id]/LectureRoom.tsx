@@ -29,6 +29,7 @@ import MicOffIcon from "@mui/icons-material/MicOff";
 import PanToolAltIcon from "@mui/icons-material/PanToolAlt";
 import MicMeter from "./MicMeter";
 import TranscriptReview from "./TranscriptReview";
+import OutputFeedback from "@/app/components/OutputFeedback";
 import { formatLateness } from "@/lib/time";
 
 /**
@@ -560,6 +561,10 @@ export default function LectureRoom({ lectureId }: Props) {
                   ))}
                 </Grid>
               ) : null}
+              {/* No identifiers reach the client yet (the answer payload carries
+                  only question/answer/pages), so OutputFeedback renders its
+                  explicit unavailable state until they do. */}
+              <OutputFeedback />
             </Stack>
           </CardContent>
         </Card>

@@ -24,17 +24,25 @@ import ReplayOutlined from "@mui/icons-material/ReplayOutlined";
  * Retry posts to the real /api/retry endpoint (3c) with the bookId of the
  * book that produced this output — response is { ok, bookId, status } on
  * 200 and { error } on 4xx.
+ *
+ * Identifiers are optional and default to null: no producer exists in this
+ * repo yet (the generation pipeline emits no output_version/trace_id, and
+ * the lecture token route returns no book_id), so when any identifier is
+ * missing the component renders an explicit unavailable state — it never
+ * invents a value or makes a call (issue rule 8). Pass real identifiers as
+ * soon as a caller can supply them.
  */
 
 export default function OutputFeedback({
-  outputVersion,
-  traceId,
-  bookId,
+  outputVersion = null,
+  traceId = null,
+  bookId = null,
 }: {
-  outputVersion: string;
-  traceId: string;
-  bookId: number;
+  outputVersion?: string | null;
+  traceId?: string | null;
+  bookId?: number | null;
 }) {
+  const available = outputVersion !== null && traceId !== null && bookId !== null;
   const [rating, setRating] = useState<"up" | "down" | null>(null);
   const [issue, setIssue] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -43,27 +51,8 @@ export default function OutputFeedback({
   const [retried, setRetried] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function retry() {
-    setRetrying(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/retry", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookId }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Could not retry generation.");
-      setRetried(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not retry generation.");
-    } finally {
-      setRetrying(false);
-    }
-  }
-
   async function submit() {
-    if (rating === null) return;
+    if (!available || rating === null) return;
     setSubmitting(true);
     setError(null);
     try {
@@ -86,6 +75,35 @@ export default function OutputFeedback({
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function retry() {
+    if (!available) return;
+    setRetrying(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/retry", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not retry generation.");
+      setRetried(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not retry generation.");
+    } finally {
+      setRetrying(false);
+    }
+  }
+
+  if (!available) {
+    return (
+      <Typography variant="body2" color="text.secondary">
+        Feedback and retry are unavailable — this output has no recorded
+        identifiers yet.
+      </Typography>
+    );
   }
 
   return (
