@@ -9,21 +9,34 @@ import { isCitationResolvable, type CitationV1 } from "@/test/fixtures/citation-
  *
  * The bubble stays dumb: it shows the compact page reference and hands the
  * full citation to the parent through onOpen, so the parent can compose
- * SourcePanel around it. SourcePanel is a separate component of this issue —
- * it is not imported here because it does not exist yet.
+ * SourcePanel around it.
+ *
+ * Keyboard access: a clickable Chip renders as a native ButtonBase
+ * (node_modules/@mui/material/Chip — `component = clickable || onDelete ?
+ * ButtonBase : 'div'`), so the bubble is Tab-focusable and opens with Enter
+ * or Space, and the app's theme-provided focus-visible ring
+ * (app/theme.ts `:focus-visible`) applies with no custom styling.
+ *
+ * `expanded` drives aria-expanded: the open state lives in the parent (the
+ * component that composes SourcePanel), so the parent must pass it for the
+ * attribute to be truthful. The bubble defaults to false rather than
+ * claiming an open panel it cannot see.
  *
  * Rule 8: when the citation carries no real identity (no pages — the only
  * field with a real producer today, see test/fixtures/citation-v1.ts), the
  * bubble renders an explicit "source unavailable" state instead of a
- * fabricated reference, and it is not clickable.
+ * fabricated reference, and it is not clickable (a non-clickable Chip
+ * renders a div, so it is not focusable and cannot claim to open anything).
  */
 
 export default function CitationBubble({
   citation,
   onOpen,
+  expanded = false,
 }: {
   citation: CitationV1 | null;
   onOpen: (citation: CitationV1) => void;
+  expanded?: boolean;
 }) {
   if (!isCitationResolvable(citation)) {
     return <Chip size="small" variant="outlined" label="Source unavailable" />;
@@ -43,6 +56,7 @@ export default function CitationBubble({
         clickable
         onClick={() => onOpen(citation)}
         aria-label={`Open source ${reference}`}
+        aria-expanded={expanded}
       />
     </Tooltip>
   );
