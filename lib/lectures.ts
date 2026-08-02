@@ -97,6 +97,10 @@ async function approvedWeekCount(sid: string): Promise<number> {
     if ((error as { code?: string })?.code === "42P01") return 0;
     throw error;
   }
+  // No approved programme at all: a legitimate pre-approval state — the
+  // schedule stays empty until one is approved. Only an APPROVED programme
+  // with unusable plan data is corruption.
+  if (rows.length === 0) return 0;
   const plan = rows[0]?.plan as Partial<ProgrammePlanV1> | undefined;
   const weeks = plan?.workload?.weeks_per_semester;
   if (typeof weeks !== "number" || !Number.isInteger(weeks) || weeks < 1) {
