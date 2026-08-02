@@ -6,10 +6,17 @@ import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
 import Chip from "@mui/material/Chip";
+import Drawer from "@mui/material/Drawer";
 import Grid from "@mui/material/Grid";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
+import CitationBubble from "@/app/components/CitationBubble";
+import GenerationStatus from "@/app/components/GenerationStatus";
+import OutputFeedback from "@/app/components/OutputFeedback";
+import SourcePanel from "@/app/components/SourcePanel";
+import type { OutputVersion } from "@/lib/feedback";
+import type { CitationV1 } from "@/test/fixtures/citation-v1";
 
 const segments = [
   "Reliable answers cite the supplied learning material.",
@@ -34,6 +41,8 @@ export default function StandaloneLectureRoom({ lectureId }: { lectureId: number
   const [question, setQuestion] = useState("");
   const [transcript, setTranscript] = useState<string | null>(null);
   const [answer, setAnswer] = useState<string | null>(null);
+  const [output, setOutput] = useState<OutputVersion | null>(null);
+  const [selectedCitation, setSelectedCitation] = useState<CitationV1 | null>(null);
 
   useEffect(() => {
     const preparing = setTimeout(() => setState("preparing"), 100);
@@ -69,6 +78,25 @@ export default function StandaloneLectureRoom({ lectureId }: { lectureId: number
           ? "Tenant filtering keeps each learner's material separate. See page 2."
           : "That is not covered in the standalone learning material."
       );
+      setOutput({
+        id: 1,
+        source_qa_id: 1,
+        output_version: "1",
+        trace_id: "standalone-qa-1-v1",
+        book_id: 4200,
+        status: "ready",
+        citations: known
+          ? [
+              {
+                documentId: 4200,
+                bookTitle: "Project-authored Standalone Course",
+                pages: [{ page: 2 }],
+                excerpt: segments[1],
+              },
+            ]
+          : [],
+        created_at: "2026-07-28T10:30:00.000Z",
+      });
       setHand(false);
       setTranscript(null);
       setState("lecturing");
@@ -120,11 +148,41 @@ export default function StandaloneLectureRoom({ lectureId }: { lectureId: number
                 <Button variant="contained" onClick={sendQuestion}>Send question</Button>
               </>
             ) : null}
-            {answer ? <Alert severity="info">{answer}</Alert> : null}
+            {answer ? (
+              <Stack spacing={2}>
+                <Alert severity="info">{answer}</Alert>
+                <GenerationStatus status={output?.status ?? "pending"} />
+                {output?.citations.map((citation) => (
+                  <CitationBubble
+                    key={`${citation.documentId}-${citation.pages[0]?.page}`}
+                    citation={citation}
+                    expanded={selectedCitation === citation}
+                    onOpen={setSelectedCitation}
+                  />
+                ))}
+                <OutputFeedback
+                  outputId={output?.id}
+                  outputVersion={output?.output_version}
+                  traceId={output?.trace_id}
+                  bookId={output?.book_id}
+                  onRetried={setOutput}
+                />
+              </Stack>
+            ) : null}
             <Button variant="outlined" onClick={() => setState("ended")}>Complete lecture</Button>
           </Stack>
         </CardContent>
       </Card>
+      <Drawer
+        anchor="right"
+        open={selectedCitation !== null}
+        onClose={() => setSelectedCitation(null)}
+        slotProps={{ paper: { className: "drawer-paper", "aria-label": "Source" } }}
+      >
+        {selectedCitation ? (
+          <SourcePanel citation={selectedCitation} onClose={() => setSelectedCitation(null)} />
+        ) : null}
+      </Drawer>
     </Stack>
   );
 }

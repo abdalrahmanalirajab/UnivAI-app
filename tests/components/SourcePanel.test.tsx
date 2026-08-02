@@ -37,13 +37,16 @@ describe("SourcePanel — real citation", () => {
     expect(screen.getByText("pp. 12, 14, 15")).toBeTruthy();
   });
 
-  it("renders the explicit unavailable fallbacks for null book title and excerpt", () => {
-    render(<SourcePanel citation={citation({ bookTitle: null, excerpt: null })} />);
+  it("rejects a citation without a database-backed source identity", () => {
+    render(<SourcePanel citation={citation({ documentId: null, bookTitle: null })} />);
+    expect(screen.getByText(/source unavailable/i)).toBeTruthy();
+    expect(screen.queryByText("p. 12")).toBeNull();
+  });
 
-    expect(screen.getByText("Book title unavailable")).toBeTruthy();
+  it("shows an honest fallback when the source excerpt is absent", () => {
+    render(<SourcePanel citation={citation({ excerpt: null })} />);
+    expect(screen.getByText("Introduction to Algorithms")).toBeTruthy();
     expect(screen.getByText("Excerpt unavailable")).toBeTruthy();
-    // The real page identity still renders — it is the only producer-backed field.
-    expect(screen.getByText("p. 12")).toBeTruthy();
   });
 
   it("renders the close control only when onClose is provided", () => {

@@ -19,8 +19,7 @@ export function proxy(req: NextRequest) {
   const hasSession = Boolean(getSessionCookie(req));
   const standaloneDevPage =
     process.env.UNIVAI_MODE === "standalone" &&
-    process.env.NODE_ENV !== "production" &&
-    pathname === "/dev/scenarios";
+    (pathname === "/dev/scenarios" || pathname.startsWith("/lecture/"));
 
   if (hasSession && (pathname === "/login" || pathname === "/register")) {
     return NextResponse.redirect(new URL("/start", req.url));

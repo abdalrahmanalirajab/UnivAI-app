@@ -5,12 +5,10 @@
  * and SourcePanel next to generated output. Swap for real generation-pipeline
  * data later without changing field names.
  *
- * Only `pages` has a real producer in this repo today: the per-segment
- * `citations: { page: number }[]` from script.json (lib/lectures.ts `Segment`,
- * validated by lib/standalone-contracts.ts `validateScript`) and the
- * `qa_log.citations` JSONB column. `documentId`, `bookTitle` and `excerpt`
- * have no producer yet — they are declared nullable so consumers render the
- * explicit "source unavailable" state instead of guessing (issue rule 8).
+ * The App resolves page citations through qa_log -> lectures -> books. A
+ * source is actionable only when that database-backed document identity,
+ * title and page are all present. Excerpts remain nullable because older
+ * qa_log rows contain page-only citations.
  *
  * Schema version: 1.0.0
  */
@@ -36,6 +34,10 @@ export type CitationV1 = {
 export function isCitationResolvable(citation: CitationV1 | null): citation is CitationV1 {
   return (
     citation !== null &&
+    Number.isInteger(citation.documentId) &&
+    Number(citation.documentId) > 0 &&
+    typeof citation.bookTitle === "string" &&
+    citation.bookTitle.trim().length > 0 &&
     citation.pages.length > 0 &&
     citation.pages.every((entry) => Number.isInteger(entry.page) && entry.page > 0)
   );

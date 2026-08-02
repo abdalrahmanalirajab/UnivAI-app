@@ -2,6 +2,9 @@ INSERT INTO settings(key, value) VALUES ('course_size', 'XS')
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
 
 DELETE FROM attendance WHERE student_id = 'S-2026-000042';
+DELETE FROM output_feedback WHERE student_id = 'S-2026-000042';
+DELETE FROM output_versions WHERE student_id = 'S-2026-000042';
+DELETE FROM qa_log WHERE student_id = 'S-2026-000042';
 DELETE FROM lectures WHERE student_id = 'S-2026-000042';
 DELETE FROM grades WHERE student_id = 'S-2026-000042';
 DELETE FROM books WHERE student_id = 'S-2026-000042';
@@ -31,6 +34,18 @@ ON CONFLICT (student_id, week) DO UPDATE SET
   title = EXCLUDED.title,
   starts_at = EXCLUDED.starts_at,
   status = EXCLUDED.status;
+
+INSERT INTO qa_log(
+  lecture_id, question, answer, citations, model_used, asked_at, student_id
+) VALUES (
+  4211,
+  'What protects each learner''s material?',
+  'Tenant filtering keeps each learner''s material separate.',
+  '[{"page":2,"excerpt":"Tenant filtering keeps each learner''s records separate."}]',
+  'standalone-fixture',
+  '2026-07-28T10:30:00Z',
+  'S-2026-000042'
+);
 
 INSERT INTO attendance(lecture_id, joined_at, status, late_minutes, completed_at, student_id)
 VALUES (

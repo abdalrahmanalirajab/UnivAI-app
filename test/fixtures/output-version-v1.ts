@@ -2,17 +2,11 @@
  * Output version v1 — Day-1 fixture.
  *
  * Temporary source of truth for the versioned-output shape that a retry
- * (app/api/retry/route.ts) produces and feedback (lib/feedback.ts) links to.
+ * (app/api/outputs/[outputId]/retry/route.ts) produces and feedback
+ * (lib/feedback.ts) links to.
  * Swap for real generation-pipeline data later without changing field names.
  *
- * Field-name note (issue 0g): no output_version/trace_id shape exists in this
- * repo's generation path — grep across lib/ and app/ returns zero producers —
- * so the names are taken verbatim from the issue contract and from the
- * feedback columns in lib/feedback.ts. `status` mirrors the real generation
- * vocabulary (books.status literals), and `pages` mirrors the real citation
- * shape: script.json `citations: { page: number }[]` (lib/lectures.ts
- * `Segment`, validated by lib/standalone-contracts.ts `validateScript`) and
- * `qa_log.citations` JSONB.
+ * Field names match the persisted output_versions contract in lib/feedback.ts.
  *
  * Schema version: 1.0.0
  */

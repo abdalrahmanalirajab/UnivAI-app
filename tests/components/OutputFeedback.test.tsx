@@ -6,6 +6,7 @@ import OutputFeedback from "@/app/components/OutputFeedback";
 const OUTPUT_VERSION = "v2.3.1";
 const TRACE_ID = "trace-xyz-789";
 const BOOK_ID = 42;
+const OUTPUT_ID = 7;
 
 function mockFetchEndpoint(handler: (url: string, options: RequestInit) => unknown) {
   const fetchMock = vi.fn(async (url: string, options: RequestInit) => {
@@ -20,6 +21,7 @@ function assertFeedbackBody(call: [string, RequestInit]) {
   expect(url).toBe("/api/feedback");
   expect(options.method).toBe("POST");
   expect(JSON.parse(options.body as string)).toEqual({
+    output_id: OUTPUT_ID,
     output_version: OUTPUT_VERSION,
     trace_id: TRACE_ID,
     rating: "up",
@@ -37,7 +39,7 @@ describe("OutputFeedback — thumbs up", () => {
 
   it("sends output_version and trace_id with rating 'up' on send", async () => {
     const user = userEvent.setup();
-    render(<OutputFeedback outputVersion={OUTPUT_VERSION} traceId={TRACE_ID} bookId={BOOK_ID} />);
+    render(<OutputFeedback outputId={OUTPUT_ID} outputVersion={OUTPUT_VERSION} traceId={TRACE_ID} bookId={BOOK_ID} />);
 
     await user.click(screen.getByRole("button", { name: "Thumbs up" }));
     await user.click(screen.getByRole("button", { name: "Send feedback" }));
@@ -48,7 +50,7 @@ describe("OutputFeedback — thumbs up", () => {
 
   it("shows the success alert when the feedback request succeeds", async () => {
     const user = userEvent.setup();
-    render(<OutputFeedback outputVersion={OUTPUT_VERSION} traceId={TRACE_ID} bookId={BOOK_ID} />);
+    render(<OutputFeedback outputId={OUTPUT_ID} outputVersion={OUTPUT_VERSION} traceId={TRACE_ID} bookId={BOOK_ID} />);
 
     await user.click(screen.getByRole("button", { name: "Thumbs up" }));
     await user.click(screen.getByRole("button", { name: "Send feedback" }));
@@ -61,7 +63,7 @@ describe("OutputFeedback — thumbs down", () => {
   it("sends output_version and trace_id with rating 'down' on send", async () => {
     const fetchMock = mockFetchEndpoint(() => ({ feedback: { id: 2 } }));
     const user = userEvent.setup();
-    render(<OutputFeedback outputVersion={OUTPUT_VERSION} traceId={TRACE_ID} bookId={BOOK_ID} />);
+    render(<OutputFeedback outputId={OUTPUT_ID} outputVersion={OUTPUT_VERSION} traceId={TRACE_ID} bookId={BOOK_ID} />);
 
     await user.click(screen.getByRole("button", { name: "Thumbs down" }));
     await user.click(screen.getByRole("button", { name: "Send feedback" }));
@@ -71,6 +73,7 @@ describe("OutputFeedback — thumbs down", () => {
     expect(url).toBe("/api/feedback");
     expect(options.method).toBe("POST");
     expect(JSON.parse(options.body as string)).toEqual({
+      output_id: OUTPUT_ID,
       output_version: OUTPUT_VERSION,
       trace_id: TRACE_ID,
       rating: "down",
@@ -84,7 +87,7 @@ describe("OutputFeedback — issue flag", () => {
   it("sends output_version and trace_id with issue true when the flag is set", async () => {
     const fetchMock = mockFetchEndpoint(() => ({ feedback: { id: 3 } }));
     const user = userEvent.setup();
-    render(<OutputFeedback outputVersion={OUTPUT_VERSION} traceId={TRACE_ID} bookId={BOOK_ID} />);
+    render(<OutputFeedback outputId={OUTPUT_ID} outputVersion={OUTPUT_VERSION} traceId={TRACE_ID} bookId={BOOK_ID} />);
 
     await user.click(screen.getByRole("button", { name: /report an issue/i }));
     await user.click(screen.getByRole("button", { name: "Thumbs up" }));
@@ -95,6 +98,7 @@ describe("OutputFeedback — issue flag", () => {
     expect(url).toBe("/api/feedback");
     expect(options.method).toBe("POST");
     expect(JSON.parse(options.body as string)).toEqual({
+      output_id: OUTPUT_ID,
       output_version: OUTPUT_VERSION,
       trace_id: TRACE_ID,
       rating: "up",
@@ -106,7 +110,7 @@ describe("OutputFeedback — issue flag", () => {
   it("sends issue false when the flag is not set", async () => {
     const fetchMock = mockFetchEndpoint(() => ({ feedback: { id: 4 } }));
     const user = userEvent.setup();
-    render(<OutputFeedback outputVersion={OUTPUT_VERSION} traceId={TRACE_ID} bookId={BOOK_ID} />);
+    render(<OutputFeedback outputId={OUTPUT_ID} outputVersion={OUTPUT_VERSION} traceId={TRACE_ID} bookId={BOOK_ID} />);
 
     await user.click(screen.getByRole("button", { name: "Thumbs down" }));
     await user.click(screen.getByRole("button", { name: "Send feedback" }));
@@ -118,18 +122,30 @@ describe("OutputFeedback — issue flag", () => {
 });
 
 describe("OutputFeedback — retry", () => {
-  it("posts the bookId to the real retry route and reflects the retry-started state", async () => {
-    const fetchMock = mockFetchEndpoint(() => ({ ok: true, bookId: BOOK_ID, status: "generating" }));
+  it("posts the output id to the versioned retry route and reflects the new version", async () => {
+    const retriedOutput = {
+      id: 8,
+      source_qa_id: 2,
+      output_version: "2",
+      trace_id: "trace-retry",
+      book_id: BOOK_ID,
+      status: "generating",
+      citations: [],
+      created_at: "2026-08-02T00:00:00.000Z",
+    };
+    const onRetried = vi.fn();
+    const fetchMock = mockFetchEndpoint(() => ({ output: retriedOutput }));
     const user = userEvent.setup();
-    render(<OutputFeedback outputVersion={OUTPUT_VERSION} traceId={TRACE_ID} bookId={BOOK_ID} />);
+    render(<OutputFeedback outputId={OUTPUT_ID} outputVersion={OUTPUT_VERSION} traceId={TRACE_ID} bookId={BOOK_ID} onRetried={onRetried} />);
 
     await user.click(screen.getByRole("button", { name: "Retry" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("/api/retry");
+    expect(url).toBe(`/api/outputs/${OUTPUT_ID}/retry`);
     expect(options.method).toBe("POST");
-    expect(JSON.parse(options.body as string)).toEqual({ bookId: BOOK_ID });
+    expect(options.body).toBeUndefined();
+    expect(onRetried).toHaveBeenCalledWith(retriedOutput);
 
     expect(await screen.findByRole("button", { name: "Retry started" })).toBeTruthy();
     expect(
@@ -143,7 +159,7 @@ describe("OutputFeedback — retry", () => {
     });
     globalThis.fetch = fetchMock;
     const user = userEvent.setup();
-    render(<OutputFeedback outputVersion={OUTPUT_VERSION} traceId={TRACE_ID} bookId={BOOK_ID} />);
+    render(<OutputFeedback outputId={OUTPUT_ID} outputVersion={OUTPUT_VERSION} traceId={TRACE_ID} bookId={BOOK_ID} />);
 
     await user.click(screen.getByRole("button", { name: "Retry" }));
 
