@@ -1,6 +1,8 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Alert from "@mui/material/Alert";
+import AlertTitle from "@mui/material/AlertTitle";
 import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
@@ -10,7 +12,7 @@ import LinearProgress from "@mui/material/LinearProgress";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 
-type UploadStatus = "idle" | "pending" | "uploading" | "success" | "failed";
+type UploadStatus = "idle" | "pending" | "uploading" | "success" | "failed" | "offline";
 
 type UploadEntry = {
   id: number;
@@ -24,12 +26,13 @@ type Props = {
   onDocumentsChange: () => void;
 };
 
-const STATUS_COLOR: Record<UploadStatus, "default" | "warning" | "success" | "error"> = {
+const STATUS_COLOR: Record<UploadStatus, "default" | "warning" | "success" | "error" | "info"> = {
   idle: "default",
   pending: "default",
   uploading: "warning",
   success: "success",
   failed: "error",
+  offline: "info",
 };
 
 const STATUS_LABEL: Record<UploadStatus, string> = {
@@ -38,6 +41,7 @@ const STATUS_LABEL: Record<UploadStatus, string> = {
   uploading: "Uploading…",
   success: "Uploaded",
   failed: "Failed",
+  offline: "You're offline",
 };
 
 const MAX_CONCURRENT = 2;
@@ -74,10 +78,20 @@ export default function MultiBookUploader({ collectionId, onDocumentsChange }: P
         e.id === entry.id ? { ...e, status: "uploading" as const, error: undefined } : e,
       ),
     );
+    const body = new FormData();
+    body.append("file", entry.file);
+    let res: Response;
     try {
-      const body = new FormData();
-      body.append("file", entry.file);
-      const res = await fetch("/api/upload", { method: "POST", body });
+      res = await fetch("/api/upload", { method: "POST", body });
+    } catch {
+      setEntries((prev) =>
+        prev.map((e) =>
+          e.id === entry.id ? { ...e, status: "offline" as const, error: undefined } : e,
+        ),
+      );
+      return;
+    }
+    try {
       const data = await res.json().catch(() => null);
       if (!res.ok) {
         throw new Error(data?.error ?? data?.detail ?? "Upload failed.");
@@ -114,7 +128,7 @@ export default function MultiBookUploader({ collectionId, onDocumentsChange }: P
   }
 
   function retry(entry: UploadEntry) {
-    if (entry.status !== "failed") return;
+    if (entry.status !== "failed" && entry.status !== "offline") return;
     setEntries((prev) =>
       prev.map((e) =>
         e.id === entry.id ? { ...e, status: "pending" as const, error: undefined } : e,
@@ -174,6 +188,14 @@ export default function MultiBookUploader({ collectionId, onDocumentsChange }: P
 
           {entries.length > 0 ? (
             <Stack spacing={1}>
+              {entries.some((entry) => entry.status === "offline") ? (
+                <Alert severity="warning">
+                  <AlertTitle>No connection</AlertTitle>
+                  You appear to be offline. Queued uploads are waiting, and files that
+                  could not reach the server are marked below — retry them when your
+                  connection returns.
+                </Alert>
+              ) : null}
               {entries.map((entry) => (
                 <Stack key={entry.id} direction="row" spacing={2}>
                   <Typography variant="body2" noWrap>
@@ -195,7 +217,7 @@ export default function MultiBookUploader({ collectionId, onDocumentsChange }: P
                   ) : null}
                   <Button
                     size="small"
-                    disabled={entry.status !== "failed"}
+                    disabled={entry.status !== "failed" && entry.status !== "offline"}
                     onClick={() => retry(entry)}
                   >
                     Retry
