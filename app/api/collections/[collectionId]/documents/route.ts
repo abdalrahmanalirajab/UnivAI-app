@@ -5,8 +5,8 @@ import { requireUserApi } from "@/lib/session";
 import { REPO_ROOT } from "@/lib/python";
 import {
   addDocument,
-  getCollection,
   getDocument,
+  getOwnedCollection,
   listDocuments,
   removeDocument,
   validateFilename,
@@ -35,9 +35,12 @@ export async function GET(
     return Response.json({ error: "Invalid collection ID." }, { status: 400 });
   }
 
-  const collection = await getCollection(collectionId, gate.studentId);
-  if (!collection) {
-    return Response.json({ error: "Collection not found." }, { status: 404 });
+  const ownership = await getOwnedCollection(collectionId, gate.studentId);
+  if (!ownership.owned) {
+    return Response.json(
+      { error: ownership.exists ? "You do not have access to this collection." : "Collection not found." },
+      { status: ownership.exists ? 403 : 404 },
+    );
   }
 
   const documents = await listDocuments(collectionId, gate.studentId);
@@ -57,9 +60,12 @@ export async function POST(
     return Response.json({ error: "Invalid collection ID." }, { status: 400 });
   }
 
-  const collection = await getCollection(collectionId, gate.studentId);
-  if (!collection) {
-    return Response.json({ error: "Collection not found." }, { status: 404 });
+  const ownership = await getOwnedCollection(collectionId, gate.studentId);
+  if (!ownership.owned) {
+    return Response.json(
+      { error: ownership.exists ? "You do not have access to this collection." : "Collection not found." },
+      { status: ownership.exists ? 403 : 404 },
+    );
   }
 
   const form = await request.formData().catch(() => null);
@@ -127,6 +133,14 @@ export async function DELETE(
   const collectionId = parseCollectionId({ collectionId: raw });
   if (!collectionId) {
     return Response.json({ error: "Invalid collection ID." }, { status: 400 });
+  }
+
+  const ownership = await getOwnedCollection(collectionId, gate.studentId);
+  if (!ownership.owned) {
+    return Response.json(
+      { error: ownership.exists ? "You do not have access to this collection." : "Collection not found." },
+      { status: ownership.exists ? 403 : 404 },
+    );
   }
 
   const documentId = Number(request.nextUrl.searchParams.get("documentId"));
