@@ -502,7 +502,6 @@ function EdgeCard({
                   key={`${edge.prerequisite_book_id}:${alternative.prerequisite_book_id}:${index}`}
                   direction="row"
                   spacing={1}
-                 
                 >
                   <Typography variant="body2">
                     {bookTitle(alternative.prerequisite_book_id)}

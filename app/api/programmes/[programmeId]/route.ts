@@ -66,10 +66,10 @@ export async function PATCH(
 
   if (
     !operation ||
-    !["rename", "reorder", "merge", "split", "exclude"].includes(operation)
+    !["rename", "reorder", "override", "merge", "split", "exclude"].includes(operation)
   ) {
     return Response.json(
-      { error: "operation must be one of: rename, reorder, merge, split, exclude." },
+      { error: "operation must be one of: rename, reorder, override, merge, split, exclude." },
       { status: 400 },
     );
   }
@@ -128,16 +128,18 @@ export async function PATCH(
       break;
     }
     case "reorder": {
-      const { semesterId, courseIds } = body as {
+      const { semesterId, courseIds, reason } = body as {
         semesterId?: string;
         courseIds?: unknown;
+        reason?: unknown;
       };
       if (
         !semesterId || typeof semesterId !== "string" ||
-        !Array.isArray(courseIds) || !courseIds.every((id): id is string => typeof id === "string")
+        !Array.isArray(courseIds) || !courseIds.every((id): id is string => typeof id === "string") ||
+        typeof reason !== "string" || reason.trim().length < 3 || reason.trim().length > 500
       ) {
         return Response.json(
-          { error: "semesterId (string) and courseIds (string[]) are required for reorder." },
+          { error: "semesterId, courseIds, and a 3-500 character reason are required for reorder." },
           { status: 400 },
         );
       }
@@ -157,6 +159,54 @@ export async function PATCH(
         );
       }
       updatedPlan = reorderCourses(programme.plan, semesterId, courseIds);
+      updatedPlan = {
+        ...updatedPlan,
+        learning_path_audit: [
+          ...(programme.plan.learning_path_audit ?? []),
+          { operation: "reorder", reason: reason.trim(), recorded_at: new Date().toISOString() },
+        ],
+        learning_path: programme.plan.learning_path
+          ? { ...programme.plan.learning_path, plan_version: expectedVersion + 1 }
+          : undefined,
+      };
+      break;
+    }
+    case "override": {
+      const { prerequisiteBookId, dependentBookId, reason } = body as {
+        prerequisiteBookId?: unknown;
+        dependentBookId?: unknown;
+        reason?: unknown;
+      };
+      if (
+        !Number.isInteger(prerequisiteBookId) || !Number.isInteger(dependentBookId) ||
+        typeof reason !== "string" || reason.trim().length < 3 || reason.trim().length > 500
+      ) {
+        return Response.json(
+          { error: "prerequisiteBookId, dependentBookId, and a 3-500 character reason are required for override." },
+          { status: 400 },
+        );
+      }
+      const learningPath = programme.plan.learning_path;
+      const edgeIndex = learningPath?.edges.findIndex(
+        (edge) => edge.prerequisite_book_id === prerequisiteBookId && edge.dependent_book_id === dependentBookId,
+      ) ?? -1;
+      if (!learningPath || edgeIndex < 0) {
+        return Response.json({ error: "Learning-path edge not found." }, { status: 400 });
+      }
+      updatedPlan = {
+        ...programme.plan,
+        learning_path: {
+          ...learningPath,
+          plan_version: expectedVersion + 1,
+          edges: learningPath.edges.map((edge, index) => index === edgeIndex
+            ? { ...edge, override: { resolved: true, reason: reason.trim() } }
+            : edge),
+        },
+        learning_path_audit: [
+          ...(programme.plan.learning_path_audit ?? []),
+          { operation: "override", reason: reason.trim(), recorded_at: new Date().toISOString() },
+        ],
+      };
       break;
     }
     case "merge": {

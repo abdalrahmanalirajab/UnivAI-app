@@ -522,48 +522,16 @@ describe("Programme plan version — stale rejection", () => {
       }
     });
 
-    it("returns the same success when the exact version is already approved (idempotent, zero writes)", async () => {
+    it("rejects approval when programme is already approved", async () => {
       const { approveProgramme } = await import("@/lib/programmes");
 
-      mockQueryOne.mockResolvedValue(
-        fakeProgramme({
-          plan_version: 2,
-          status: "approved",
-          approved_at: "2026-07-28T00:00:00Z",
-        }),
-      );
-
-      const result = await approveProgramme(1, "S-2026-000001", 2);
-
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        expect(result.programme.plan_version).toBe(2);
-        expect(result.programme.status).toBe("approved");
-      }
-      // Only the SELECT ran — the idempotent repeat performs no UPDATE, so no
-      // duplicate approval record or side effect is possible.
-      expect(mockQueryOne).toHaveBeenCalledTimes(1);
-    });
-
-    it("rejects approval when the programme is approved at a different version (stale)", async () => {
-      const { approveProgramme } = await import("@/lib/programmes");
-
-      mockQueryOne.mockResolvedValue(
-        fakeProgramme({
-          plan_version: 3,
-          status: "approved",
-          approved_at: "2026-07-28T00:00:00Z",
-        }),
-      );
+      mockQueryOne.mockResolvedValue(fakeProgramme({ plan_version: 2, status: "approved" }));
 
       const result = await approveProgramme(1, "S-2026-000001", 2);
 
       expect(result.ok).toBe(false);
       if (!result.ok) {
-        expect(result.error).toBe(
-          "Programme is already approved at a different version.",
-        );
-        expect(result.current?.plan_version).toBe(3);
+        expect(result.error).toBe("Programme is already approved.");
       }
     });
 

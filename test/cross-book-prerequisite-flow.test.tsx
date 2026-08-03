@@ -336,6 +336,7 @@ const BASE_PLAN = structuredClone(SEVEN_WEEK_PLAN_V1);
 function programmePayload(
   planVersion: number,
   status: "proposed" | "approved",
+  learningPath: typeof validChainABC | null = null,
 ): Programme {
   return {
     id: 1,
@@ -344,7 +345,7 @@ function programmePayload(
     name: "Test Programme",
     status,
     plan_version: planVersion,
-    plan: BASE_PLAN,
+    plan: { ...BASE_PLAN, ...(learningPath ? { learning_path: learningPath } : {}) },
     approved_at: status === "approved" ? "2026-07-28T00:00:00Z" : null,
     created_at: "2026-07-01T00:00:00Z",
     updated_at: "2026-07-28T00:00:00Z",
@@ -368,16 +369,6 @@ function programmeFetchResponse(payload: Programme): Response {
   });
 }
 
-function learningPathFetchResponse(
-  learningPath: unknown = null,
-  status = 404,
-): Response {
-  return new Response(JSON.stringify({ learningPath }), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
-}
-
 describe("refresh/restore — rebuilt from a fresh fetch, not client memory", () => {
   it("an in-progress approval is discarded on refresh and the fresh backend state wins", async () => {
     const fetchMock = vi.fn();
@@ -385,9 +376,9 @@ describe("refresh/restore — rebuilt from a fresh fetch, not client memory", ()
 
     // First load: proposed plan at version 2. The learning-path endpoint is
     // absent (404) — an explicit "no contract" state, not a broken one.
-    fetchMock
-      .mockResolvedValueOnce(programmeFetchResponse(programmePayload(2, "proposed")))
-      .mockResolvedValueOnce(learningPathFetchResponse());
+    fetchMock.mockResolvedValueOnce(
+      programmeFetchResponse(programmePayload(2, "proposed")),
+    );
     const first = mountCurriculumPage();
     await waitFor(() => expect(screen.getByRole("button", { name: "Request Approval" })).toBeTruthy());
     expect(screen.getByText("v2")).toBeTruthy();
@@ -401,9 +392,9 @@ describe("refresh/restore — rebuilt from a fresh fetch, not client memory", ()
     // UI rebuilt from the fetched payload, not from stale client memory.
     first.unmount();
 
-    fetchMock
-      .mockResolvedValueOnce(programmeFetchResponse(programmePayload(3, "proposed")))
-      .mockResolvedValueOnce(learningPathFetchResponse());
+    fetchMock.mockResolvedValueOnce(
+      programmeFetchResponse(programmePayload(3, "proposed")),
+    );
     const second = mountCurriculumPage();
     await waitFor(() => expect(screen.getByText("v3")).toBeTruthy());
     expect(screen.queryByText("v2")).toBeNull();
@@ -421,7 +412,6 @@ describe("refresh/restore — rebuilt from a fresh fetch, not client memory", ()
     fetchMock.mockResolvedValueOnce(
       programmeFetchResponse(programmePayload(2, "proposed")),
     );
-    fetchMock.mockResolvedValueOnce(learningPathFetchResponse());
     const first = mountCurriculumPage();
     await waitFor(() => expect(screen.getByRole("button", { name: "Request Approval" })).toBeTruthy());
     first.unmount();
@@ -431,7 +421,6 @@ describe("refresh/restore — rebuilt from a fresh fetch, not client memory", ()
     fetchMock.mockResolvedValueOnce(
       programmeFetchResponse(programmePayload(2, "approved")),
     );
-    fetchMock.mockResolvedValueOnce(learningPathFetchResponse());
     const second = mountCurriculumPage();
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Approved" })).toHaveProperty("disabled", true),
@@ -452,11 +441,9 @@ describe("page-level approval block", () => {
     const fetchMock = vi.fn();
     globalThis.fetch = fetchMock;
 
-    fetchMock
-      .mockResolvedValueOnce(programmeFetchResponse(programmePayload(1, "proposed")))
-      .mockResolvedValueOnce(
-        learningPathFetchResponse(cycleFixture, 200),
-      );
+    fetchMock.mockResolvedValueOnce(
+      programmeFetchResponse(programmePayload(1, "proposed", cycleFixture)),
+    );
 
     const mounted = mountCurriculumPage();
     await waitFor(() =>
@@ -480,11 +467,9 @@ describe("page-level approval block", () => {
     const fetchMock = vi.fn();
     globalThis.fetch = fetchMock;
 
-    fetchMock
-      .mockResolvedValueOnce(programmeFetchResponse(programmePayload(3, "proposed")))
-      .mockResolvedValueOnce(
-        learningPathFetchResponse(validChainABC, 200),
-      );
+    fetchMock.mockResolvedValueOnce(
+      programmeFetchResponse(programmePayload(3, "proposed", validChainABC)),
+    );
 
     const mounted = mountCurriculumPage();
     await waitFor(() =>

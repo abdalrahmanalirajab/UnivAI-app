@@ -51,7 +51,7 @@ type Props = {
 
 type PlanEdit =
   | { operation: "rename"; courseId: string; newTitle: string }
-  | { operation: "reorder"; semesterId: string; courseIds: string[] }
+  | { operation: "reorder"; semesterId: string; courseIds: string[]; reason: string }
   | { operation: "merge"; targetCourseIds: string[]; intoTitle: string }
   | {
       operation: "split";
@@ -82,6 +82,7 @@ export default function CurriculumWorkspace({
   const [reorderOpen, setReorderOpen] = useState(false);
   const [reorderSemesterId, setReorderSemesterId] = useState<string | null>(null);
   const [reorderIds, setReorderIds] = useState<string[]>([]);
+  const [reorderReason, setReorderReason] = useState("");
 
   // Merge dialog
   const [mergeOpen, setMergeOpen] = useState(false);
@@ -98,15 +99,19 @@ export default function CurriculumWorkspace({
 
   const plan = programme.plan;
   const version = programme.plan_version;
+  const resolvedLearningPath = useMemo<LearningPathLoad>(
+    () => learningPath ?? { status: "ready", data: plan.learning_path ?? null },
+    [learningPath, plan.learning_path],
+  );
 
   // Approval-blocking rules, evaluated against the validated learning-path
   // contract and the exact version the app currently holds. Blocks are only
   // reported when the data is ready; they are surfaced to the parent (which
   // owns the approve control) and rendered here with each specific reason.
   const approvalBlocks = useMemo(() => {
-    if (learningPath?.status !== "ready") return [] as ApprovalBlock[];
-    return getApprovalBlocks(learningPath.data, programme.plan_version);
-  }, [learningPath, programme.plan_version]);
+    if (resolvedLearningPath.status !== "ready") return [] as ApprovalBlock[];
+    return getApprovalBlocks(resolvedLearningPath.data, programme.plan_version);
+  }, [resolvedLearningPath, programme.plan_version]);
 
   useEffect(() => {
     onApprovalBlocksChange?.(approvalBlocks);
@@ -175,6 +180,7 @@ export default function CurriculumWorkspace({
     if (!semester) return;
     setReorderSemesterId(semesterId);
     setReorderIds([...semester.course_ids]);
+    setReorderReason("");
     setReorderOpen(true);
   }
 
@@ -187,11 +193,12 @@ export default function CurriculumWorkspace({
   }
 
   async function submitReorder() {
-    if (!reorderSemesterId) return;
+    if (!reorderSemesterId || !reorderReason.trim()) return;
     await savePlan({
       operation: "reorder",
       semesterId: reorderSemesterId,
       courseIds: reorderIds,
+      reason: reorderReason.trim(),
     });
     setReorderOpen(false);
   }
@@ -350,7 +357,7 @@ export default function CurriculumWorkspace({
 
       <ProgrammeGraph
         plan={plan}
-        learningPath={learningPath}
+        learningPath={resolvedLearningPath}
         completedBookIds={completedBookIds}
       />
 
@@ -493,6 +500,14 @@ export default function CurriculumWorkspace({
       <Dialog open={reorderOpen} onClose={() => setReorderOpen(false)}>
         <DialogTitle>Reorder Courses</DialogTitle>
         <DialogContent>
+          <TextField
+            fullWidth
+            required
+            label="Reason for this order"
+            value={reorderReason}
+            onChange={(event) => setReorderReason(event.target.value)}
+            margin="dense"
+          />
           <List dense>
             {reorderIds.map((courseId, index) => (
               <ListItem key={courseId}>
@@ -523,7 +538,7 @@ export default function CurriculumWorkspace({
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setReorderOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={submitReorder} disabled={saving}>
+          <Button variant="contained" onClick={submitReorder} disabled={saving || !reorderReason.trim()}>
             Save Order
           </Button>
         </DialogActions>
