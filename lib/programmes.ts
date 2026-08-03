@@ -91,8 +91,22 @@ export async function approveProgramme(
   if (!current) {
     return { ok: false, error: "Programme not found.", current: null };
   }
+  // Idempotency: approval state lives on this row (status + approved_at), and
+  // re-approving the SAME exact version returns the same success result with
+  // zero writes — no UPDATE, so no duplicate approval record and no side
+  // effect. This is the idempotent repeat path a caller observes as the same
+  // 200 response.
+  if (current.status === "approved" && current.plan_version === planVersion) {
+    return { ok: true, programme: current };
+  }
+  // Approved, but at a different version: the client's submitted version is
+  // stale — return the newest state so the caller can refresh and retry.
   if (current.status === "approved") {
-    return { ok: false, error: "Programme is already approved.", current };
+    return {
+      ok: false,
+      error: "Programme is already approved at a different version.",
+      current,
+    };
   }
   if (current.plan_version !== planVersion) {
     return { ok: false, error: "Stale plan version. Refresh and try again.", current };
