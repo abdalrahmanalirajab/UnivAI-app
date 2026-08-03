@@ -37,10 +37,15 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: validationMsg }, { status: 400 });
   }
 
+  const existing = await listCollections(gate.studentId);
+  if (existing.length > 0) {
+    return Response.json({ collection: existing[0], created: false });
+  }
+
   const result = await createCollection(gate.studentId, name);
   if (!result.ok) {
     return Response.json({ error: result.error }, { status: 400 });
   }
 
-  return Response.json({ collection: result.collection }, { status: 201 });
+  return Response.json({ collection: result.collection, created: true }, { status: 201 });
 }

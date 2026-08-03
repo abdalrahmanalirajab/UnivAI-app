@@ -84,6 +84,29 @@ export async function listCollections(studentId: string): Promise<Collection[]> 
   );
 }
 
+export const DEFAULT_COLLECTION_NAME = "My Library";
+
+export async function getOrCreateCollection(
+  studentId: string,
+): Promise<CollectionResult> {
+  const existing = await queryOne<Collection>(
+    `SELECT ${COLLECTION_COLUMNS} FROM collections
+     WHERE student_id = $1 ORDER BY created_at ASC, id ASC LIMIT 1`,
+    [studentId],
+  );
+  if (existing) return { ok: true, collection: existing };
+
+  const result = await createCollection(studentId, DEFAULT_COLLECTION_NAME);
+  if (!result.ok) return result;
+
+  const canonical = await queryOne<Collection>(
+    `SELECT ${COLLECTION_COLUMNS} FROM collections
+     WHERE student_id = $1 ORDER BY created_at ASC, id ASC LIMIT 1`,
+    [studentId],
+  );
+  return { ok: true, collection: canonical ?? result.collection };
+}
+
 export async function addDocument(
   collectionId: number,
   studentId: string,
