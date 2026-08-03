@@ -190,7 +190,6 @@ export default function CurriculumPage({ params }: Props) {
         programmeId={programmeId!}
         onProgrammeUpdated={handleProgrammeUpdated}
         onApprovalBlocksChange={setApprovalBlocks}
-        learningPath={{ status: "ready", data: programme.plan.learning_path ?? null }}
       />
 
       <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)}>
