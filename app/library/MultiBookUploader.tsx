@@ -6,6 +6,7 @@ import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
 import Chip from "@mui/material/Chip";
 import Input from "@mui/material/Input";
+import LinearProgress from "@mui/material/LinearProgress";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 
@@ -39,6 +40,8 @@ const STATUS_LABEL: Record<UploadStatus, string> = {
   failed: "Failed",
 };
 
+const MAX_CONCURRENT = 2;
+
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -47,13 +50,58 @@ function formatBytes(bytes: number): string {
 
 export default function MultiBookUploader({ collectionId, onDocumentsChange }: Props) {
   void collectionId;
-  void onDocumentsChange;
   const [entries, setEntries] = useState<UploadEntry[]>([]);
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const idCounter = useRef(0);
+  const queueRef = useRef<UploadEntry[]>([]);
+  const activeRef = useRef(0);
 
-  function addFiles(files: FileList | File[] | null) {
+  function pump() {
+    while (activeRef.current < MAX_CONCURRENT && queueRef.current.length > 0) {
+      const entry = queueRef.current.shift()!;
+      activeRef.current += 1;
+      void runUpload(entry).finally(() => {
+        activeRef.current -= 1;
+        pump();
+      });
+    }
+  }
+
+  async function runUpload(entry: UploadEntry) {
+    setEntries((prev) =>
+      prev.map((e) =>
+        e.id === entry.id ? { ...e, status: "uploading" as const, error: undefined } : e,
+      ),
+    );
+    try {
+      const body = new FormData();
+      body.append("file", entry.file);
+      const res = await fetch("/api/upload", { method: "POST", body });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.error ?? data?.detail ?? "Upload failed.");
+      }
+      setEntries((prev) =>
+        prev.map((e) => (e.id === entry.id ? { ...e, status: "success" as const } : e)),
+      );
+      onDocumentsChange();
+    } catch (err) {
+      setEntries((prev) =>
+        prev.map((e) =>
+          e.id === entry.id
+            ? {
+                ...e,
+                status: "failed" as const,
+                error: err instanceof Error ? err.message : "Upload failed.",
+              }
+            : e,
+        ),
+      );
+    }
+  }
+
+  function enqueue(files: FileList | File[] | null) {
     if (!files || files.length === 0) return;
     const fresh: UploadEntry[] = Array.from(files).map((file) => ({
       id: ++idCounter.current,
@@ -61,14 +109,19 @@ export default function MultiBookUploader({ collectionId, onDocumentsChange }: P
       status: "pending" as const,
     }));
     setEntries((prev) => [...prev, ...fresh]);
+    queueRef.current.push(...fresh);
+    pump();
   }
 
   function retry(entry: UploadEntry) {
+    if (entry.status !== "failed") return;
     setEntries((prev) =>
       prev.map((e) =>
         e.id === entry.id ? { ...e, status: "pending" as const, error: undefined } : e,
       ),
     );
+    queueRef.current.push(entry);
+    pump();
   }
 
   return (
@@ -90,7 +143,7 @@ export default function MultiBookUploader({ collectionId, onDocumentsChange }: P
       onDrop={(event) => {
         event.preventDefault();
         setDragging(false);
-        addFiles(event.dataTransfer.files);
+        enqueue(event.dataTransfer.files);
       }}
     >
       <CardContent>
@@ -110,7 +163,7 @@ export default function MultiBookUploader({ collectionId, onDocumentsChange }: P
                   accept: "application/pdf,.pdf",
                 }}
                 onChange={(event) =>
-                  addFiles((event.target as HTMLInputElement).files)
+                  enqueue((event.target as HTMLInputElement).files)
                 }
               />
             </Button>
@@ -134,6 +187,12 @@ export default function MultiBookUploader({ collectionId, onDocumentsChange }: P
                     color={STATUS_COLOR[entry.status]}
                     label={STATUS_LABEL[entry.status]}
                   />
+                  {entry.status === "uploading" ? <LinearProgress /> : null}
+                  {entry.status === "failed" && entry.error ? (
+                    <Typography variant="caption" color="error">
+                      {entry.error}
+                    </Typography>
+                  ) : null}
                   <Button
                     size="small"
                     disabled={entry.status !== "failed"}
