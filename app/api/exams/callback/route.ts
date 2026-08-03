@@ -1,18 +1,56 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextRequest } from "next/server";
+import { env } from "@/lib/env";
 import { query } from "@/lib/db";
 import { now } from "@/lib/clock";
-import { resolveWeek } from "@/lib/exams";
+import {
+  examCallbackFingerprint,
+  recordExamCallback,
+  resolveWeek,
+  saveFinalExamStatus,
+  wasExamCallbackProcessed,
+  webhookToFinalExamStatus,
+  type ResultWebhook,
+} from "@/lib/exams";
 
 export const dynamic = "force-dynamic";
 
 /**
- * The exam system POSTs here after every submission: the grade plus the
- * proctoring report (suspicion score, flagged, events). We store both, so the
- * dashboard shows the score and the admin can judge whether the attempt has a
- * problem.
+ * The exam system POSTs here after every submission (and again after a manual
+ * final grade): the grade plus the proctoring report. We verify the callback's
+ * signature first, store the grade, and keep the final's display status in
+ * sync — the dashboard shows the score and the exams page shows the final's
+ * service-reported state.
+ *
+ * Signature contract (the exam system signs with the same shared secret):
+ *   X-Exam-Signature: <lowercase hex HMAC-SHA256 of the RAW request body,
+ *   keyed by EXAM_CALLBACK_SECRET>
+ * The raw bytes are hashed — not the parsed JSON — so a re-serialised body
+ * would fail verification. The secret comes from environment configuration
+ * only; without it the route fails closed and rejects every callback.
+ *
+ * A grade is only ever recorded as final once this callback explicitly says
+ * so (grading_status "graded" for finals); nothing else marks a grade final.
  */
 export async function POST(request: NextRequest) {
-  const payload = await request.json().catch(() => null);
+  // Read the raw body FIRST — the signature covers the exact delivered bytes.
+  const raw = await request.text().catch(() => null);
+  if (raw === null) {
+    return Response.json({ error: "Unreadable request body." }, { status: 400 });
+  }
+
+  if (!verifyExamCallbackSignature(raw, request.headers.get("x-exam-signature"))) {
+    // No details, no secret, no signature material in the response or logs.
+    return Response.json({ error: "Invalid callback signature." }, { status: 401 });
+  }
+
+  let payload: ResultWebhook;
+  try {
+    payload = JSON.parse(raw) as ResultWebhook;
+  } catch {
+    return Response.json({ error: "Malformed callback payload." }, { status: 400 });
+  }
+
   if (!payload?.exam_id) {
     return Response.json({ error: "exam_id is required" }, { status: 400 });
   }
@@ -24,7 +62,22 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "student_sid is required" }, { status: 400 });
   }
 
-  const { kind, week } = await resolveWeek(payload);
+  // Idempotency: a re-delivered callback (same exam id + same event
+  // fingerprint) is acknowledged but never re-applied — no duplicate grade
+  // row, no duplicate state change. A genuinely different event (e.g. the
+  // manual "graded" verdict arriving after "pending_review") has a different
+  // fingerprint and IS processed.
+  const fingerprint = examCallbackFingerprint(payload);
+  if (await wasExamCallbackProcessed(payload.exam_id, fingerprint)) {
+    return Response.json({ ok: true, idempotent: true });
+  }
+
+  const { kind, week } = await resolveWeek({
+    type: payload.type,
+    chapter_id: payload.chapter_id,
+    exam_id: payload.exam_id,
+    student_sid: sid,
+  });
   const takenAt = await now();
 
   const flagged =
@@ -35,34 +88,69 @@ export async function POST(request: NextRequest) {
       ? "Invalidated by proctoring."
       : "Below the pass mark.";
 
-  await query(
-    `INSERT INTO grades (student_id, kind, week, score, max_score, feedback, taken_at, exam_id, flagged, report)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-     ON CONFLICT (exam_id) DO UPDATE SET
-       student_id = EXCLUDED.student_id,
-       score = EXCLUDED.score,
-       max_score = EXCLUDED.max_score,
-       feedback = EXCLUDED.feedback,
-       taken_at = EXCLUDED.taken_at,
-       flagged = EXCLUDED.flagged,
-       report = EXCLUDED.report`,
-    [
-      sid,
-      kind,
-      week,
-      payload.mark ?? 0,
-      payload.total_questions ?? 0,
-      feedback,
-      takenAt,
-      payload.exam_id,
-      flagged,
-      JSON.stringify(payload.report ?? {}),
-    ]
-  );
+  const isFinal = payload.type === "final";
+  // The service's explicit confirmation of a final grade. A final with any
+  // other verdict (pending_review, ...) is never written as a grade — only the
+  // "graded" callback marks it final.
+  const finalGradeConfirmed = isFinal && payload.grading_status === "graded";
+
+  if (!isFinal || finalGradeConfirmed) {
+    await query(
+      `INSERT INTO grades (student_id, kind, week, score, max_score, feedback, taken_at, exam_id, flagged, report)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       ON CONFLICT (exam_id) DO UPDATE SET
+         student_id = EXCLUDED.student_id,
+         score = EXCLUDED.score,
+         max_score = EXCLUDED.max_score,
+         feedback = EXCLUDED.feedback,
+         taken_at = EXCLUDED.taken_at,
+         flagged = EXCLUDED.flagged,
+         report = EXCLUDED.report`,
+      [
+        sid,
+        kind,
+        week,
+        payload.mark ?? 0,
+        payload.total_questions ?? 0,
+        feedback,
+        takenAt,
+        payload.exam_id,
+        flagged,
+        JSON.stringify(payload.report ?? {}),
+      ]
+    );
+  }
+
+  // The final's display status always tracks the service's latest verdict, so
+  // the exams page reflects awaiting-grade / graded / flagged rather than a
+  // stale start-time snapshot.
+  if (isFinal) {
+    await saveFinalExamStatus(sid, webhookToFinalExamStatus(payload));
+  }
+
+  await recordExamCallback(payload.exam_id, fingerprint);
 
   console.log(
     `[exams] result recorded: ${kind}${week ? ` week ${week}` : ""} ` +
       `mark=${payload.mark}/${payload.total_questions} flagged=${flagged}`
   );
   return Response.json({ ok: true });
+}
+
+/**
+ * Constant-time HMAC-SHA256 verification of the callback, hex-digest compared
+ * with timingSafeEqual — never plain string equality. The secret is read from
+ * environment configuration (EXAM_CALLBACK_SECRET) and never hardcoded; the
+ * raw body is hashed exactly as delivered.
+ */
+function verifyExamCallbackSignature(rawBody: string, header: string | null): boolean {
+  const secret = env.EXAM_CALLBACK_SECRET;
+  if (!secret || !header) return false;
+
+  const computed = createHmac("sha256", secret).update(rawBody).digest("hex");
+  const provided = header.trim().toLowerCase();
+
+  const left = Buffer.from(computed, "hex");
+  const right = Buffer.from(provided, "hex");
+  return left.length === right.length && timingSafeEqual(left, right);
 }
