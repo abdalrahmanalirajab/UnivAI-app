@@ -5,15 +5,16 @@ import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
 import Chip from "@mui/material/Chip";
-import LinearProgress from "@mui/material/LinearProgress";
 import Input from "@mui/material/Input";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 
+type UploadStatus = "idle" | "pending" | "uploading" | "success" | "failed";
+
 type UploadEntry = {
   id: number;
   file: File;
-  status: "uploading" | "done" | "failed";
+  status: UploadStatus;
   error?: string;
 };
 
@@ -22,119 +23,124 @@ type Props = {
   onDocumentsChange: () => void;
 };
 
+const STATUS_COLOR: Record<UploadStatus, "default" | "warning" | "success" | "error"> = {
+  idle: "default",
+  pending: "default",
+  uploading: "warning",
+  success: "success",
+  failed: "error",
+};
+
+const STATUS_LABEL: Record<UploadStatus, string> = {
+  idle: "Idle",
+  pending: "Pending",
+  uploading: "Uploading…",
+  success: "Uploaded",
+  failed: "Failed",
+};
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export default function MultiBookUploader({ collectionId, onDocumentsChange }: Props) {
+  void collectionId;
+  void onDocumentsChange;
   const [entries, setEntries] = useState<UploadEntry[]>([]);
+  const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const idCounter = useRef(0);
 
-  const busy = entries.some((e) => e.status === "uploading");
-
-  function handleFiles(files: FileList | null) {
-    if (!files) return;
+  function addFiles(files: FileList | File[] | null) {
+    if (!files || files.length === 0) return;
     const fresh: UploadEntry[] = Array.from(files).map((file) => ({
       id: ++idCounter.current,
       file,
-      status: "uploading" as const,
+      status: "pending" as const,
     }));
     setEntries((prev) => [...prev, ...fresh]);
-    fresh.forEach((entry) => uploadOne(entry));
-  }
-
-  async function uploadOne(entry: UploadEntry) {
-    try {
-      const body = new FormData();
-      body.append("file", entry.file);
-      const res = await fetch(`/api/collections/${collectionId}/documents`, {
-        method: "POST",
-        body,
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error ?? "Upload failed.");
-      }
-      setEntries((prev) =>
-        prev.map((e) => (e.id === entry.id ? { ...e, status: "done" as const } : e)),
-      );
-      onDocumentsChange();
-    } catch (err) {
-      setEntries((prev) =>
-        prev.map((e) =>
-          e.id === entry.id
-            ? {
-                ...e,
-                status: "failed" as const,
-                error: err instanceof Error ? err.message : "Upload failed.",
-              }
-            : e,
-        ),
-      );
-    }
   }
 
   function retry(entry: UploadEntry) {
     setEntries((prev) =>
       prev.map((e) =>
-        e.id === entry.id ? { ...e, status: "uploading" as const, error: undefined } : e,
+        e.id === entry.id ? { ...e, status: "pending" as const, error: undefined } : e,
       ),
     );
-    uploadOne(entry);
   }
 
   return (
-    <Card variant="outlined">
+    <Card
+      variant="outlined"
+      onDragOver={(event) => {
+        event.preventDefault();
+      }}
+      onDragEnter={(event) => {
+        event.preventDefault();
+        setDragging(true);
+      }}
+      onDragLeave={(event) => {
+        event.preventDefault();
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          setDragging(false);
+        }
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        setDragging(false);
+        addFiles(event.dataTransfer.files);
+      }}
+    >
       <CardContent>
         <Stack spacing={2}>
           <Typography variant="subtitle1">Upload PDFs</Typography>
 
-          <Button variant="contained" component="label" disabled={busy}>
-            {busy ? "Uploading…" : "Choose PDFs"}
-            <Input
-              inputRef={inputRef}
-              type="file"
-              hidden
-              disableUnderline
-              inputProps={{
-                multiple: true,
-                accept: "application/pdf,.pdf",
-              }}
-              onChange={(event) =>
-                handleFiles((event.target as HTMLInputElement).files)
-              }
-            />
-          </Button>
+          <Stack direction="row" spacing={2}>
+            <Button variant="contained" component="label">
+              Choose PDFs
+              <Input
+                inputRef={inputRef}
+                type="file"
+                hidden
+                disableUnderline
+                inputProps={{
+                  multiple: true,
+                  accept: "application/pdf,.pdf",
+                }}
+                onChange={(event) =>
+                  addFiles((event.target as HTMLInputElement).files)
+                }
+              />
+            </Button>
+            <Typography variant="body2" color={dragging ? "primary" : "text.secondary"}>
+              {dragging ? "Drop the PDFs to add them" : "…or drag and drop PDFs here"}
+            </Typography>
+          </Stack>
 
           {entries.length > 0 ? (
             <Stack spacing={1}>
               {entries.map((entry) => (
-                <Stack
-                  key={entry.id}
-                  direction="row"
-                  spacing={2}
-                >
+                <Stack key={entry.id} direction="row" spacing={2}>
                   <Typography variant="body2" noWrap>
                     {entry.file.name}
                   </Typography>
-
-                  {entry.status === "uploading" ? (
-                    <Stack direction="row" spacing={1}>
-                      <LinearProgress />
-                      <Typography variant="caption" color="text.secondary">
-                        Uploading…
-                      </Typography>
-                    </Stack>
-                  ) : entry.status === "done" ? (
-                    <Chip size="small" color="success" label="Uploaded" />
-                  ) : (
-                    <Stack direction="row" spacing={1}>
-                      <Chip size="small" color="error" label="Failed" />
-                      <Typography variant="caption" color="error">
-                        {entry.error}
-                      </Typography>
-                      <Button size="small" onClick={() => retry(entry)}>
-                        Retry
-                      </Button>
-                    </Stack>
-                  )}
+                  <Typography variant="caption" color="text.secondary">
+                    {formatBytes(entry.file.size)}
+                  </Typography>
+                  <Chip
+                    size="small"
+                    color={STATUS_COLOR[entry.status]}
+                    label={STATUS_LABEL[entry.status]}
+                  />
+                  <Button
+                    size="small"
+                    disabled={entry.status !== "failed"}
+                    onClick={() => retry(entry)}
+                  >
+                    Retry
+                  </Button>
                 </Stack>
               ))}
             </Stack>
