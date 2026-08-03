@@ -116,6 +116,7 @@ export type FinalExamAttemptView = {
   integrity_status: "clean" | "invalidated";
   integrity_state: "active" | "reconnecting" | "grace" | "integrity_locked" | "submitted";
   lock_reason?: string;
+  progress?: { total: number };
   result?: {
     grading_status: "auto_graded" | "pending_review" | "graded";
     mark?: number;
@@ -165,7 +166,8 @@ export function toFinalExamStatus(view: FinalExamAttemptView): ExamServiceStatus
   // Only the service's final "graded" verdict releases the result; an
   // auto-graded mark is not verified yet and is never shown.
   if (grading === "graded" && view.result) {
-    const { mark, passing_mark: maxScore, passed } = view.result;
+    const { mark, passed } = view.result;
+    const maxScore = view.progress?.total;
     return {
       ...base,
       state: "graded",
@@ -315,8 +317,8 @@ export function webhookToFinalExamStatus(payload: ResultWebhook): ExamServiceSta
     payload.grading_status === "graded" &&
     payload.mark !== null &&
     payload.mark !== undefined &&
-    payload.passing_mark !== null &&
-    payload.passing_mark !== undefined &&
+    payload.total_questions !== null &&
+    payload.total_questions !== undefined &&
     payload.passed !== null &&
     payload.passed !== undefined
   ) {
@@ -324,7 +326,7 @@ export function webhookToFinalExamStatus(payload: ResultWebhook): ExamServiceSta
       ...base,
       state: "graded",
       reason: null,
-      result: { mark: payload.mark, max_score: payload.passing_mark, passed: payload.passed },
+      result: { mark: payload.mark, max_score: payload.total_questions, passed: payload.passed },
     };
   }
 

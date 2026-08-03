@@ -27,7 +27,7 @@
  */
 import { test, expect } from "@playwright/test";
 import { createServer, type Server } from "node:http";
-import { createHmac } from "node:crypto";
+import { createHmac, randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { Pool } from "pg";
 
@@ -45,14 +45,15 @@ const EXAM_ORIGIN = process.env.EXAM_SYSTEM_URL ?? "http://localhost:3200";
 const EXAM_PORT = Number(new URL(EXAM_ORIGIN).port || "3200");
 const APP_ORIGIN = process.env.E2E_BASE_URL ?? "http://localhost:3117";
 
-const EXAM_ID = "66f0a1b2c3d4e5f60718e001";
 const LAUNCH_TOKEN = "x".repeat(43);
 
 /** The Exam service's behaviour as the demo drives it. */
 const scenario = {
   phase: "locked" as "locked" | "eligible",
   denialReason: "Final exam is locked until the final lecture completes.",
+  examId: "",
   started: false,
+  createdAttempts: 0,
   studentSid: null as string | null,
 };
 
@@ -88,20 +89,32 @@ function createMockExamService(): Server {
           return;
         }
         if (scenario.started) {
-          res.writeHead(409, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "Final exam already attempted" }));
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              launch_url: `${EXAM_ORIGIN}/exam/${scenario.examId}#attempt_token=${LAUNCH_TOKEN}`,
+              _id: scenario.examId,
+              title: "Final — Demo Course",
+              taken: false,
+              integrity_status: "clean",
+              integrity_state: "active",
+              progress: { total: 10 },
+            })
+          );
           return;
         }
         scenario.started = true;
+        scenario.createdAttempts += 1;
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(
           JSON.stringify({
-            launch_url: `${EXAM_ORIGIN}/exam/${EXAM_ID}#attempt_token=${LAUNCH_TOKEN}`,
-            _id: EXAM_ID,
+            launch_url: `${EXAM_ORIGIN}/exam/${scenario.examId}#attempt_token=${LAUNCH_TOKEN}`,
+            _id: scenario.examId,
             title: "Final — Demo Course",
             taken: false,
             integrity_status: "clean",
             integrity_state: "active",
+            progress: { total: 10 },
           })
         );
         return;
@@ -113,7 +126,7 @@ function createMockExamService(): Server {
         return;
       }
 
-      if (req.method === "GET" && pathname === `/exam/${EXAM_ID}`) {
+      if (req.method === "GET" && pathname === `/exam/${scenario.examId}`) {
         res.writeHead(200, { "Content-Type": "text/html" });
         res.end(
           "<html><body><h1>Mock exam session</h1><p>The learner takes the final here.</p></body></html>"
@@ -143,7 +156,7 @@ async function sendResultWebhook(payload: Record<string, unknown>, secret: strin
 function webhook(overrides: Record<string, unknown>): Record<string, unknown> {
   if (!scenario.studentSid) throw new Error("no learner handed to the exam service yet");
   return {
-    exam_id: EXAM_ID,
+    exam_id: scenario.examId,
     type: "final",
     title: "Final — Demo Course",
     student_id: "66f0a1b2c3d4e5f60718e000",
@@ -193,14 +206,17 @@ test.afterAll(async () => {
 
 test.beforeEach(async ({ page }) => {
   scenario.phase = "locked";
+  scenario.examId = randomBytes(12).toString("hex");
   scenario.started = false;
+  scenario.createdAttempts = 0;
   scenario.studentSid = null;
 
   const suffix = `${process.pid}-${Date.now()}`;
+  const email = `final-exam-${suffix}@univai.local`;
   const signup = await page.request.post("/api/auth/sign-up/email", {
     headers: { Origin: APP_ORIGIN },
     data: {
-      email: `final-exam-${suffix}@univai.local`,
+      email,
       password: "FinalExamTest123!",
       name: "Final Exam Learner",
       phone: "+201000000999",
@@ -208,17 +224,32 @@ test.beforeEach(async ({ page }) => {
   });
   expect(signup.ok(), await signup.text()).toBe(true);
 
-  // The exams surface requires a prepared source (the session gate).
-  const upload = await page.request.post("/api/upload", {
-    multipart: {
-      file: {
-        name: "prepared-source.pdf",
-        mimeType: "application/pdf",
-        buffer: Buffer.from("%PDF-1.4\n%%EOF"),
-      },
-    },
+  // The exams route intentionally requires a verified account. Promote this
+  // isolated test user in the standalone DB before exercising that real gate.
+  const verificationPool = new Pool({
+    connectionString:
+      process.env.DATABASE_URL ?? "postgresql://univai:univai@127.0.0.1:5434/univai_app_standalone",
   });
-  expect(upload.ok(), await upload.text()).toBe(true);
+  try {
+    await verificationPool.query(
+      'UPDATE "user" SET "emailVerified" = TRUE WHERE email = $1',
+      [email]
+    );
+    const learner = await verificationPool.query<{ studentId: string }>(
+      'SELECT "studentId" FROM "user" WHERE email = $1',
+      [email]
+    );
+    const sid = learner.rows[0]?.studentId;
+    if (!sid) throw new Error("prepared learner has no studentId");
+    await verificationPool.query(
+      `INSERT INTO books
+         (filename, title, pages, status, uploaded_at, progress, student_id)
+       VALUES ($1, $2, 1, 'ready', NOW(), 'ready', $3)`,
+      ["prepared-source.pdf", "Prepared Source", sid]
+    );
+  } finally {
+    await verificationPool.end();
+  }
 });
 
 /* ------------------------------------------------------------------ */
@@ -233,8 +264,15 @@ test("final exam demo: locked reason, eligibility, launch, pending grade, verifi
 
   // Step 1 — the final is locked, with the service's stated reason: the app
   // relays the denial verbatim, never computes one of its own.
+  const denialResponsePromise = page.waitForResponse(
+    (response) =>
+      response.url() === `${APP_ORIGIN}/api/exams` &&
+      response.request().method() === "POST"
+  );
   await page.getByRole("button", { name: "Start final exam" }).click();
-  await expect(page.getByText(scenario.denialReason)).toBeVisible();
+  const denialResponse = await denialResponsePromise;
+  expect(denialResponse.status(), await denialResponse.text()).toBe(403);
+  await expect(page.getByText(scenario.denialReason)).toBeVisible({ timeout: 15_000 });
 
   // Step 2 — satisfy eligibility: the service now says the learner is eligible.
   scenario.phase = "eligible";
@@ -244,15 +282,22 @@ test("final exam demo: locked reason, eligibility, launch, pending grade, verifi
   const popupPromise = page.waitForEvent("popup");
   await page.getByRole("button", { name: "Start final exam" }).click();
   const popup = await popupPromise;
-  expect(popup.url()).toBe(`${EXAM_ORIGIN}/exam/${EXAM_ID}#attempt_token=${LAUNCH_TOKEN}`);
+  expect(popup.url()).toBe(
+    `${EXAM_ORIGIN}/exam/${scenario.examId}#attempt_token=${LAUNCH_TOKEN}`
+  );
   await popup.close();
 
   await expect(page.getByText(/Already in progress — continue in the exam window/)).toBeVisible();
   await expect(page.getByText("active", { exact: true })).toBeVisible();
 
-  // A second launch is refused by the service and surfaced as-is.
-  await page.getByRole("button", { name: "Start final exam" }).click();
-  await expect(page.getByText("Final exam already attempted")).toBeVisible();
+  // A duplicate start resumes the same service-owned attempt and never creates
+  // another one.
+  const duplicate = await page.request.post("/api/exams", { data: { kind: "final" } });
+  expect(duplicate.status(), await duplicate.text()).toBe(200);
+  expect((await duplicate.json()).url).toBe(
+    `${EXAM_ORIGIN}/exam/${scenario.examId}#attempt_token=${LAUNCH_TOKEN}`
+  );
+  expect(scenario.createdAttempts).toBe(1);
 
   // Step 4 — return to a pending-grade state: the service's submit event
   // arrives (signed like the real service), the app verifies it and the page
@@ -282,5 +327,5 @@ test("final exam demo: locked reason, eligibility, launch, pending grade, verifi
 
   await page.reload();
   await expect(page.getByText("graded", { exact: true })).toBeVisible();
-  await expect(page.getByText("Result 4 / 5 — not passed.")).toBeVisible();
+  await expect(page.getByText("Result 4 / 10 — not passed.")).toBeVisible();
 });

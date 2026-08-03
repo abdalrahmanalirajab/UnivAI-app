@@ -26,6 +26,11 @@ export default defineConfig({
       UNIVAI_DATA_ROOT: "./standalone",
       BETTER_AUTH_URL: baseURL,
       BETTER_AUTH_SECRET: "e2e-only-placeholder-not-a-production-secret",
+      MONGODB_URI:
+        process.env.MONGODB_URI ??
+        "mongodb://127.0.0.1:27018/univai_exams_standalone",
+      EXAM_SYSTEM_URL: process.env.EXAM_SYSTEM_URL ?? "http://localhost:3200",
+      EXAM_CALLBACK_SECRET: process.env.EXAM_CALLBACK_SECRET ?? "",
     },
   },
 });

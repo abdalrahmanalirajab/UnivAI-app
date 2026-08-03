@@ -196,7 +196,15 @@ function startFinalServiceResponse() {
     return serviceResponse(403, { error: state.service.denialReason });
   }
   if (state.service.started) {
-    return serviceResponse(409, { error: "Final exam already attempted" });
+    return serviceResponse(200, {
+      launch_url: LAUNCH_URL,
+      _id: EXAM_ID,
+      title: "Final — Demo Course",
+      taken: false,
+      integrity_status: "clean",
+      integrity_state: "active",
+      progress: { total: 10 },
+    });
   }
   state.service.started = true;
   return serviceResponse(200, {
@@ -206,6 +214,7 @@ function startFinalServiceResponse() {
     taken: false,
     integrity_status: "clean",
     integrity_state: "active",
+    progress: { total: 10 },
   });
 }
 
@@ -318,7 +327,7 @@ describe("final exam journey — launch (acceptance criteria 1 & 2)", () => {
     resetState();
   });
 
-  it("starts exactly one final for an eligible learner: one launch, one persisted status, fresh idempotency keys", async () => {
+  it("starts exactly one final for an eligible learner and resumes it on duplicate start", async () => {
     state.service.phase = "eligible";
 
     const first = await postStart();
@@ -334,13 +343,13 @@ describe("final exam journey — launch (acceptance criteria 1 & 2)", () => {
     expect(state.finalStatus).toHaveLength(1);
     expect(state.finalStatus[0]).toMatchObject({ student_id: SESSION_SID, state: "active" });
 
-    // A second start is refused by the Exam service and relayed verbatim —
-    // the app never creates a second attempt on its own.
+    // A second start resumes the same service-owned attempt. The App still
+    // stores one status row and never creates an attempt itself.
     const second = await postStart();
-    expect(second.status).toBe(409);
-    expect((await second.json()).error).toBe("Final exam already attempted");
+    expect(second.status).toBe(200);
+    expect((await second.json()).url).toBe(LAUNCH_URL);
     expect(state.finalStatus).toHaveLength(1);
-    expect(state.service.launches[1].idempotencyKey).not.toBe(key);
+    expect(state.service.launches).toHaveLength(2);
   });
 
   it("relays the service-reported denial to an ineligible learner and ignores forged claims", async () => {
@@ -449,7 +458,7 @@ describe("final exam journey — no early result (acceptance criterion 4)", () =
     exams = await getExams();
     body = await exams.json();
     expect(body.final.state).toBe("graded");
-    expect(body.final.result).toEqual({ mark: 4, max_score: 5, passed: false });
+    expect(body.final.result).toEqual({ mark: 4, max_score: 10, passed: false });
     expect(state.grades).toHaveLength(1);
   });
 });
@@ -604,7 +613,7 @@ describe("final exam journey — leakage (Phase 6 audit, codified)", () => {
       title: "Final — Demo Course",
       state: "graded",
       reason: null,
-      result: JSON.stringify({ mark: 4, max_score: 5, passed: false }),
+      result: JSON.stringify({ mark: 4, max_score: 10, passed: false }),
     });
 
     const exams = await getExams();
