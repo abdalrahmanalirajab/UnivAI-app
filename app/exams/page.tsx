@@ -1,9 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Accordion from "@mui/material/Accordion";
-import AccordionDetails from "@mui/material/AccordionDetails";
-import AccordionSummary from "@mui/material/AccordionSummary";
 import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
@@ -15,20 +12,8 @@ import List from "@mui/material/List";
 import ListItem from "@mui/material/ListItem";
 import ListItemText from "@mui/material/ListItemText";
 import Stack from "@mui/material/Stack";
-import Table from "@mui/material/Table";
-import TableBody from "@mui/material/TableBody";
-import TableCell from "@mui/material/TableCell";
-import TableHead from "@mui/material/TableHead";
-import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
 import { formatCountdown, formatDateTime, formatRelative, useVirtualClock } from "@/lib/time";
-
-type Report = {
-  suspicion_score?: number;
-  flagged?: boolean;
-  session_status?: string;
-  events?: { type: string; weight: number; occurrences: number; at: string }[];
-};
 
 type Exam = {
   kind: "quiz" | "mid";
@@ -338,10 +323,11 @@ export default function ExamsPage() {
 
       {exams.some((exam) => exam.state === "submitted") ? (
         <Stack spacing={2}>
-          <Typography variant="h5">Results and proctoring reports</Typography>
+          <Typography variant="h5">Results</Typography>
           <Typography variant="body2" color="text.secondary">
-            What the exam system sent back after each submission — including the
-            integrity report. Admin view for now.
+            What the exam system sent back after each submission — the score and the
+            integrity verdict. The proctoring detail behind a flag stays with the
+            exam reviewers.
           </Typography>
           {exams
             .filter((exam) => exam.state === "submitted")
@@ -354,15 +340,12 @@ export default function ExamsPage() {
   );
 }
 
-/** One submitted exam: verdict, score, and the cheating report behind an accordion. */
+/** One submitted exam: verdict (score + integrity flag) and feedback. */
 function ReportCard({ exam }: { exam: Exam }) {
-  const report = exam.report;
-  const events = report?.events ?? [];
-
   return (
     <Card variant="outlined">
-      <Accordion disableGutters>
-        <AccordionSummary>
+      <CardContent>
+        <Stack spacing={1}>
           <Grid container spacing={1}>
             <Grid>
               <Typography variant="subtitle1">{exam.title}</Typography>
@@ -377,52 +360,10 @@ function ReportCard({ exam }: { exam: Exam }) {
             <Grid>
               <Chip size="small" variant="outlined" label={`score ${exam.score} / ${exam.maxScore}`} />
             </Grid>
-            {typeof report?.suspicion_score === "number" ? (
-              <Grid>
-                <Chip
-                  size="small"
-                  variant="outlined"
-                  color={report.suspicion_score > 0 ? "warning" : "default"}
-                  label={`suspicion ${report.suspicion_score}`}
-                />
-              </Grid>
-            ) : null}
           </Grid>
-        </AccordionSummary>
-        <AccordionDetails>
-          <Stack spacing={2}>
-            {exam.feedback ? (
-              <Typography variant="body2">{exam.feedback}</Typography>
-            ) : null}
-            {events.length ? (
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Event</TableCell>
-                    <TableCell align="right">Times</TableCell>
-                    <TableCell align="right">Weight</TableCell>
-                    <TableCell>Last seen</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {events.map((event, index) => (
-                    <TableRow key={`${event.type}-${index}`}>
-                      <TableCell>{event.type.replace(/_/g, " ")}</TableCell>
-                      <TableCell align="right">{event.occurrences}</TableCell>
-                      <TableCell align="right">{event.weight}</TableCell>
-                      <TableCell>{event.at ? formatDateTime(event.at) : "—"}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            ) : (
-              <Typography variant="body2" color="text.secondary">
-                No proctoring events — a clean sitting.
-              </Typography>
-            )}
-          </Stack>
-        </AccordionDetails>
-      </Accordion>
+          {exam.feedback ? <Typography variant="body2">{exam.feedback}</Typography> : null}
+        </Stack>
+      </CardContent>
     </Card>
   );
 }
