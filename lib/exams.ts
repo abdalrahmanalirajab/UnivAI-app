@@ -267,6 +267,141 @@ export async function getFinalExamStatus(sid: string): Promise<ExamServiceStatus
 }
 
 /**
+ * The result-callback payload the exam system webhooks to /api/exams/callback
+ * (its resultWebhookSchema). Only the fields this app may rely on are listed;
+ * anything else the service might send is treated as unsafe and dropped.
+ */
+export type ResultWebhook = {
+  exam_id: string;
+  type: string;
+  title: string;
+  student_sid?: string | null;
+  chapter_id: string | null;
+  mark?: number | null;
+  total_questions?: number | null;
+  passing_mark?: number | null;
+  passed?: boolean | null;
+  grading_status?: string | null;
+  integrity_status?: string | null;
+  review_status?: string | null;
+  report?: { flagged?: boolean } | null;
+};
+
+/**
+ * Project a final exam's result callback onto ExamServiceStatusV1, the display
+ * contract. The webhook arrives after submission, so the lifecycle is a
+ * post-submit verdict driven only by the service's own fields: flagged (its
+ * integrity verdict), awaiting-grade (pending_review), graded (its confirmed
+ * final, carrying the result), or submitted (auto-graded — reported but not
+ * confirmed final, so no result). The proctoring detail in `report` is never
+ * carried into the projection.
+ */
+export function webhookToFinalExamStatus(payload: ResultWebhook): ExamServiceStatusV1 {
+  const base = {
+    exam_id: payload.exam_id,
+    title: payload.title,
+    type: "final" as const,
+  };
+
+  if (payload.integrity_status === "invalidated" || payload.report?.flagged) {
+    return { ...base, state: "flagged", reason: null, result: null };
+  }
+
+  if (payload.grading_status === "pending_review") {
+    return { ...base, state: "awaiting-grade", reason: null, result: null };
+  }
+
+  if (
+    payload.grading_status === "graded" &&
+    payload.mark !== null &&
+    payload.mark !== undefined &&
+    payload.passing_mark !== null &&
+    payload.passing_mark !== undefined &&
+    payload.passed !== null &&
+    payload.passed !== undefined
+  ) {
+    return {
+      ...base,
+      state: "graded",
+      reason: null,
+      result: { mark: payload.mark, max_score: payload.passing_mark, passed: payload.passed },
+    };
+  }
+
+  // graded but the service omitted the mark — never fabricate one.
+  if (payload.grading_status === "graded") {
+    return { ...base, state: "graded", reason: null, result: null };
+  }
+
+  return { ...base, state: "submitted", reason: null, result: null };
+}
+
+let callbackEventsSchemaPromise: Promise<void> | null = null;
+
+/**
+ * Deduplication ledger for result callbacks. The exam system may re-deliver a
+ * callback; a row here means that exact event (same exam id + same event
+ * fingerprint) was already processed and must not be re-applied. Additive and
+ * idempotent, like ensureFeedbackSchema.
+ */
+function ensureExamCallbackEventsSchema(): Promise<void> {
+  callbackEventsSchemaPromise ??= query(`
+    CREATE TABLE IF NOT EXISTS exam_callback_events (
+      exam_id TEXT NOT NULL,
+      fingerprint TEXT NOT NULL,
+      received_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (exam_id, fingerprint)
+    );
+  `)
+    .then(() => undefined)
+    .catch((error) => {
+      callbackEventsSchemaPromise = null;
+      throw error;
+    });
+  return callbackEventsSchemaPromise;
+}
+
+/**
+ * The event fingerprint for a result callback, built ONLY from real payload
+ * fields the exam system sends (grading_status, integrity_status,
+ * review_status, mark). Re-delivering the same result reproduces the same
+ * fingerprint; a genuinely different event (submit verdict vs manual grade vs
+ * regrade) produces a different one, so later events are never deduped away.
+ */
+export function examCallbackFingerprint(payload: {
+  grading_status?: string | null;
+  integrity_status?: string | null;
+  review_status?: string | null;
+  mark?: number | null;
+}): string {
+  return [
+    payload.grading_status ?? "",
+    payload.integrity_status ?? "",
+    payload.review_status ?? "",
+    payload.mark ?? "",
+  ].join("|");
+}
+
+/** True when this exact callback event (exam id + fingerprint) was already processed. */
+export async function wasExamCallbackProcessed(examId: string, fingerprint: string): Promise<boolean> {
+  await ensureExamCallbackEventsSchema();
+  const rows = await query<{ exam_id: string }>(
+    "SELECT exam_id FROM exam_callback_events WHERE exam_id = $1 AND fingerprint = $2",
+    [examId, fingerprint]
+  );
+  return rows.length > 0;
+}
+
+/** Remember that this callback event was processed (idempotent insert). */
+export async function recordExamCallback(examId: string, fingerprint: string): Promise<void> {
+  await ensureExamCallbackEventsSchema();
+  await query(
+    "INSERT INTO exam_callback_events (exam_id, fingerprint) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+    [examId, fingerprint]
+  );
+}
+
+/**
  * Wipe ONE student's seeded exam world (used when they replace their book).
  * Scoped by owner so re-uploading never destroys another student's exams. We
  * delete their link + their chapters' question banks, and the docs owned by

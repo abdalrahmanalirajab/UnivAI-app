@@ -44,6 +44,10 @@ export const env = {
   // The team's exam system (UnivAI-exam_system, port 3200) and its MongoDB.
   MONGODB_URI: read("MONGODB_URI", "mongodb://localhost:27017/univai_exams"),
   EXAM_SYSTEM_URL: read("EXAM_SYSTEM_URL", "http://localhost:3200"),
+  // Shared secret the exam system uses to sign result callbacks (HMAC-SHA256
+  // over the raw body, X-Exam-Signature header). Fail-closed: callbacks are
+  // rejected while this is unset.
+  EXAM_CALLBACK_SECRET: read("EXAM_CALLBACK_SECRET"),
   STUDENT_NAME: read("STUDENT_NAME", "Student"),
 
   LIVEKIT_URL: read("LIVEKIT_URL") || read("NEXT_PUBLIC_LIVEKIT_URL"),
