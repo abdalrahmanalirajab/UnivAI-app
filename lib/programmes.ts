@@ -1,5 +1,6 @@
 import { queryOne } from "./db";
 import type { ProgrammePlanV1, Course } from "@/test/fixtures/programme-plan-v1";
+import type { LearningPathV1 } from "@/test/fixtures/learning-path-v1";
 
 export type ProgrammeStatus = "proposed" | "approved";
 
@@ -19,6 +20,43 @@ export type Programme = {
 export type ProgrammeResult =
   | { ok: true; programme: Programme }
   | { ok: false; error: string; current: Programme | null };
+
+export function learningPathApprovalErrors(
+  path: LearningPathV1 | undefined,
+  planVersion: number,
+): string[] {
+  if (!path) return ["The versioned learning path is not available."];
+  const errors: string[] = [];
+  if (path.plan_version !== planVersion) errors.push("The learning path is stale.");
+  const graph = new Map<number, number[]>();
+  for (const edge of path.edges) {
+    graph.set(edge.prerequisite_book_id, [
+      ...(graph.get(edge.prerequisite_book_id) ?? []),
+      edge.dependent_book_id,
+    ]);
+    if (edge.confidence < 0.7) errors.push("A prerequisite edge has low confidence.");
+    if (!edge.evidence) errors.push("A prerequisite edge has no resolvable evidence.");
+    if (edge.alternatives.some((alternative) => !alternative.resolved)) {
+      errors.push("A prerequisite edge has an unresolved alternative.");
+    }
+    if (edge.override && !edge.override.resolved) {
+      errors.push("A prerequisite edge has an unresolved override.");
+    }
+  }
+  const visiting = new Set<number>();
+  const visited = new Set<number>();
+  const cyclic = (node: number): boolean => {
+    if (visiting.has(node)) return true;
+    if (visited.has(node)) return false;
+    visiting.add(node);
+    if ((graph.get(node) ?? []).some(cyclic)) return true;
+    visiting.delete(node);
+    visited.add(node);
+    return false;
+  };
+  if (path.books.some((book) => cyclic(book.id))) errors.push("The learning path contains a cycle.");
+  return [...new Set(errors)];
+}
 
 const COLUMNS =
   "id, student_id, collection_id, name, status, plan_version, plan, approved_at, created_at, updated_at";
@@ -110,6 +148,14 @@ export async function approveProgramme(
   }
   if (current.plan_version !== planVersion) {
     return { ok: false, error: "Stale plan version. Refresh and try again.", current };
+  }
+  const learningPathErrors = learningPathApprovalErrors(current.plan.learning_path, planVersion);
+  if (learningPathErrors.length > 0) {
+    return {
+      ok: false,
+      error: `Programme cannot be approved: ${learningPathErrors.join(" ")}`,
+      current,
+    };
   }
   const row = await queryOne<Record<string, unknown>>(
     `UPDATE programmes

@@ -14,7 +14,7 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import type { Programme } from "@/lib/programmes";
 import CurriculumWorkspace from "./CurriculumWorkspace";
-import type { ApprovalBlock, LearningPathLoad } from "./ProgrammeGraph";
+import type { ApprovalBlock } from "./ProgrammeGraph";
 
 type Props = {
   params: Promise<{ programmeId: string }>;
@@ -30,9 +30,6 @@ export default function CurriculumPage({ params }: Props) {
   const [approveError, setApproveError] = useState<string | null>(null);
   const [approved, setApproved] = useState(false);
   const [approvalBlocks, setApprovalBlocks] = useState<ApprovalBlock[]>([]);
-  const [learningPath, setLearningPath] = useState<LearningPathLoad>({
-    status: "loading",
-  });
 
   const fetchProgramme = useCallback(async (id: number) => {
     setLoading(true);
@@ -68,45 +65,6 @@ export default function CurriculumPage({ params }: Props) {
     };
     init();
   }, [params, fetchProgramme]);
-
-  // The cross-book learning path is versioned against the programme's
-  // plan_version, so it is re-fetched whenever the programme version changes
-  // (e.g. after a 409 conflict rebuilds the page from `current`). A missing
-  // endpoint (404) is an explicit "no contract" state, never a silent skip.
-  const [learningPathReload, setLearningPathReload] = useState(0);
-  const fetchLearningPath = useCallback(async (id: number) => {
-    setLearningPath({ status: "loading" });
-    try {
-      const res = await fetch(`/api/programmes/${id}/learning-path`, {
-        cache: "no-store",
-      });
-      if (res.status === 404) {
-        setLearningPath({ status: "ready", data: null });
-        return;
-      }
-      if (!res.ok) throw new Error("Failed to load learning path.");
-      const data = await res.json();
-      setLearningPath({ status: "ready", data: data.learningPath ?? null });
-    } catch (err) {
-      setLearningPath({
-        status: "failed",
-        error: err instanceof Error ? err.message : "Failed to load learning path.",
-        retry: () => setLearningPathReload((tick) => tick + 1),
-      });
-    }
-  }, []);
-
-  const programmeLoaded = programme !== null;
-  useEffect(() => {
-    if (programmeId === null || !programmeLoaded) return;
-    fetchLearningPath(programmeId);
-  }, [
-    programmeId,
-    programmeLoaded,
-    programme?.plan_version,
-    learningPathReload,
-    fetchLearningPath,
-  ]);
 
   function handleProgrammeUpdated(p: Programme) {
     setProgramme(p);
@@ -232,7 +190,7 @@ export default function CurriculumPage({ params }: Props) {
         programmeId={programmeId!}
         onProgrammeUpdated={handleProgrammeUpdated}
         onApprovalBlocksChange={setApprovalBlocks}
-        learningPath={learningPath}
+        learningPath={{ status: "ready", data: programme.plan.learning_path ?? null }}
       />
 
       <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)}>

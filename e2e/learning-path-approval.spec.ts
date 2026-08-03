@@ -30,7 +30,7 @@ test.describe.configure({ timeout: 120_000 });
 /*  HARNESS HONESTY — no real Postgres is required to run this spec:   */
 /*  the auth proxy gate (proxy.ts) only checks session-cookie          */
 /*  presence, so a session cookie is set directly; every API call the  */
-/*  page makes (programme GET, versioned learning-path GET, approve    */
+/*  page makes (programme GET carrying the versioned contract, approve*/
 /*  POST, auth get-session) is intercepted at the network boundary     */
 /*  with route-faithful semantics matching the Phase 5 approve route   */
 /*  (exact-version 409 with `current`, idempotent 200 naming           */
@@ -38,10 +38,8 @@ test.describe.configure({ timeout: 120_000 });
 /*  authorization, tamper rejection — is exercised by the unit suite   */
 /*  (test/cross-book-prerequisite-flow.test.tsx) instead.              */
 /*                                                                     */
-/*  The page fetches the learning path from                            */
-/*  GET /api/programmes/1/learning-path (wired in page.tsx), so each   */
-/*  scenario serves its fixture from that endpoint; the served         */
-/*  contract always carries the version the backend currently holds.   */
+/*  The programme payload carries the versioned learning-path fixture; */
+/*  the contract always matches the version the backend currently holds.*/
 /* ------------------------------------------------------------------ */
 
 const STUDENT_ID = "S-2026-000999";
@@ -64,7 +62,10 @@ function programmePayload(planVersion: number, status: "proposed" | "approved") 
     name: "Test Programme",
     status,
     plan_version: planVersion,
-    plan: structuredClone(SEVEN_WEEK_PLAN_V1),
+    plan: {
+      ...structuredClone(SEVEN_WEEK_PLAN_V1),
+      learning_path: structuredClone(backendState.learningPath),
+    },
     approved_at: approvedAt,
     created_at: "2026-07-28T00:00:00Z",
     updated_at: approvedAt ?? "2026-07-28T00:00:00Z",
@@ -94,14 +95,6 @@ async function mockApis(page: import("@playwright/test").Page) {
     await route.fulfill({
       json: { programme: programmePayload(backendState.latestVersion, "proposed") },
     });
-  });
-
-  await page.route("**/api/programmes/1/learning-path", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fulfill({ status: 405, json: { error: "Method not allowed" } });
-      return;
-    }
-    await route.fulfill({ json: { learningPath: backendState.learningPath } });
   });
 
   await page.route("**/api/programmes/1/approve", async (route) => {
