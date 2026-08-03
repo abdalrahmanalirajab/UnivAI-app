@@ -4,11 +4,7 @@ import { query } from "./db";
 import { now, MINUTE_MS } from "./clock";
 import { DATA_ROOT, LECTURES_ROOT } from "./paths";
 import type { ProgrammePlanV1 } from "@/test/fixtures/programme-plan-v1";
-import {
-  SECTION_PACKS_V1,
-  type SectionKind,
-  type SectionPackV1,
-} from "@/test/fixtures/section-pack-v1";
+import { getSetting, setSetting } from "./settings";
 
 /**
  * Lecture content is PREMADE and committed under lectures/week-N/:
@@ -39,6 +35,18 @@ export type BlockedReason = "not_started" | "too_late" | "completed" | "missed" 
  * a section are never merged into one ambiguous kind.
  */
 export type SessionType = "lecture" | "section";
+
+export type SectionKind = "tutorial" | "lab";
+
+export type SectionPackV1 = {
+  week: number;
+  sections: Array<{
+    id: string;
+    week: number;
+    kind: SectionKind;
+    title: string;
+  }>;
+};
 
 export type Lecture = {
   id: number;
@@ -93,6 +101,140 @@ export async function readScript(sid: string, week: number): Promise<Script | nu
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
+type ApprovedSchedulePlan = {
+  programmeId: number;
+  planVersion: number;
+  weekCount: number;
+  sectionPacks: SectionPackV1[];
+};
+
+type ScheduleBinding = {
+  programmeId: number;
+  planVersion: number;
+  weekCount: number;
+};
+
+export class ScheduleIntegrityError extends Error {
+  constructor(
+    public readonly code: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ScheduleIntegrityError";
+  }
+}
+
+function scheduleBindingKey(sid: string): string {
+  return `schedule:${sid}:approved-plan`;
+}
+
+function invalidSectionPacks(): never {
+  throw new ScheduleIntegrityError(
+    "INVALID_SECTION_PACKS",
+    "The approved plan has invalid section records.",
+  );
+}
+
+function parseSectionPacks(value: unknown, weekCount: number): SectionPackV1[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) invalidSectionPacks();
+
+  const seenWeeks = new Set<number>();
+  const seenIds = new Set<string>();
+  return value.map((candidate) => {
+    if (!candidate || typeof candidate !== "object") invalidSectionPacks();
+    const pack = candidate as Partial<SectionPackV1>;
+    if (
+      !Number.isInteger(pack.week) ||
+      !pack.week ||
+      pack.week < 1 ||
+      pack.week > weekCount ||
+      seenWeeks.has(pack.week) ||
+      !Array.isArray(pack.sections)
+    ) {
+      invalidSectionPacks();
+    }
+    const packWeek = pack.week as number;
+    seenWeeks.add(packWeek);
+    const sections = pack.sections.map((candidateSection) => {
+      const section = candidateSection as Partial<SectionPackV1["sections"][number]>;
+      if (
+        typeof section.id !== "string" ||
+        section.id.length === 0 ||
+        seenIds.has(section.id) ||
+        section.week !== packWeek ||
+        (section.kind !== "tutorial" && section.kind !== "lab") ||
+        typeof section.title !== "string" ||
+        section.title.trim().length === 0
+      ) {
+        invalidSectionPacks();
+      }
+      seenIds.add(section.id);
+      return {
+        id: section.id,
+        week: packWeek,
+        kind: section.kind,
+        title: section.title,
+      };
+    });
+    return { week: packWeek, sections };
+  });
+}
+
+async function approvedSchedulePlan(sid: string): Promise<ApprovedSchedulePlan | null> {
+  let rows: Array<{ id: number; plan_version: number; plan: unknown }>;
+  try {
+    rows = await query<{ id: number; plan_version: number; plan: unknown }>(
+      `SELECT id, plan_version, plan FROM programmes
+        WHERE student_id = $1 AND status = 'approved'
+        ORDER BY id DESC LIMIT 1`,
+      [sid],
+    );
+  } catch (error) {
+    if ((error as { code?: string })?.code === "42P01") return null;
+    throw error;
+  }
+  if (rows.length === 0) return null;
+
+  const row = rows[0];
+  const plan = row.plan as Partial<ProgrammePlanV1> & { section_packs?: unknown };
+  const weeks = plan?.workload?.weeks_per_semester;
+  if (typeof weeks !== "number" || !Number.isInteger(weeks) || weeks < 1) {
+    throw new ScheduleIntegrityError(
+      "INVALID_APPROVED_PLAN",
+      "The approved programme has no valid weeks_per_semester.",
+    );
+  }
+
+  return {
+    programmeId: row.id,
+    planVersion: row.plan_version,
+    weekCount: weeks,
+    sectionPacks: parseSectionPacks(plan.section_packs, weeks),
+  };
+}
+
+async function scheduleBinding(sid: string): Promise<ScheduleBinding | null> {
+  const raw = await getSetting(scheduleBindingKey(sid));
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<ScheduleBinding>;
+    if (
+      !Number.isInteger(parsed.programmeId) ||
+      !Number.isInteger(parsed.planVersion) ||
+      !Number.isInteger(parsed.weekCount)
+    ) {
+      throw new Error("invalid binding");
+    }
+    return parsed as ScheduleBinding;
+  } catch {
+    throw new ScheduleIntegrityError(
+      "INVALID_SCHEDULE_BINDING",
+      "The saved schedule is invalid. Ask an administrator to rebuild it.",
+    );
+  }
+}
+
 /** The canonical fresh-semester anchor: tomorrow at 10:00, virtual time. */
 function firstLectureStart(virtualNow: Date): Date {
   const start = new Date(virtualNow);
@@ -111,30 +253,7 @@ function firstLectureStart(virtualNow: Date): Date {
  * explicit rejection, never a silent pass-through.
  */
 async function approvedWeekCount(sid: string): Promise<number> {
-  let rows: { plan: unknown }[];
-  try {
-    rows = await query<{ plan: unknown }>(
-      `SELECT plan FROM programmes
-        WHERE student_id = $1 AND status = 'approved'
-        ORDER BY id DESC LIMIT 1`,
-      [sid]
-    );
-  } catch (error) {
-    // Older deployments (standalone) do not have the programmes table yet.
-    // Mirrors the 42P01 handling in lib/onboarding.ts.
-    if ((error as { code?: string })?.code === "42P01") return 0;
-    throw error;
-  }
-  // No approved programme at all: a legitimate pre-approval state — the
-  // schedule stays empty until one is approved. Only an APPROVED programme
-  // with unusable plan data is corruption.
-  if (rows.length === 0) return 0;
-  const plan = rows[0]?.plan as Partial<ProgrammePlanV1> | undefined;
-  const weeks = plan?.workload?.weeks_per_semester;
-  if (typeof weeks !== "number" || !Number.isInteger(weeks) || weeks < 1) {
-    throw new Error(`Approved programme for ${sid} has no valid weeks_per_semester.`);
-  }
-  return weeks;
+  return (await approvedSchedulePlan(sid))?.weekCount ?? 0;
 }
 
 /**
@@ -145,34 +264,51 @@ async function approvedWeekCount(sid: string): Promise<number> {
  * re-fetching.
  */
 export async function approvedPlanVersion(sid: string): Promise<number | null> {
-  let rows: { plan_version: number }[];
-  try {
-    rows = await query<{ plan_version: number }>(
-      `SELECT plan_version FROM programmes
-        WHERE student_id = $1 AND status = 'approved'
-        ORDER BY id DESC LIMIT 1`,
-      [sid]
-    );
-  } catch (error) {
-    // Older deployments (standalone) do not have the programmes table yet.
-    if ((error as { code?: string })?.code === "42P01") return null;
-    throw error;
-  }
-  return rows[0]?.plan_version ?? null;
+  return (await approvedSchedulePlan(sid))?.planVersion ?? null;
 }
 
 /** Seed one student's schedule from the approved plan: a lecture a week from tomorrow 10:00 virtual. */
-export async function ensureSchedule(sid: string): Promise<void> {
-  const weekCount = await approvedWeekCount(sid);
-  const existing = await query<{ count: string }>(
-    "SELECT COUNT(*)::text AS count FROM lectures WHERE student_id = $1",
-    [sid]
+export async function ensureSchedule(sid: string): Promise<ApprovedSchedulePlan | null> {
+  const approved = await approvedSchedulePlan(sid);
+  const rows = await query<{ week: number }>(
+    "SELECT week FROM lectures WHERE student_id = $1 ORDER BY week ASC",
+    [sid],
   );
-  if (Number(existing[0]?.count ?? 0) >= weekCount) return;
+  if (!approved) {
+    if (rows.length > 0) {
+      throw new ScheduleIntegrityError(
+        "MISSING_APPROVED_PLAN",
+        "A saved schedule exists without an approved programme.",
+      );
+    }
+    return null;
+  }
+
+  const binding = await scheduleBinding(sid);
+  if (binding) {
+    if (
+      binding.programmeId !== approved.programmeId ||
+      binding.planVersion !== approved.planVersion ||
+      binding.weekCount !== approved.weekCount
+    ) {
+      throw new ScheduleIntegrityError(
+        "STALE_SCHEDULE",
+        "The saved schedule belongs to an older approved plan. Rebuild it before continuing.",
+      );
+    }
+    return approved;
+  }
+
+  if (rows.length > 0) {
+    throw new ScheduleIntegrityError(
+      "UNBOUND_SCHEDULE",
+      "The saved schedule is not linked to the approved plan. Rebuild it before continuing.",
+    );
+  }
 
   const start = firstLectureStart(await now());
 
-  for (let week = 1; week <= weekCount; week++) {
+  for (let week = 1; week <= approved.weekCount; week++) {
     const script = await readScript(sid, week);
     const startsAt = new Date(start.getTime() + (week - 1) * WEEK_MS);
     await query(
@@ -181,6 +317,15 @@ export async function ensureSchedule(sid: string): Promise<void> {
       [sid, week, script?.title ?? `Week ${week}`, startsAt]
     );
   }
+  await setSetting(
+    scheduleBindingKey(sid),
+    JSON.stringify({
+      programmeId: approved.programmeId,
+      planVersion: approved.planVersion,
+      weekCount: approved.weekCount,
+    } satisfies ScheduleBinding),
+  );
+  return approved;
 }
 
 /**
@@ -189,9 +334,16 @@ export async function ensureSchedule(sid: string): Promise<void> {
  * lecture rows and their generated content stay.
  */
 export async function rescheduleLectures(sid: string): Promise<void> {
-  const weekCount = await approvedWeekCount(sid);
+  if (await semesterHasStarted(sid)) {
+    throw new ScheduleIntegrityError(
+      "PLAN_ALREADY_STARTED",
+      "This approved plan has already started, so its schedule and history cannot be rewritten.",
+    );
+  }
+  const approved = await ensureSchedule(sid);
+  if (!approved) return;
   const start = firstLectureStart(await now());
-  for (let week = 1; week <= weekCount; week++) {
+  for (let week = 1; week <= approved.weekCount; week++) {
     const startsAt = new Date(start.getTime() + (week - 1) * WEEK_MS);
     await query("UPDATE lectures SET starts_at = $1 WHERE week = $2 AND student_id = $3", [
       startsAt,
@@ -222,7 +374,8 @@ export async function semesterHasStarted(sid: string): Promise<boolean> {
 
 export type ScheduleRejection =
   | { code: "DUPLICATE_LECTURE_WEEK"; message: string }
-  | { code: "NON_CONTIGUOUS_LECTURE_WEEKS"; message: string };
+  | { code: "NON_CONTIGUOUS_LECTURE_WEEKS"; message: string }
+  | { code: "LECTURE_COUNT_MISMATCH"; message: string };
 
 /**
  * Integrity check over one student's lecture records before they are served.
@@ -231,10 +384,14 @@ export type ScheduleRejection =
  * (the same invariant lib/programmes.ts keeps for programmes). Duplicate
  * (student_id, week) rows and week sequences with gaps or a missing week 1
  * are corruption — rejected explicitly, never passed through silently.
- * Section records are not persisted yet (SectionPackV1 is the temporary
- * fixture contract), so they share this invariant once they are.
+ * Section records come from the same approved, versioned plan and are
+ * validated before they are placed after their lecture.
  */
-export async function validateSchedule(sid: string): Promise<ScheduleRejection | null> {
+export async function validateSchedule(
+  sid: string,
+  expectedWeekCount?: number,
+): Promise<ScheduleRejection | null> {
+  const requiredWeeks = expectedWeekCount ?? (await approvedWeekCount(sid));
   const rows = await query<{ week: number }>(
     "SELECT week FROM lectures WHERE student_id = $1 ORDER BY week ASC",
     [sid]
@@ -260,13 +417,21 @@ export async function validateSchedule(sid: string): Promise<ScheduleRejection |
     }
   }
 
+  if (rows.length !== requiredWeeks) {
+    return {
+      code: "LECTURE_COUNT_MISMATCH",
+      message: `The approved plan requires ${requiredWeeks} lectures, but ${rows.length} are saved.`,
+    };
+  }
+
   return null;
 }
 
 export async function getLectures(sid: string): Promise<Lecture[]> {
-  await ensureSchedule(sid);
-  const rejection = await validateSchedule(sid);
-  if (rejection) throw new Error(`${rejection.code}: ${rejection.message}`);
+  const approved = await ensureSchedule(sid);
+  if (!approved) return [];
+  const rejection = await validateSchedule(sid, approved.weekCount);
+  if (rejection) throw new ScheduleIntegrityError(rejection.code, rejection.message);
   const virtualNow = await now();
 
   const rows = await query<{
@@ -333,24 +498,19 @@ export const BLOCKED_MESSAGE: Record<NonNullable<BlockedReason>, string> = {
   completed: "You have already finished this lecture.",
 };
 
-/** The week's real, approved SectionPack — or nothing. Nothing is ever scheduled speculatively. */
-function approvedSectionPack(week: number): SectionPackV1 | null {
-  return SECTION_PACKS_V1.find((pack) => pack.week === week) ?? null;
-}
-
 /**
  * The student's scheduled sections. A section exists ONLY when a real,
- * approved SectionPack exists for its lecture's week (Agent-owned packs,
- * temporarily served by the versioned fixture) — every section record starts
- * immediately after its lecture ends. Weeks without a pack — and every week
- * before the plan is approved — yield no section at all. Sections are not
- * persisted, so rescheduling a lecture moves its sections with it.
+ * approved SectionPack exists in the exact approved plan version. Every
+ * section starts immediately after its lecture ends; absent packs never create
+ * placeholder sections.
  */
 export async function getSections(sid: string): Promise<Section[]> {
   const lectures = await getLectures(sid);
+  const approved = await approvedSchedulePlan(sid);
+  if (!approved) return [];
   const sections: Section[] = [];
   for (const lecture of lectures) {
-    const pack = approvedSectionPack(lecture.week);
+    const pack = approved.sectionPacks.find((candidate) => candidate.week === lecture.week);
     if (!pack) continue;
     const startsAt = new Date(lecture.endsAt.getTime());
     for (const record of pack.sections) {

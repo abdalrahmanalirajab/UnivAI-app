@@ -110,9 +110,27 @@ export default function SchedulePage() {
       return;
     }
     setOffline(false);
-    const data = await res.json();
+    let data: {
+      error?: string;
+      planVersion?: number | null;
+      generation?: { status: string; error: string | null } | null;
+      lectures?: ScheduleRecord[];
+    };
+    try {
+      data = await res.json();
+    } catch {
+      setRejected({
+        status: res.status,
+        error: "The schedule service returned an invalid response. Please retry.",
+      });
+      return;
+    }
     if (!res.ok) {
       setRejected({ status: res.status, error: data.error ?? `Request failed (${res.status}).` });
+      return;
+    }
+    if (!Array.isArray(data.lectures)) {
+      setRejected({ status: 500, error: "The schedule response is missing its session records." });
       return;
     }
     setRejected(null);

@@ -1,6 +1,10 @@
 import { test, expect } from "@playwright/test";
+import { readFile } from "node:fs/promises";
+import { Pool } from "pg";
 import { SEVEN_WEEK_PLAN_V1 } from "../test/fixtures/programme-plans-v1";
 import { SECTION_PACKS_V1 } from "../test/fixtures/section-pack-v1";
+
+test.describe.configure({ timeout: 120_000 });
 
 /* ------------------------------------------------------------------ */
 /*  Demo Contract — approved 7-week plan with two sections             */
@@ -17,7 +21,6 @@ import { SECTION_PACKS_V1 } from "../test/fixtures/section-pack-v1";
 /* ------------------------------------------------------------------ */
 
 const STUDENT_ID = "S-2026-000999";
-const SESSION_COOKIE = "better-auth.session_token";
 const LECTURE_WINDOW_MS = 60 * 60_000;
 
 // Weekly cadence, identical to ensureSchedule's seed: week 1 = 2026-08-04T10:00Z.
@@ -117,10 +120,32 @@ function schedulePayload() {
 /*  Helpers                                                           */
 /* ------------------------------------------------------------------ */
 
-async function setSession(page: import("@playwright/test").Page) {
-  await page.context().addCookies([
-    { name: SESSION_COOKIE, value: "mock-session-token", domain: "localhost", path: "/" },
-  ]);
+async function prepareAuthenticatedLearner(
+  page: import("@playwright/test").Page,
+  testInfo: import("@playwright/test").TestInfo,
+) {
+  const suffix = `${process.pid}-${testInfo.workerIndex}-${Date.now()}`;
+  const signup = await page.request.post("/api/auth/sign-up/email", {
+    headers: { Origin: testInfo.project.use.baseURL as string },
+    data: {
+      email: `schedule-${suffix}@univai.local`,
+      password: "ScheduleTest123!",
+      name: "Schedule Learner",
+      phone: "+201000000999",
+    },
+  });
+  expect(signup.ok(), await signup.text()).toBe(true);
+
+  const upload = await page.request.post("/api/upload", {
+    multipart: {
+      file: {
+        name: "prepared-source.pdf",
+        mimeType: "application/pdf",
+        buffer: Buffer.from("%PDF-1.4\n%%EOF"),
+      },
+    },
+  });
+  expect(upload.ok(), await upload.text()).toBe(true);
 }
 
 async function mockApis(page: import("@playwright/test").Page) {
@@ -263,11 +288,24 @@ async function assertScheduleOrderAndStates(
 /*  Demo Contract test                                                */
 /* ------------------------------------------------------------------ */
 
-test.beforeEach(async ({ page }) => {
+test.beforeAll(async () => {
+  const pool = new Pool({
+    connectionString:
+      process.env.DATABASE_URL ??
+      "postgresql://univai:univai@127.0.0.1:5434/univai_app_standalone",
+  });
+  try {
+    await pool.query(await readFile("standalone/schema.sql", "utf8"));
+  } finally {
+    await pool.end();
+  }
+});
+
+test.beforeEach(async ({ page }, testInfo) => {
   backendState.collectionCreated = false;
   backendState.approvedAt = null;
   backendState.now = "2026-08-03T12:00:00.000Z";
-  await setSession(page);
+  await prepareAuthenticatedLearner(page, testInfo);
   await mockApis(page);
 });
 

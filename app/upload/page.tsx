@@ -195,8 +195,8 @@ export default function BooksPage() {
                     {book?.progress ?? "Working…"}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    The book is split into 4 weeks; each gets its slides, narration and
-                    quiz written from its own pages. This takes a few minutes.
+                    Each approved plan week gets its own slides, narration and quiz,
+                    grounded in the selected sources. This takes a few minutes.
                   </Typography>
                 </Stack>
               </CardContent>
