@@ -7,6 +7,7 @@ import AccordionSummary from "@mui/material/AccordionSummary";
 import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
+import CardContent from "@mui/material/CardContent";
 import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
 import Grid from "@mui/material/Grid";
@@ -50,16 +51,60 @@ const STATE_COLOR: Record<Exam["state"], "default" | "success" | "error" | "warn
   submitted: "default",
 };
 
+/** The final exam's status exactly as the server relayed it from the Exam service. */
+type FinalExam = {
+  exam_id: string;
+  title: string;
+  type: "final";
+  state:
+    | "locked"
+    | "ready"
+    | "active"
+    | "submitted"
+    | "awaiting-grade"
+    | "graded"
+    | "flagged"
+    | "unavailable";
+  reason: string | null;
+  result: { mark: number; max_score: number; passed: boolean } | null;
+};
+
+const FINAL_STATE_COLOR: Record<
+  FinalExam["state"],
+  "default" | "success" | "error" | "warning" | "info"
+> = {
+  locked: "error",
+  ready: "default",
+  active: "success",
+  submitted: "default",
+  "awaiting-grade": "warning",
+  graded: "success",
+  flagged: "error",
+  unavailable: "default",
+};
+
 export default function ExamsPage() {
   const [exams, setExams] = useState<Exam[] | null>(null);
+  const [final, setFinal] = useState<FinalExam | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const now = useVirtualClock();
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/exams", { cache: "no-store" });
-    const data = await res.json();
-    setExams(data.exams);
+    try {
+      const res = await fetch("/api/exams", { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data?.error ?? "Could not load exams.");
+        return;
+      }
+      setExams(data.exams);
+      setFinal(data.final ?? null);
+      setError(null);
+    } catch {
+      // Offline or unreachable — the polling below retries automatically.
+      setError("Could not reach the server — retrying.");
+    }
   }, []);
 
   useEffect(() => {
@@ -82,6 +127,31 @@ export default function ExamsPage() {
       window.open(data.url, "_blank", "noopener");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not start the exam.");
+    } finally {
+      setStarting(false);
+    }
+  }
+
+  /**
+   * Ask the Exam service to start the final. The service decides eligibility
+   * and the attempt lifecycle; its denial reason is shown verbatim, and a
+   * successful start is stored server-side so the next load shows "active".
+   */
+  async function startFinal() {
+    setStarting(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/exams", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: "final" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not start the final exam.");
+      window.open(data.url, "_blank", "noopener");
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not start the final exam.");
     } finally {
       setStarting(false);
     }
@@ -170,6 +240,73 @@ export default function ExamsPage() {
             </ListItem>
           ))}
         </List>
+      </Card>
+
+      <Card variant="outlined">
+        <CardContent>
+          <Stack spacing={2}>
+            <Typography variant="h6">Final exam</Typography>
+            {final === null ? (
+              <Stack spacing={1}>
+                <Typography variant="body1">No final is currently available.</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Starting it asks the exam system whether it is available for you — its answer
+                  decides what happens next.
+                </Typography>
+                <Button variant="contained" size="small" disabled={starting} onClick={startFinal}>
+                  Start final exam
+                </Button>
+              </Stack>
+            ) : (
+              <Stack spacing={1}>
+                <Grid container spacing={1}>
+                  <Grid>
+                    <Typography variant="subtitle1">{final.title}</Typography>
+                  </Grid>
+                  <Grid>
+                    <Chip size="small" color={FINAL_STATE_COLOR[final.state]} label={final.state} />
+                  </Grid>
+                </Grid>
+                {final.state === "locked" ? (
+                  <Alert severity="error">{final.reason ?? "Locked."}</Alert>
+                ) : null}
+                {final.state === "ready" ? (
+                  <Button variant="contained" size="small" disabled={starting} onClick={startFinal}>
+                    Start final exam
+                  </Button>
+                ) : null}
+                {final.state === "active" ? (
+                  <Typography variant="body1">
+                    Already in progress — continue in the exam window. It cannot be started twice.
+                  </Typography>
+                ) : null}
+                {final.state === "submitted" ? (
+                  <Typography variant="body1">Submitted — your result is not final yet.</Typography>
+                ) : null}
+                {final.state === "awaiting-grade" ? (
+                  <Alert severity="warning">
+                    Submitted — awaiting grade from the exam system.
+                  </Alert>
+                ) : null}
+                {final.state === "graded" ? (
+                  <Alert severity={final.result?.passed ? "success" : "error"}>
+                    {final.result
+                      ? `Result ${final.result.mark} / ${final.result.max_score} — ${
+                          final.result.passed ? "passed" : "not passed"
+                        }.`
+                      : "Graded."}
+                  </Alert>
+                ) : null}
+                {final.state === "flagged" ? (
+                  <Alert severity="error">This attempt was flagged for review.</Alert>
+                ) : null}
+                {final.state === "unavailable" ? (
+                  <Typography variant="body1">No final is currently available.</Typography>
+                ) : null}
+              </Stack>
+            )}
+          </Stack>
+        </CardContent>
       </Card>
 
       {exams.some((exam) => exam.state === "submitted") ? (

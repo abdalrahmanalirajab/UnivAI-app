@@ -1,13 +1,22 @@
 import { NextRequest } from "next/server";
 import { randomUUID } from "node:crypto";
-import { EXAM_SYSTEM_URL, ensureExamWorld, getExamStatuses, startExam } from "@/lib/exams";
+import {
+  EXAM_SYSTEM_URL,
+  ensureExamWorld,
+  getExamStatuses,
+  getFinalExamStatus,
+  saveFinalExamStatus,
+  startExam,
+  toFinalExamStatus,
+  type FinalExamAttemptView,
+} from "@/lib/exams";
 import { requireTrustedExamLaunchUrl } from "@/lib/exam-launch";
 import { requireLearningActionApi } from "@/lib/session";
 import type { SessionUser } from "@/lib/auth-types";
 
 export const dynamic = "force-dynamic";
 
-/** All exams with their windows (virtual clock) and results. */
+/** All exams with their windows (virtual clock), results, and the final's service-reported status. */
 export async function GET() {
   const gate = await requireLearningActionApi();
   if (gate instanceof Response) return gate;
@@ -19,6 +28,9 @@ export async function GET() {
       opensAt: status.opensAt.toISOString(),
       closesAt: status.closesAt.toISOString(),
     })),
+    // The final's last status as reported by the Exam service (session-scoped
+    // cache); null when the service has never reported one for this learner.
+    final: await getFinalExamStatus(gate.studentId),
   });
 }
 
@@ -108,6 +120,10 @@ async function startFinalExam(gate: SessionUser): Promise<Response> {
     }
 
     const url = requireTrustedExamLaunchUrl(payload, EXAM_SYSTEM_URL);
+    // Remember the status the service reported (session-scoped) so the /exams
+    // page can render it. Denials are deliberately NOT persisted: they are
+    // relayed to the caller as-is and never made to outlive a later change.
+    await saveFinalExamStatus(gate.studentId, toFinalExamStatus(payload as FinalExamAttemptView));
     return Response.json({ url });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not start the final exam.";

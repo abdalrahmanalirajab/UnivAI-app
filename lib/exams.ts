@@ -91,7 +91,180 @@ export type ExamServiceStatusV1 = {
     | "unavailable";
   /** The Exam service's own reason — set for "locked" and "unavailable". */
   reason: string | null;
+  /**
+   * The service's verified result — present ONLY for "graded", i.e. the
+   * service has confirmed the grade as final. An auto-graded or pending-review
+   * verdict is never carried here, so the app can never show an unconfirmed
+   * grade. Fields map to the service's result block (mark, passing_mark, passed).
+   */
+  result: {
+    mark: number;
+    max_score: number;
+    passed: boolean;
+  } | null;
 };
+
+/**
+ * The subset of the Exam service's attempt view (its ExamAttemptView shape)
+ * that the final-exam status projection reads. Every field maps 1:1 to the
+ * service's own response — nothing here is computed by this app.
+ */
+export type FinalExamAttemptView = {
+  _id: string;
+  title: string;
+  taken: boolean;
+  integrity_status: "clean" | "invalidated";
+  integrity_state: "active" | "reconnecting" | "grace" | "integrity_locked" | "submitted";
+  lock_reason?: string;
+  result?: {
+    grading_status: "auto_graded" | "pending_review" | "graded";
+    mark?: number;
+    passing_mark?: number;
+    passed: boolean;
+  };
+};
+
+/**
+ * Project the Exam service's attempt view onto ExamServiceStatusV1, the
+ * display contract. This renames the service's own reported fields — eligibility,
+ * grading and finality were already decided service-side; we never recompute
+ * any of them here, and a flagged attempt stays a bare "flagged" (the risk
+ * detail belongs to Exam reviewers, not this projection).
+ */
+export function toFinalExamStatus(view: FinalExamAttemptView): ExamServiceStatusV1 {
+  const base = {
+    exam_id: view._id,
+    title: view.title,
+    type: "final" as const,
+  };
+
+  // An integrity lock is the service's own state — its reason is relayed as-is.
+  if (view.integrity_state === "integrity_locked") {
+    return { ...base, state: "locked", reason: view.lock_reason ?? null, result: null };
+  }
+
+  if (!view.taken) {
+    const inProgress =
+      view.integrity_state === "active" ||
+      view.integrity_state === "reconnecting" ||
+      view.integrity_state === "grace";
+    return { ...base, state: inProgress ? "active" : "ready", reason: null, result: null };
+  }
+
+  // An invalidated attempt is flagged — the learner learns the flag exists,
+  // never the proctoring detail that caused it.
+  if (view.integrity_status === "invalidated") {
+    return { ...base, state: "flagged", reason: null, result: null };
+  }
+
+  const grading = view.result?.grading_status;
+  if (grading === "pending_review") {
+    return { ...base, state: "awaiting-grade", reason: null, result: null };
+  }
+
+  // Only the service's final "graded" verdict releases the result; an
+  // auto-graded mark is not verified yet and is never shown.
+  if (grading === "graded" && view.result) {
+    const { mark, passing_mark: maxScore, passed } = view.result;
+    return {
+      ...base,
+      state: "graded",
+      reason: null,
+      result:
+        mark !== undefined && maxScore !== undefined
+          ? { mark, max_score: maxScore, passed }
+          : null,
+    };
+  }
+
+  // taken with no verified verdict (auto-graded, or no result reported yet).
+  return { ...base, state: "submitted", reason: null, result: null };
+}
+
+let finalStatusSchemaPromise: Promise<void> | null = null;
+
+/**
+ * Session-scoped copy of the last status the Exam service reported for this
+ * learner's final (captured from the start-final response — the service has
+ * no status endpoint reachable without the attempt token, which lives only in
+ * the browser fragment). The app only caches what the service reported; it
+ * never transitions state itself. Additive and idempotent, like
+ * ensureFeedbackSchema.
+ */
+function ensureFinalExamStatusSchema(): Promise<void> {
+  finalStatusSchemaPromise ??= query(`
+    CREATE TABLE IF NOT EXISTS final_exam_status (
+      student_id TEXT PRIMARY KEY,
+      exam_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      state TEXT NOT NULL CHECK (state IN ('locked','ready','active','submitted','awaiting-grade','graded','flagged','unavailable')),
+      reason TEXT,
+      result JSONB,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `)
+    .then(() => undefined)
+    .catch((error) => {
+      finalStatusSchemaPromise = null;
+      throw error;
+    });
+  return finalStatusSchemaPromise;
+}
+
+/** Remember the status the Exam service reported for this learner's final. */
+export async function saveFinalExamStatus(
+  sid: string,
+  status: ExamServiceStatusV1
+): Promise<void> {
+  await ensureFinalExamStatusSchema();
+  await query(
+    `INSERT INTO final_exam_status (student_id, exam_id, title, state, reason, result, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
+     ON CONFLICT (student_id) DO UPDATE SET
+       exam_id = EXCLUDED.exam_id,
+       title = EXCLUDED.title,
+       state = EXCLUDED.state,
+       reason = EXCLUDED.reason,
+       result = EXCLUDED.result,
+       updated_at = CURRENT_TIMESTAMP`,
+    [
+      sid,
+      status.exam_id,
+      status.title,
+      status.state,
+      status.reason,
+      status.result ? JSON.stringify(status.result) : null,
+    ]
+  );
+}
+
+/**
+ * The learner's last service-reported final status, or null when the Exam
+ * service has never reported one (nothing stored yet). Null means the app
+ * has no service word on the final — the page shows "unavailable" and does
+ * not guess why.
+ */
+export async function getFinalExamStatus(sid: string): Promise<ExamServiceStatusV1 | null> {
+  await ensureFinalExamStatusSchema();
+  const row = await queryOne<{
+    exam_id: string;
+    title: string;
+    state: string;
+    reason: string | null;
+    result: ExamServiceStatusV1["result"] | null;
+  }>("SELECT exam_id, title, state, reason, result FROM final_exam_status WHERE student_id = $1", [
+    sid,
+  ]);
+  if (!row) return null;
+  return {
+    exam_id: row.exam_id,
+    title: row.title,
+    type: "final",
+    state: row.state as ExamServiceStatusV1["state"],
+    reason: row.reason,
+    result: row.result,
+  };
+}
 
 /**
  * Wipe ONE student's seeded exam world (used when they replace their book).
