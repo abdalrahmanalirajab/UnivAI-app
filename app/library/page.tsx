@@ -10,7 +10,6 @@ import CircularProgress from "@mui/material/CircularProgress";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
-import { useVirtualClock } from "@/lib/time";
 import Link from "next/link";
 import MultiBookUploader from "./MultiBookUploader";
 import SourceLibrary from "./SourceLibrary";
@@ -21,37 +20,14 @@ type Collection = {
   created_at: string;
 };
 
-type Document = {
-  id: number;
-  filename: string;
-  status: string;
-  error: string | null;
-  created_at: string;
-};
-
 export default function CollectionsPage() {
   const [collections, setCollections] = useState<Collection[] | null>(null);
-  const [documents, setDocuments] = useState<Document[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
-  const now = useVirtualClock();
+  const [reloadKey, setReloadKey] = useState(0);
 
   const active = collections?.[0] ?? null;
-
-  const loadDocuments = useCallback(async (collectionId: number) => {
-    try {
-      const res = await fetch(`/api/collections/${collectionId}/documents`, {
-        cache: "no-store",
-      });
-      if (!res.ok) throw new Error("Failed to load documents.");
-      const data = await res.json();
-      setDocuments(data.documents);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load documents.");
-    }
-  }, []);
 
   const loadCollections = useCallback(async () => {
     try {
@@ -59,14 +35,11 @@ export default function CollectionsPage() {
       if (!res.ok) throw new Error("Failed to load collections.");
       const data = await res.json();
       setCollections(data.collections);
-      if (data.collections.length > 0) {
-        loadDocuments(data.collections[0].id);
-      }
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load collections.");
     }
-  }, [loadDocuments]);
+  }, []);
 
   useEffect(() => {
     loadCollections();
@@ -92,24 +65,6 @@ export default function CollectionsPage() {
       setError(err instanceof Error ? err.message : "Failed to create collection.");
     } finally {
       setCreating(false);
-    }
-  }
-
-  async function handleRemove(documentId: number) {
-    if (!active) return;
-    setError(null);
-    try {
-      const res = await fetch(
-        `/api/collections/${active.id}/documents?documentId=${documentId}`,
-        { method: "DELETE" },
-      );
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error ?? "Failed to remove document.");
-      }
-      await loadDocuments(active.id);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to remove document.");
     }
   }
 
@@ -162,24 +117,17 @@ export default function CollectionsPage() {
             Collection: {active?.name}
           </Typography>
 
-          <Button
-            variant="contained"
-            component={Link}
-            href={`/curriculum/${active!.id}`}
-          >
+          <Button variant="contained" component={Link} href={`/curriculum/${active!.id}`}>
             Build Curriculum
           </Button>
 
           <SourceLibrary
-            documents={documents ?? []}
-            now={now}
-            onRemove={handleRemove}
+            key={active!.id}
+            collectionId={active!.id}
+            reloadKey={reloadKey}
           />
 
-          <MultiBookUploader
-            collectionId={active!.id}
-            onDocumentsChange={() => loadDocuments(active!.id)}
-          />
+          <MultiBookUploader onDocumentsChange={() => setReloadKey((k) => k + 1)} />
         </Stack>
       )}
     </Stack>
