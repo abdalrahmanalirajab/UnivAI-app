@@ -77,6 +77,23 @@ export async function getCollection(
   );
 }
 
+export type CollectionOwnership =
+  | { owned: true; collection: Collection }
+  | { owned: false; exists: boolean };
+
+export async function getOwnedCollection(
+  collectionId: number,
+  studentId: string,
+): Promise<CollectionOwnership> {
+  const owned = await getCollection(collectionId, studentId);
+  if (owned) return { owned: true, collection: owned };
+  const exists = await queryOne<{ id: number }>(
+    "SELECT id FROM collections WHERE id = $1",
+    [collectionId],
+  );
+  return { owned: false, exists: Boolean(exists) };
+}
+
 export async function listCollections(studentId: string): Promise<Collection[]> {
   return query<Collection>(
     `SELECT ${COLLECTION_COLUMNS} FROM collections WHERE student_id = $1 ORDER BY created_at DESC`,
