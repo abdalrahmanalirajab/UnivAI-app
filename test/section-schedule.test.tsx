@@ -1,8 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
+import { NextRequest } from "next/server";
 import SchedulePage from "@/app/schedule/page";
 import { SEVEN_WEEK_PLAN_V1 } from "@/test/fixtures/programme-plans-v1";
 import { SECTION_PACKS_V1 } from "@/test/fixtures/section-pack-v1";
+import type { SessionUser } from "@/lib/auth-types";
 
 /* ------------------------------------------------------------------ */
 /*  Mock db for getSections (lib/lectures.ts) — hoisted first          */
@@ -16,6 +18,19 @@ const { mockQuery, mockQueryOne } = vi.hoisted(() => ({
 vi.mock("@/lib/db", () => ({
   query: mockQuery,
   queryOne: mockQueryOne,
+}));
+
+// Real route handlers gate through lib/session → next/headers + lib/auth
+// (better-auth). We mock those two leaves so the handlers run for real:
+// requireUserApi/requireAdminApi's 401/403 logic, session-scoped queries,
+// approvedWeekCount's corruption rejection and semesterHasStarted's guard
+// are all exercised as-is — nothing under test is stubbed.
+vi.mock("next/headers", () => ({
+  headers: async () => new Headers(),
+}));
+
+vi.mock("@/lib/auth", () => ({
+  auth: { api: { getSession: vi.fn() } },
 }));
 
 vi.mock("next/link", () => ({
@@ -234,5 +249,209 @@ describe("schedule page — section placement and typing", () => {
     );
     expect(lectureButtons).toHaveLength(7);
     expect(screen.getAllByText("section")).toHaveLength(2);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Phase 6f — real backend behavior: refresh/restart determinism,     */
+/*  invalid-plan rejection, session-scoped access, and the started-    */
+/*  plan history guard. The auth seam is mocked at the better-auth     */
+/*  leaf; every route handler, lib/session guard, and lib/lectures     */
+/*  function below runs its real code.                                 */
+/* ------------------------------------------------------------------ */
+
+const WEEK_ROWS = Array.from({ length: 7 }, (_, i) => ({ week: i + 1 }));
+const SESSION_LECTURE_ROWS = WEEK_ROWS.map((row, index) => ({
+  id: row.week,
+  week: row.week,
+  title: `Week ${row.week}`,
+  starts_at: new Date(WEEK_STARTS[index]),
+  joined_at: null,
+  completed_at: null,
+}));
+const SESSION_ATTENDANCE_ROWS = WEEK_ROWS.map((row, index) => ({
+  id: row.week,
+  week: row.week,
+  title: `Week ${row.week}`,
+  starts_at: new Date(WEEK_STARTS[index]),
+  joined_at: null,
+  status: "upcoming",
+  late_minutes: 0,
+}));
+
+const STARTED_FIRST_START = new Date("2026-08-01T10:00:00.000Z");
+
+function sessionUser(overrides: Partial<SessionUser> = {}): SessionUser {
+  return {
+    id: "user-a",
+    name: "Student A",
+    email: "a@univai.test",
+    emailVerified: true,
+    phone: null,
+    role: "student",
+    studentId: "S-2026-000001",
+    image: null,
+    createdAt: "2026-08-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+describe("api routes — real backend behavior", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockQueryOne.mockImplementation(async (sql: string) => {
+      if (sql.includes("clock_state")) return { offset_ms: "0" };
+      if (sql.includes("FROM books")) return { exists: true };
+      if (sql.includes("FROM documents")) return { exists: false };
+      if (sql.includes('"user"')) return { exists: true };
+      return null;
+    });
+    mockQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("SELECT plan_version FROM programmes")) return [{ plan_version: 1 }];
+      if (sql.includes("SELECT plan FROM programmes"))
+        return [{ plan: { workload: { weeks_per_semester: 7 } } }];
+      if (sql.includes("COUNT(*)::text")) return [{ count: "7" }];
+      if (sql.includes("SELECT week FROM lectures")) return WEEK_ROWS;
+      if (sql.includes("completed_at")) return SESSION_LECTURE_ROWS;
+      if (sql.includes("a.status")) return SESSION_ATTENDANCE_ROWS;
+      if (sql.includes("SELECT status, error FROM books")) return [];
+      if (sql.includes("MIN(starts_at)")) return [{ starts_at: STARTED_FIRST_START }];
+      throw new Error(`unexpected query: ${sql}`);
+    });
+  });
+
+  async function setSession(user: SessionUser | null) {
+    const { auth } = await import("@/lib/auth");
+    (auth.api.getSession as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+      user ? { user } : null
+    );
+  }
+
+  it("a refresh or restart re-serves the same approved schedule from the backend", async () => {
+    await setSession(sessionUser());
+    const { GET } = await import("@/app/api/lectures/route");
+
+    const first = await GET();
+    const second = await GET();
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+
+    const a = await first.json();
+    const b = await second.json();
+    expect(a.lectures).toHaveLength(7);
+    expect(a).toEqual(b);
+    expect(a.planVersion).toBe(1);
+    expect(a.lectures.map((lecture: { week: number }) => lecture.week)).toEqual([
+      1, 2, 3, 4, 5, 6, 7,
+    ]);
+  });
+
+  it("an approved plan with unusable data is rejected by the real corruption check", async () => {
+    await setSession(sessionUser());
+    mockQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("SELECT plan_version FROM programmes")) return [{ plan_version: 1 }];
+      if (sql.includes("SELECT plan FROM programmes")) return [{ plan: { workload: {} } }];
+      if (sql.includes("SELECT status, error FROM books")) return [];
+      throw new Error(`unexpected query: ${sql}`);
+    });
+    const { GET } = await import("@/app/api/lectures/route");
+
+    await expect(GET()).rejects.toThrow("no valid weeks_per_semester");
+  });
+
+  it("an unauthenticated session is denied by the real API guard (401)", async () => {
+    await setSession(null);
+    const { GET } = await import("@/app/api/lectures/route");
+
+    const res = await GET();
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "Not authenticated." });
+  });
+
+  it("a non-admin session is denied by the real admin guard (403)", async () => {
+    await setSession(sessionUser());
+    const { POST } = await import("@/app/api/admin/restart/route");
+
+    const res = await POST(
+      new NextRequest("http://localhost/api/admin/restart", {
+        method: "POST",
+        body: JSON.stringify({ sid: "S-2026-000001" }),
+      })
+    );
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "Admins only." });
+  });
+
+  it("schedule queries are scoped to the session's studentId — another user's ID is never honored", async () => {
+    await setSession(sessionUser({ studentId: "S-2026-000002" }));
+    const { GET } = await import("@/app/api/lectures/route");
+
+    const res = await GET();
+    expect(res.status).toBe(200);
+
+    const planCall = mockQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("SELECT plan FROM programmes")
+    );
+    expect(planCall).toBeDefined();
+    expect(planCall?.[1]).toEqual(["S-2026-000002"]);
+
+    const booksCall = mockQueryOne.mock.calls.find(([sql]) => String(sql).includes("FROM books"));
+    expect(booksCall).toBeDefined();
+    expect(booksCall?.[1]).toEqual(["S-2026-000002"]);
+  });
+
+  it("an already-started plan's history cannot be rewritten (409 PLAN_ALREADY_STARTED)", async () => {
+    await setSession(sessionUser({ role: "super_admin", studentId: "S-2026-000042" }));
+    const { POST } = await import("@/app/api/admin/restart/route");
+
+    const res = await POST(
+      new NextRequest("http://localhost/api/admin/restart", {
+        method: "POST",
+        body: JSON.stringify({ sid: "S-2026-000001" }),
+      })
+    );
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.code).toBe("PLAN_ALREADY_STARTED");
+    expect(body.error).toContain("cannot be rewritten");
+
+    const destructive = mockQuery.mock.calls.filter(([sql]) => {
+      const text = String(sql);
+      return text.startsWith("DELETE") || text.startsWith("UPDATE") || text.startsWith("INSERT");
+    });
+    expect(destructive).toHaveLength(0);
+  });
+
+  it("a not-yet-started plan passes the real guard and the restart rewrites it", async () => {
+    vi.stubEnv("UNIVAI_MODE", "standalone");
+    try {
+      await setSession(sessionUser({ role: "super_admin", studentId: "S-2026-000042" }));
+      mockQuery.mockImplementation(async (sql: string) => {
+        if (sql.includes("MIN(starts_at)"))
+          return [{ starts_at: new Date("2099-01-01T10:00:00.000Z") }];
+        if (sql.includes("SELECT plan FROM programmes"))
+          return [{ plan: { workload: { weeks_per_semester: 7 } } }];
+        if (String(sql).startsWith("DELETE")) return [];
+        if (String(sql).startsWith("UPDATE")) return [];
+        throw new Error(`unexpected query: ${sql}`);
+      });
+      const { POST } = await import("@/app/api/admin/restart/route");
+
+      const res = await POST(
+        new NextRequest("http://localhost/api/admin/restart", {
+          method: "POST",
+          body: JSON.stringify({ sid: "S-2026-000001" }),
+        })
+      );
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ ok: true });
+
+      const deletes = mockQuery.mock.calls.filter(([sql]) => String(sql).startsWith("DELETE"));
+      const updates = mockQuery.mock.calls.filter(([sql]) => String(sql).startsWith("UPDATE"));
+      expect(deletes).toHaveLength(3); // attendance, grades, qa_log wiped
+      expect(updates).toHaveLength(7); // every lecture moved to the fresh cadence
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });

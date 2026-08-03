@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, act } from "@testing-library/react";
 import SchedulePage from "@/app/schedule/page";
 import {
   THREE_WEEK_PLAN_V1,
@@ -72,7 +72,7 @@ async function renderScheduleFor(plan: ProgrammePlanV1) {
     ok: true,
     status: 200,
     json: async () => payload,
-  }));
+  })) as unknown as typeof fetch;
   render(<SchedulePage />);
   return plan.workload.weeks_per_semester;
 }
@@ -121,5 +121,80 @@ describe("dynamic semester schedule — exact lecture counts", () => {
     await waitFor(() => expect(lectureRows()).toHaveLength(weeks));
     expect(screen.queryByText(/^Week 4 — /)).toBeNull();
     expect(screen.queryByText(/^Week 5 — /)).toBeNull();
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Phase 6f — the schedule is backend-owned: refresh/restart          */
+/*  restores it, a stale plan version is called out, and an unusable   */
+/*  approved plan fails visibly (the page's real rejected state).      */
+/* ------------------------------------------------------------------ */
+
+describe("schedule state — backend restore, stale plan, visible rejection", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("a refresh/restart restores the schedule from the backend, not local state", async () => {
+    const first = schedulePayload(SEVEN_WEEK_PLAN_V1);
+    globalThis.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => first })) as unknown as typeof fetch;
+    const { unmount } = render(<SchedulePage />);
+    await waitFor(() => expect(lectureRows()).toHaveLength(7));
+
+    unmount();
+
+    // The backend's next response is the only thing that can change the view —
+    // nothing was stashed locally, so a fresh mount must re-read the server.
+    const afterRestart = schedulePayload(SEVEN_WEEK_PLAN_V1);
+    afterRestart.lectures[0].title = "Regenerated";
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => afterRestart,
+    })) as unknown as typeof fetch;
+    render(<SchedulePage />);
+    await waitFor(() => expect(screen.getByText("Week 1 — Regenerated")).toBeTruthy());
+
+    expect(Object.keys(localStorage)).toHaveLength(0);
+    expect(Object.keys(sessionStorage)).toHaveLength(0);
+  });
+
+  it("a newer plan version is called out via the real stale-state logic", async () => {
+    vi.useFakeTimers();
+    try {
+      const v1 = schedulePayload(SEVEN_WEEK_PLAN_V1);
+      let calls = 0;
+      globalThis.fetch = vi.fn(async () => {
+        calls += 1;
+        return {
+          ok: true,
+          status: 200,
+          json: async () => (calls === 1 ? v1 : { ...v1, planVersion: 2 }),
+        };
+      }) as unknown as typeof fetch;
+      render(<SchedulePage />);
+      await act(async () => {});
+      expect(lectureRows()).toHaveLength(7);
+      expect(screen.queryByText(/A newer plan version is live/)).toBeNull();
+
+      await vi.advanceTimersByTimeAsync(15_000);
+      await act(async () => {});
+      expect(screen.getByText(/updated from plan version 1 to 2/)).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("an unusable approved plan fails visibly with the server's real rejection message", async () => {
+    globalThis.fetch = vi.fn(async () => ({
+      ok: false,
+      status: 500,
+      json: async () => ({
+        error: "Approved programme for S-2026-000001 has no valid weeks_per_semester.",
+      }),
+    })) as unknown as typeof fetch;
+    render(<SchedulePage />);
+    await waitFor(() => expect(screen.getByText(/no valid weeks_per_semester/)).toBeTruthy());
+    expect(screen.getByText("Schedule unavailable")).toBeTruthy();
   });
 });
