@@ -522,17 +522,15 @@ describe("Programme plan version — stale rejection", () => {
       }
     });
 
-    it("rejects approval when programme is already approved", async () => {
+    it("idempotently returns an already approved exact version", async () => {
       const { approveProgramme } = await import("@/lib/programmes");
 
       mockQueryOne.mockResolvedValue(fakeProgramme({ plan_version: 2, status: "approved" }));
 
       const result = await approveProgramme(1, "S-2026-000001", 2);
 
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error).toBe("Programme is already approved.");
-      }
+      expect(result.ok).toBe(true);
+      expect(mockQueryOne).toHaveBeenCalledTimes(1);
     });
 
     it("accepts approval when plan_version matches and UPDATE succeeds", async () => {

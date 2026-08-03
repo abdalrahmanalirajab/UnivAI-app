@@ -51,7 +51,7 @@ export type ProgrammePlanV1 = {
   workload: Workload;
   source_coverage: SourceCoverage[];
   /** Agent-owned versioned contract; absent until cross-book analysis completes. */
-  learning_path?: LearningPathV1;
+  learning_path?: LearningPathV1 | null;
   /** Human edits that changed the serial order or resolved an override. */
   learning_path_audit?: Array<{
     operation: "reorder" | "override";
