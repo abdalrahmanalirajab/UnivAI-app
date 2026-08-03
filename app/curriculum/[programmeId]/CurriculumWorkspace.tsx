@@ -34,12 +34,14 @@ import MergeIcon from "@mui/icons-material/Merge";
 import CallSplitIcon from "@mui/icons-material/CallSplit";
 import type { Programme } from "@/lib/programmes";
 import type { Course } from "@/test/fixtures/programme-plan-v1";
-import ProgrammeGraph from "./ProgrammeGraph";
+import ProgrammeGraph, { type LearningPathLoad } from "./ProgrammeGraph";
 
 type Props = {
   programme: Programme;
   programmeId: number;
   onProgrammeUpdated: (p: Programme) => void;
+  learningPath?: LearningPathLoad;
+  completedBookIds?: number[];
 };
 
 type PlanEdit =
@@ -57,6 +59,8 @@ export default function CurriculumWorkspace({
   programme: initial,
   programmeId,
   onProgrammeUpdated,
+  learningPath,
+  completedBookIds,
 }: Props) {
   const [programme, setProgramme] = useState<Programme>(initial);
   const [saving, setSaving] = useState(false);
@@ -312,7 +316,11 @@ export default function CurriculumWorkspace({
         </CardContent>
       </Card>
 
-      <ProgrammeGraph plan={plan} />
+      <ProgrammeGraph
+        plan={plan}
+        learningPath={learningPath}
+        completedBookIds={completedBookIds}
+      />
 
       {programme.status !== "approved" ? (
         <Card variant="outlined">
