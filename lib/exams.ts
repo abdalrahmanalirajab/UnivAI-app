@@ -588,13 +588,6 @@ export async function ensureExamWorld(sid: string, studentName: string): Promise
   return link;
 }
 
-export type ProctoringReport = {
-  suspicion_score?: number;
-  flagged?: boolean;
-  session_status?: string;
-  events?: { type: string; weight: number; occurrences: number; at: string }[];
-};
-
 export type ExamStatus = {
   kind: "quiz" | "mid";
   week: number | null;
@@ -606,9 +599,11 @@ export type ExamStatus = {
   maxScore: string | null;
   flagged: boolean;
   feedback: string | null;
-  /** the proctoring report the exam system sent back — admin view for now */
-  report: ProctoringReport | null;
 };
+
+// The proctoring report itself (suspicion score, per-event weights, session
+// detail) is NEVER part of this shape: it is stored server-side for Exam
+// reviewers, and only the flagged verdict reaches the client.
 
 /** Every exam with its window (virtual clock) and result, for the /exams page. */
 export async function getExamStatuses(sid: string): Promise<ExamStatus[]> {
@@ -632,10 +627,6 @@ export async function getExamStatuses(sid: string): Promise<ExamStatus[]> {
       maxScore: week === 1 ? "5" : null,
       flagged: week === 4 && scenario === "exam-complete",
       feedback: week === 1 ? "Good use of source evidence." : null,
-      report:
-        week === 1
-          ? { suspicion_score: 0, flagged: false, session_status: "completed", events: [] }
-          : null,
     }));
     statuses.push({
       kind: "mid",
@@ -648,7 +639,6 @@ export async function getExamStatuses(sid: string): Promise<ExamStatus[]> {
       maxScore: scenario === "exam-pending" ? "manual review" : null,
       flagged: false,
       feedback: scenario === "exam-pending" ? "Pending manual grading." : null,
-      report: null,
     });
     return statuses;
   }
@@ -662,9 +652,10 @@ export async function getExamStatuses(sid: string): Promise<ExamStatus[]> {
     max_score: string;
     flagged: boolean;
     feedback: string | null;
-    report: ProctoringReport | null;
   }>(
-    "SELECT kind, week, score, max_score, flagged, feedback, report FROM grades WHERE student_id = $1",
+    // The proctoring report column exists server-side for reviewers but is
+    // deliberately not selected here — it never enters a client response.
+    "SELECT kind, week, score, max_score, flagged, feedback FROM grades WHERE student_id = $1",
     [sid]
   );
 
@@ -691,7 +682,6 @@ export async function getExamStatuses(sid: string): Promise<ExamStatus[]> {
       maxScore: grade?.max_score ?? null,
       flagged: grade?.flagged ?? false,
       feedback: grade?.feedback ?? null,
-      report: grade?.report ?? null,
     });
   }
 
@@ -717,7 +707,6 @@ export async function getExamStatuses(sid: string): Promise<ExamStatus[]> {
       maxScore: grade?.max_score ?? null,
       flagged: grade?.flagged ?? false,
       feedback: grade?.feedback ?? null,
-      report: grade?.report ?? null,
     });
   }
 
