@@ -16,9 +16,35 @@ concurrency:
 jobs:
   app:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: univai
+          POSTGRES_PASSWORD: univai
+          POSTGRES_DB: univai_app_standalone
+        ports:
+          - 5434:5432
+        options: >-
+          --health-cmd "pg_isready -U univai -d univai_app_standalone"
+          --health-interval 3s
+          --health-timeout 5s
+          --health-retries 20
+      mongo:
+        image: mongo:7.0
+        ports:
+          - 27018:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand(\"ping\").ok'"
+          --health-interval 3s
+          --health-timeout 5s
+          --health-retries 20
     env:
       BETTER_AUTH_SECRET: ci-only-placeholder-not-a-production-secret
       BETTER_AUTH_URL: http://localhost:3100
+      DATABASE_URL: postgresql://univai:univai@127.0.0.1:5434/univai_app_standalone
+      MONGODB_URI: mongodb://127.0.0.1:27018/univai_exams_standalone
+      EXAM_CALLBACK_SECRET: ci-only-exam-callback-secret
     steps:
       - name: Check out App only
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -40,6 +66,6 @@ jobs:
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
       - name: Run final demo E2E
-        run: npx playwright test e2e/final-demo.spec.ts
+        run: npx playwright test e2e/final-demo.spec.ts e2e/final-exam-journey.spec.ts
       - name: Check whitespace
         run: git diff --check
