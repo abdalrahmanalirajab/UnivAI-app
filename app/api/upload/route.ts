@@ -4,7 +4,7 @@ import path from "path";
 import { query, queryOne } from "@/lib/db";
 import { now } from "@/lib/clock";
 import { runPython, parseJsonLine, REPO_ROOT } from "@/lib/python";
-import { resetExamWorld } from "@/lib/exams";
+import { getOrCreateCollection, addDocument } from "@/lib/collections";
 import { spawnGeneration } from "@/lib/generation";
 import { requireUserApi } from "@/lib/session";
 import { env } from "@/lib/env";
@@ -17,11 +17,12 @@ const MAX_BYTES = 60 * 1024 * 1024;
 const PDF_MAGIC = "%PDF-";
 
 /**
- * The book IS the course. Uploading one (or replacing it) means:
- *   1. clear the old book out of the RAG and wipe the course state
- *      (lectures, attendance, grades, the exam system's chapters and banks)
- *   2. index the new book — the RAG service's job, reached over MCP
- *   3. generate the 4 weekly lectures + quizzes from it (lecture_gen.py,
+ * Uploading a book adds to the learner's library — it never deletes or
+ * resets any existing book or course state:
+ *   1. validate and store the new PDF
+ *   2. index it — the RAG service's job, reached over MCP
+ *   3. attach it to the authenticated user's collection
+ *   4. generate the 4 weekly lectures + quizzes from it (lecture_gen.py,
  *      detached — the upload page polls books.progress while it runs)
  */
 const RAG_MCP_URL = env.RAG_MCP_URL;
@@ -51,16 +52,6 @@ export async function GET() {
     book: books[0] ?? null,
     ragConfigured: isStandalone() || Boolean(RAG_MCP_URL),
   });
-}
-
-/** Everything this student's old course was: gone. Scoped — never touches others. */
-async function resetCourse(sid: string): Promise<void> {
-  await query("DELETE FROM grades WHERE student_id = $1", [sid]);
-  await query("DELETE FROM attendance WHERE student_id = $1", [sid]);
-  await query("DELETE FROM qa_log WHERE student_id = $1", [sid]);
-  await query("DELETE FROM lectures WHERE student_id = $1", [sid]);
-  await query("DELETE FROM books WHERE student_id = $1", [sid]);
-  await resetExamWorld(sid);
 }
 
 export async function POST(request: NextRequest) {
@@ -93,10 +84,6 @@ export async function POST(request: NextRequest) {
   }
 
   if (isStandalone()) {
-    await query("DELETE FROM grades WHERE student_id = $1", [sid]);
-    await query("DELETE FROM attendance WHERE student_id = $1", [sid]);
-    await query("DELETE FROM lectures WHERE student_id = $1", [sid]);
-    await query("DELETE FROM books WHERE student_id = $1", [sid]);
     const uploadedAt = await now();
     const safeName = file.name.replace(/[^\w.\-]+/g, "_");
     const created = await queryOne<{ id: number }>(
@@ -113,7 +100,8 @@ export async function POST(request: NextRequest) {
          (2, 'Tenant Isolation', TIMESTAMPTZ '2026-08-04T10:00:00Z'),
          (3, 'Explicit Runtime Modes', TIMESTAMPTZ '2026-08-11T10:00:00Z'),
          (4, 'Stable Contracts', TIMESTAMPTZ '2026-08-18T10:00:00Z')
-       ) AS fixture(week, title, starts_at)`,
+       ) AS fixture(week, title, starts_at)
+       ON CONFLICT (student_id, week) DO NOTHING`,
       [sid, created!.id]
     );
     return Response.json({
@@ -131,30 +119,6 @@ export async function POST(request: NextRequest) {
       { status: 503 }
     );
   }
-
-  // Replacing? This student's old book must leave THEIR RAG namespace first, or
-  // the lecturer would keep answering from it. A clear that fails aborts loudly.
-  // The user_id (sid) scopes the clear to this student's namespace only.
-  const existing = await queryOne<{ count: string }>(
-    "SELECT COUNT(*)::text AS count FROM books WHERE student_id = $1",
-    [sid]
-  );
-  if (Number(existing?.count ?? 0) > 0) {
-    const cleared = await runPython("services/rag-tools/rag_admin.py", ["clear", sid]);
-    const clearedPayload = parseJsonLine<{ ok: boolean; removed?: number; error?: string }>(
-      cleared.stdout
-    );
-    if (!clearedPayload?.ok) {
-      return Response.json(
-        {
-          error: "Could not prepare the new course.",
-          detail: clearedPayload?.error ?? cleared.stderr.trim().split("\n").slice(-2).join(" "),
-        },
-        { status: 502 }
-      );
-    }
-  }
-  await resetCourse(sid);
 
   // Per-student uploads dir so two students' identically-named files never clash.
   const uploadsDir = path.join(REPO_ROOT, "uploads", sid);
@@ -186,6 +150,21 @@ export async function POST(request: NextRequest) {
     return Response.json(
       { error: "Could not prepare this book.", detail },
       { status: 502 }
+    );
+  }
+
+  const collection = await getOrCreateCollection(sid);
+  if (!collection.ok) {
+    return Response.json(
+      { error: "Could not prepare your library.", detail: collection.error },
+      { status: 500 }
+    );
+  }
+  const attached = await addDocument(collection.collection.id, sid, safeName);
+  if (!attached.ok) {
+    return Response.json(
+      { error: "Could not attach the uploaded PDF to your library.", detail: attached.error },
+      { status: 500 }
     );
   }
 
