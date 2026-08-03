@@ -59,6 +59,7 @@ export default function SourceLibrary({ collectionId, reloadKey = 0 }: Props) {
   const [offline, setOffline] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
   const [removing, setRemoving] = useState<number | null>(null);
+  const [retrying, setRetrying] = useState<number | null>(null);
   const [stale, setStale] = useState(false);
   const documentsRef = useRef<Document[] | null>(null);
   const now = useVirtualClock();
@@ -156,6 +157,30 @@ export default function SourceLibrary({ collectionId, reloadKey = 0 }: Props) {
     }
     await load();
     setRemoving(null);
+  }
+
+  async function handleRetry(doc: Document) {
+    setRemoveError(null);
+    setRetrying(doc.id);
+    const body = new FormData();
+    body.append("documentId", String(doc.id));
+    body.append("collectionId", String(collectionId));
+    let res: Response;
+    try {
+      res = await fetch("/api/upload", { method: "POST", body });
+    } catch {
+      setRetrying(null);
+      setOffline(true);
+      return;
+    }
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      setRetrying(null);
+      setRemoveError(data?.error ?? `Could not retry this source (${res.status}).`);
+      return;
+    }
+    await load();
+    setRetrying(null);
   }
 
   const loading = documents === null && !error && !offline;
@@ -265,19 +290,30 @@ export default function SourceLibrary({ collectionId, reloadKey = 0 }: Props) {
                     </Stack>
                   </TableCell>
                   <TableCell align="right">
-                    <IconButton
-                      size="small"
-                      color="error"
-                      onClick={() => void handleRemove(doc.id)}
-                      disabled={removing === doc.id}
-                      aria-label={`Remove source ${doc.filename}`}
-                    >
-                      {removing === doc.id ? (
-                        <CircularProgress size={16} />
-                      ) : (
-                        <DeleteIcon fontSize="small" />
-                      )}
-                    </IconButton>
+                    <Stack direction="row" spacing={1}>
+                      {doc.status === "failed" ? (
+                        <Button
+                          size="small"
+                          onClick={() => void handleRetry(doc)}
+                          disabled={retrying === doc.id || removing === doc.id}
+                        >
+                          {retrying === doc.id ? "Retrying…" : "Retry"}
+                        </Button>
+                      ) : null}
+                      <IconButton
+                        size="small"
+                        color="error"
+                        onClick={() => void handleRemove(doc.id)}
+                        disabled={removing === doc.id || retrying === doc.id}
+                        aria-label={`Remove source ${doc.filename}`}
+                      >
+                        {removing === doc.id ? (
+                          <CircularProgress size={16} />
+                        ) : (
+                          <DeleteIcon fontSize="small" />
+                        )}
+                      </IconButton>
+                    </Stack>
                   </TableCell>
                 </TableRow>
               ))}

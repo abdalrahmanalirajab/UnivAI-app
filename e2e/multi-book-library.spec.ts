@@ -18,7 +18,6 @@ import { test, expect, type Page } from "@playwright/test";
 /* ------------------------------------------------------------------ */
 
 const STUDENT_ID = "S-2026-000999";
-const SESSION_COOKIE = "better-auth.session_token";
 
 const COLLECTION = {
   id: 1,
@@ -45,10 +44,10 @@ type Doc = {
 const apiState = {
   collectionCreated: false,
   // The approved plan's source coverage: documents 1 (a.pdf) and
-  // 2 (c.pdf) are referenced, so they are NOT removable. The retried
-  // b.pdf (document 3) is outside it — the one unapproved/unreferenced
+  // 3 (c.pdf) are referenced, so they are NOT removable. The retried
+  // b.pdf (document 2) is outside it — the one unapproved/unreferenced
   // source the script removes.
-  approvedCoverage: new Set([1, 2]),
+  approvedCoverage: new Set([1, 3]),
   docs: [] as Doc[],
   // Per-filename upload request counts, as observed by the backend —
   // proves "retry ONLY the failed one" at the network level.
@@ -87,34 +86,62 @@ async function mockApis(page: Page) {
       return;
     }
     const body = (await route.request().postDataBuffer()).toString("latin1");
-    const name = ["a.pdf", "b.pdf", "c.pdf"].find((candidate) => body.includes(candidate));
+    const persistedRetry = apiState.docs.find(
+      (doc) =>
+        doc.status === "failed" &&
+        body.includes('name="documentId"') &&
+        body.includes(String(doc.id)),
+    );
+    const name =
+      persistedRetry?.filename ??
+      ["a.pdf", "b.pdf", "c.pdf"].find((candidate) => body.includes(candidate));
     if (!name) {
       await route.fulfill({ status: 400, json: { error: "No file uploaded." } });
       return;
     }
     apiState.uploadsByFile[name] = (apiState.uploadsByFile[name] ?? 0) + 1;
     if (name === "b.pdf" && !apiState.allowRetry) {
+      const id = apiState.nextDocId++;
+      apiState.docs.push({
+        id,
+        collection_id: 1,
+        student_id: STUDENT_ID,
+        filename: name,
+        status: "failed",
+        error: "Could not prepare this book.",
+        created_at: "2026-07-28T12:00:00.000Z",
+        updated_at: "2026-07-28T12:00:00.000Z",
+      });
       // The one forced failure — same body shape the real route serves.
       await route.fulfill({
         status: 502,
         json: {
           error: "Could not prepare this book.",
           detail: "RAG service rejected the upload (forced failure).",
+          documentId: id,
+          collectionId: 1,
+          bookId: 100 + id,
         },
       });
       return;
     }
-    const id = apiState.nextDocId++;
-    apiState.docs.push({
-      id,
-      collection_id: 1,
-      student_id: STUDENT_ID,
-      filename: name,
-      status: "ready",
-      error: null,
-      created_at: "2026-07-28T12:00:00.000Z",
-      updated_at: "2026-07-28T12:00:00.000Z",
-    });
+    const id = persistedRetry?.id ?? apiState.nextDocId++;
+    if (persistedRetry) {
+      persistedRetry.status = "ready";
+      persistedRetry.error = null;
+      persistedRetry.updated_at = "2026-07-28T12:05:00.000Z";
+    } else {
+      apiState.docs.push({
+        id,
+        collection_id: 1,
+        student_id: STUDENT_ID,
+        filename: name,
+        status: "ready",
+        error: null,
+        created_at: "2026-07-28T12:00:00.000Z",
+        updated_at: "2026-07-28T12:00:00.000Z",
+      });
+    }
     // Same body shape the real /api/upload route serves on success.
     await route.fulfill({
       status: 200,
@@ -135,7 +162,7 @@ async function mockApis(page: Page) {
     });
   });
 
-  await page.route("**/api/collections/1/documents", async (route) => {
+  await page.route("**/api/collections/1/documents*", async (route) => {
     const method = route.request().method();
     if (method === "GET") {
       await route.fulfill({
@@ -162,6 +189,39 @@ async function mockApis(page: Page) {
   });
 }
 
+async function prepareAuthenticatedLearner(page: Page) {
+  const credentials = {
+    email: "multi-book-library-e2e@example.test",
+    password: "E2e-library-password-17!",
+  };
+  const signup = await page.request.post("/api/auth/sign-up/email", {
+    data: {
+      ...credentials,
+      name: "Multi Book E2E",
+      phone: "+201000000017",
+    },
+  });
+  if (!signup.ok()) {
+    const signin = await page.request.post("/api/auth/sign-in/email", {
+      data: credentials,
+    });
+    expect(signin.ok(), await signin.text()).toBeTruthy();
+  }
+
+  // Server layouts check prepared-source state directly in PostgreSQL. Seed
+  // one deterministic standalone source before browser API interception.
+  const seed = await page.request.post("/api/upload", {
+    multipart: {
+      file: {
+        name: "e2e-access-seed.pdf",
+        mimeType: "application/pdf",
+        buffer: Buffer.from("%PDF-1.4\ne2e access seed"),
+      },
+    },
+  });
+  expect(seed.ok(), await seed.text()).toBeTruthy();
+}
+
 /* ------------------------------------------------------------------ */
 /*  Test                                                               */
 /* ------------------------------------------------------------------ */
@@ -170,9 +230,7 @@ test("multi-book library demo script: three uploads, one forced failure, refresh
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.context().addCookies([
-    { name: SESSION_COOKIE, value: "mock-session-token", domain: "localhost", path: "/" },
-  ]);
+  await prepareAuthenticatedLearner(page);
   await mockApis(page);
 
   const chip = (label: string) => page.locator(".MuiChip-root").filter({ hasText: label });
@@ -200,28 +258,28 @@ test("multi-book library demo script: three uploads, one forced failure, refresh
   }
   await expect(chip("Uploaded")).toHaveCount(2);
   await expect(chip("Failed")).toHaveCount(1);
-  await expect(page.getByText("Could not prepare this book.")).toBeVisible();
+  await expect(page.getByText("Could not prepare this book.").first()).toBeVisible();
 
-  // The two successful uploads landed in the library; the failed upload
-  // left no source row behind.
+  // All three states are durable: the failed source remains retryable after refresh.
   const sourceRows = page.locator("table tbody tr");
-  await expect(sourceRows).toHaveCount(2);
+  await expect(sourceRows).toHaveCount(3);
   await expect(sourceRows.getByText("a.pdf")).toBeVisible();
+  await expect(sourceRows.getByText("b.pdf")).toBeVisible();
   await expect(sourceRows.getByText("c.pdf")).toBeVisible();
 
   // Step 3 — refresh: the library is rebuilt from the backend list.
   await page.reload();
   await expect(page.getByText("Source Library")).toBeVisible();
   await expect(page.getByText("Collection: Test Collection")).toBeVisible();
-  await expect(sourceRows).toHaveCount(2);
+  await expect(sourceRows).toHaveCount(3);
   await expect(chip("ready")).toHaveCount(2);
-  await expect(chip("Failed")).toHaveCount(0);
+  await expect(chip("failed")).toHaveCount(1);
 
-  // Step 4 — retry ONLY the failed one: re-upload b.pdf.
+  // Step 4 — retry ONLY the persisted failed source; no file re-selection is needed.
   apiState.allowRetry = true;
-  await fileInput.setInputFiles([pdf("b.pdf")]);
-  await expect(chip("Uploaded")).toHaveCount(1);
-  await expect(chip("Failed")).toHaveCount(0);
+  await sourceRows.filter({ hasText: "b.pdf" }).getByRole("button", { name: "Retry" }).click();
+  await expect(chip("ready")).toHaveCount(3);
+  await expect(chip("failed")).toHaveCount(0);
   await expect(sourceRows).toHaveCount(3);
   await expect(sourceRows.getByText("b.pdf")).toBeVisible();
 

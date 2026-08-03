@@ -24,6 +24,10 @@ export type CollectionResult =
   | { ok: true; collection: Collection }
   | { ok: false; error: string };
 
+export type GetOrCreateCollectionResult =
+  | { ok: true; collection: Collection; created: boolean }
+  | { ok: false; error: string };
+
 export type DocumentResult =
   | { ok: true; document: Document }
   | { ok: false; error: string };
@@ -135,23 +139,46 @@ export const DEFAULT_COLLECTION_NAME = "My Library";
 
 export async function getOrCreateCollection(
   studentId: string,
-): Promise<CollectionResult> {
-  const existing = await queryOne<Collection>(
-    `SELECT ${COLLECTION_COLUMNS} FROM collections
-     WHERE student_id = $1 ORDER BY created_at ASC, id ASC LIMIT 1`,
-    [studentId],
-  );
-  if (existing) return { ok: true, collection: existing };
+  name = DEFAULT_COLLECTION_NAME,
+): Promise<GetOrCreateCollectionResult> {
+  const nameMsg = validateCollectionName(name);
+  if (nameMsg) return { ok: false, error: nameMsg };
 
-  const result = await createCollection(studentId, DEFAULT_COLLECTION_NAME);
-  if (!result.ok) return result;
-
-  const canonical = await queryOne<Collection>(
-    `SELECT ${COLLECTION_COLUMNS} FROM collections
-     WHERE student_id = $1 ORDER BY created_at ASC, id ASC LIMIT 1`,
-    [studentId],
+  // The transaction-scoped advisory lock makes the read/insert one atomic
+  // operation even when two tabs create the learner's first collection at
+  // the same time. No client-provided name or collection ID is trusted as an
+  // ownership boundary; studentId always comes from the authenticated session.
+  const row = await queryOne<Collection & { created: boolean }>(
+    `WITH lock AS (
+       SELECT pg_advisory_xact_lock(hashtextextended($1, 0))
+     ), existing AS (
+       SELECT ${COLLECTION_COLUMNS}
+       FROM collections, lock
+       WHERE student_id = $1
+       ORDER BY created_at ASC, id ASC
+       LIMIT 1
+     ), inserted AS (
+       INSERT INTO collections (student_id, name)
+       SELECT $1, $2 FROM lock
+       WHERE NOT EXISTS (SELECT 1 FROM existing)
+       RETURNING ${COLLECTION_COLUMNS}
+     )
+     SELECT inserted.*, TRUE AS created FROM inserted
+     UNION ALL
+     SELECT existing.*, FALSE AS created FROM existing
+     LIMIT 1`,
+    [studentId, name.trim()],
   );
-  return { ok: true, collection: canonical ?? result.collection };
+  if (!row) return { ok: false, error: "Could not create the collection." };
+  return { ok: true, collection: row, created: row.created };
+}
+
+export function documentStorageKey(
+  collectionId: number,
+  documentId: number,
+  filename: string,
+): string {
+  return `collections/${collectionId}/${documentId}/${filename}`;
 }
 
 export async function addDocument(
@@ -209,6 +236,18 @@ export async function updateDocumentStatus(
   return { ok: true, document: doc };
 }
 
+export async function claimDocumentUpload(
+  documentId: number,
+  studentId: string,
+): Promise<Document | null> {
+  return queryOne<Document>(
+    `UPDATE documents SET status = 'uploading', error = NULL, updated_at = NOW()
+     WHERE id = $1 AND student_id = $2 AND status IN ('pending', 'failed')
+     RETURNING ${DOCUMENT_COLUMNS}`,
+    [documentId, studentId],
+  );
+}
+
 export async function removeDocument(
   documentId: number,
   studentId: string,
@@ -218,6 +257,24 @@ export async function removeDocument(
     [documentId, studentId],
   );
   if (result.length === 0) return { ok: false, error: "Document not found." };
+  return { ok: true };
+}
+
+export async function removeDocumentAndBook(
+  documentId: number,
+  studentId: string,
+  storageKey: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const row = await queryOne<{ id: number }>(
+    `WITH deleted_books AS (
+       DELETE FROM books WHERE student_id = $1 AND filename = $2 RETURNING id
+     ), deleted_document AS (
+       DELETE FROM documents WHERE id = $3 AND student_id = $1 RETURNING id
+     )
+     SELECT id FROM deleted_document`,
+    [studentId, storageKey, documentId],
+  );
+  if (!row) return { ok: false, error: "Document not found." };
   return { ok: true };
 }
 
