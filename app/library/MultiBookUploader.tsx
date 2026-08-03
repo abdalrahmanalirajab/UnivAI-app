@@ -20,7 +20,7 @@ type UploadEntry = {
 };
 
 type Props = {
-  collectionId: number;
+  collectionId?: number;
   onDocumentsChange: () => void;
 };
 
