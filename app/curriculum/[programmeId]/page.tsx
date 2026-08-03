@@ -14,6 +14,7 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import type { Programme } from "@/lib/programmes";
 import CurriculumWorkspace from "./CurriculumWorkspace";
+import type { ApprovalBlock } from "./ProgrammeGraph";
 
 type Props = {
   params: Promise<{ programmeId: string }>;
@@ -28,6 +29,7 @@ export default function CurriculumPage({ params }: Props) {
   const [programmeId, setProgrammeId] = useState<number | null>(null);
   const [approveError, setApproveError] = useState<string | null>(null);
   const [approved, setApproved] = useState(false);
+  const [approvalBlocks, setApprovalBlocks] = useState<ApprovalBlock[]>([]);
 
   const fetchProgramme = useCallback(async (id: number) => {
     setLoading(true);
@@ -70,6 +72,7 @@ export default function CurriculumPage({ params }: Props) {
 
   async function handleApprove() {
     if (!programme || !programmeId) return;
+    if (approvalBlocks.length > 0) return;
     setApproving(true);
     setApproveError(null);
     try {
@@ -148,7 +151,7 @@ export default function CurriculumPage({ params }: Props) {
             variant="contained"
             color="primary"
             onClick={() => setConfirmOpen(true)}
-            disabled={approving}
+            disabled={approving || approvalBlocks.length > 0}
           >
             {approving ? "Approving…" : "Request Approval"}
           </Button>
@@ -158,6 +161,14 @@ export default function CurriculumPage({ params }: Props) {
           </Button>
         )}
       </Stack>
+
+      {programme.status !== "approved" && approvalBlocks.length > 0 ? (
+        <Alert severity="error">
+          <AlertTitle>Approval blocked</AlertTitle>
+          The learning path has unresolved issues. Review the specific reasons
+          listed below before requesting approval.
+        </Alert>
+      ) : null}
 
       {approveError ? (
         <Alert severity="warning">
@@ -178,6 +189,7 @@ export default function CurriculumPage({ params }: Props) {
         programme={programme}
         programmeId={programmeId!}
         onProgrammeUpdated={handleProgrammeUpdated}
+        onApprovalBlocksChange={setApprovalBlocks}
       />
 
       <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)}>

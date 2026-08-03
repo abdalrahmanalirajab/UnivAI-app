@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Alert from "@mui/material/Alert";
 import AlertTitle from "@mui/material/AlertTitle";
 import Button from "@mui/material/Button";
@@ -34,7 +34,11 @@ import MergeIcon from "@mui/icons-material/Merge";
 import CallSplitIcon from "@mui/icons-material/CallSplit";
 import type { Programme } from "@/lib/programmes";
 import type { Course } from "@/test/fixtures/programme-plan-v1";
-import ProgrammeGraph, { type LearningPathLoad } from "./ProgrammeGraph";
+import ProgrammeGraph, {
+  getApprovalBlocks,
+  type ApprovalBlock,
+  type LearningPathLoad,
+} from "./ProgrammeGraph";
 
 type Props = {
   programme: Programme;
@@ -42,6 +46,7 @@ type Props = {
   onProgrammeUpdated: (p: Programme) => void;
   learningPath?: LearningPathLoad;
   completedBookIds?: number[];
+  onApprovalBlocksChange?: (blocks: ApprovalBlock[]) => void;
 };
 
 type PlanEdit =
@@ -61,6 +66,7 @@ export default function CurriculumWorkspace({
   onProgrammeUpdated,
   learningPath,
   completedBookIds,
+  onApprovalBlocksChange,
 }: Props) {
   const [programme, setProgramme] = useState<Programme>(initial);
   const [saving, setSaving] = useState(false);
@@ -92,6 +98,19 @@ export default function CurriculumWorkspace({
 
   const plan = programme.plan;
   const version = programme.plan_version;
+
+  // Approval-blocking rules, evaluated against the validated learning-path
+  // contract and the exact version the app currently holds. Blocks are only
+  // reported when the data is ready; they are surfaced to the parent (which
+  // owns the approve control) and rendered here with each specific reason.
+  const approvalBlocks = useMemo(() => {
+    if (learningPath?.status !== "ready") return [] as ApprovalBlock[];
+    return getApprovalBlocks(learningPath.data, programme.plan_version);
+  }, [learningPath, programme.plan_version]);
+
+  useEffect(() => {
+    onApprovalBlocksChange?.(approvalBlocks);
+  }, [approvalBlocks, onApprovalBlocksChange]);
 
   function handleStaleResponse(current: Programme) {
     setProgramme(current);
@@ -275,6 +294,19 @@ export default function CurriculumWorkspace({
         <Alert severity="warning">
           <AlertTitle>Stale version</AlertTitle>
           {staleWarning}
+        </Alert>
+      ) : null}
+
+      {programme.status !== "approved" && approvalBlocks.length > 0 ? (
+        <Alert severity="error">
+          <AlertTitle>Approval blocked</AlertTitle>
+          <List dense disablePadding>
+            {approvalBlocks.map((block, index) => (
+              <ListItem key={index} disableGutters disablePadding>
+                <ListItemText primary={block.reason} />
+              </ListItem>
+            ))}
+          </List>
         </Alert>
       ) : null}
 
