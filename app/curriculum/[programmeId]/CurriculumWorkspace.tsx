@@ -110,8 +110,14 @@ export default function CurriculumWorkspace({
   // owns the approve control) and rendered here with each specific reason.
   const approvalBlocks = useMemo(() => {
     if (resolvedLearningPath.status !== "ready") return [] as ApprovalBlock[];
+    if (
+      resolvedLearningPath.data === null &&
+      Object.prototype.hasOwnProperty.call(plan, "learning_path")
+    ) {
+      return [{ kind: "missing-evidence", reason: "The versioned learning path is not available." }];
+    }
     return getApprovalBlocks(resolvedLearningPath.data, programme.plan_version);
-  }, [resolvedLearningPath, programme.plan_version]);
+  }, [resolvedLearningPath, programme.plan_version, plan]);
 
   useEffect(() => {
     onApprovalBlocksChange?.(approvalBlocks);

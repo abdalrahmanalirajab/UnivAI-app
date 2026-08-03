@@ -22,10 +22,13 @@ export type ProgrammeResult =
   | { ok: false; error: string; current: Programme | null };
 
 export function learningPathApprovalErrors(
-  path: LearningPathV1 | undefined,
+  path: LearningPathV1 | null | undefined,
   planVersion: number,
 ): string[] {
-  if (!path) return ["The versioned learning path is not available."];
+  // Plans created before LearningPathV1 remain approvable. New producers
+  // persist an explicit null while analysis is unavailable, which fails closed.
+  if (path === undefined) return [];
+  if (path === null) return ["The versioned learning path is not available."];
   const errors: string[] = [];
   if (path.plan_version !== planVersion) errors.push("The learning path is stale.");
   const graph = new Map<number, number[]>();
