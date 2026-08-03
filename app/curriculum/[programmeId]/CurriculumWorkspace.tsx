@@ -114,7 +114,9 @@ export default function CurriculumWorkspace({
       resolvedLearningPath.data === null &&
       Object.prototype.hasOwnProperty.call(plan, "learning_path")
     ) {
-      return [{ kind: "missing-evidence", reason: "The versioned learning path is not available." }];
+      return [
+        { kind: "missing-evidence", reason: "The versioned learning path is not available." },
+      ] satisfies ApprovalBlock[];
     }
     return getApprovalBlocks(resolvedLearningPath.data, programme.plan_version);
   }, [resolvedLearningPath, programme.plan_version, plan]);
