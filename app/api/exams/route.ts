@@ -21,6 +21,14 @@ export async function GET() {
   const gate = await requireLearningActionApi();
   if (gate instanceof Response) return gate;
 
+  // Deliberately takes no URL parameters. An /exams page URL may carry
+  // exam_id or status query parameters (crafted, or appended by a redirect);
+  // they are never trusted or even read here. This endpoint derives everything
+  // from the authenticated session alone, then re-fetches the exam windows
+  // from the exam system and the final's status from this app's own store
+  // (populated only by verified callbacks), so the state it returns can never
+  // be influenced by anything the URL claims.
+
   const statuses = await getExamStatuses(gate.studentId);
   return Response.json({
     exams: statuses.map((status) => ({

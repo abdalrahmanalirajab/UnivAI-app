@@ -90,6 +90,17 @@ export default function ExamsPage() {
   const [starting, setStarting] = useState(false);
   const now = useVirtualClock();
 
+  /**
+   * The URL this page was opened with is never consulted. A link here may
+   * carry exam_id / status query parameters — crafted, or appended by an
+   * external redirect — but none of them are ever read; the page does not
+   * touch useSearchParams and re-renders nothing from them. Every render's
+   * state comes exclusively from the authenticated, session-scoped GET
+   * /api/exams below, which re-derives windows from the exam system and the
+   * final's status from this app's callback-populated store. Returning to
+   * this page (back navigation, tab switch, closing the exam window) runs
+   * this fetch again before anything is re-rendered.
+   */
   const load = useCallback(async () => {
     try {
       const res = await fetch("/api/exams", { cache: "no-store" });
@@ -111,6 +122,22 @@ export default function ExamsPage() {
     load();
     const refresh = setInterval(load, 15_000);
     return () => clearInterval(refresh);
+  }, [load]);
+
+  // Returning or resuming — tab switch, back navigation, closing the exam
+  // window — re-derives the true current state immediately instead of waiting
+  // for the poll above. The fetch re-runs on every visible return.
+  useEffect(() => {
+    const onPageshow = () => load();
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") load();
+    };
+    window.addEventListener("pageshow", onPageshow);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.removeEventListener("pageshow", onPageshow);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [load]);
 
   async function start(exam: Exam) {
