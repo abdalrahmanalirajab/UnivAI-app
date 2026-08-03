@@ -19,6 +19,9 @@ type UploadEntry = {
   file: File;
   status: UploadStatus;
   error?: string;
+  documentId?: number;
+  collectionId?: number;
+  bookId?: number;
 };
 
 type Props = {
@@ -53,20 +56,24 @@ function formatBytes(bytes: number): string {
 }
 
 export default function MultiBookUploader({ collectionId, onDocumentsChange }: Props) {
-  void collectionId;
   const [entries, setEntries] = useState<UploadEntry[]>([]);
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const idCounter = useRef(0);
   const queueRef = useRef<UploadEntry[]>([]);
+  const queuedIdsRef = useRef(new Set<number>());
+  const activeIdsRef = useRef(new Set<number>());
   const activeRef = useRef(0);
 
   function pump() {
     while (activeRef.current < MAX_CONCURRENT && queueRef.current.length > 0) {
       const entry = queueRef.current.shift()!;
+      queuedIdsRef.current.delete(entry.id);
+      activeIdsRef.current.add(entry.id);
       activeRef.current += 1;
       void runUpload(entry).finally(() => {
         activeRef.current -= 1;
+        activeIdsRef.current.delete(entry.id);
         pump();
       });
     }
@@ -80,6 +87,11 @@ export default function MultiBookUploader({ collectionId, onDocumentsChange }: P
     );
     const body = new FormData();
     body.append("file", entry.file);
+    if (entry.documentId) body.append("documentId", String(entry.documentId));
+    if (entry.bookId) body.append("bookId", String(entry.bookId));
+    if (entry.collectionId ?? collectionId) {
+      body.append("collectionId", String(entry.collectionId ?? collectionId));
+    }
     let res: Response;
     try {
       res = await fetch("/api/upload", { method: "POST", body });
@@ -93,11 +105,24 @@ export default function MultiBookUploader({ collectionId, onDocumentsChange }: P
     }
     try {
       const data = await res.json().catch(() => null);
+      if (Number.isInteger(data?.documentId)) entry.documentId = data.documentId;
+      if (Number.isInteger(data?.collectionId)) entry.collectionId = data.collectionId;
+      if (Number.isInteger(data?.bookId)) entry.bookId = data.bookId;
       if (!res.ok) {
         throw new Error(data?.error ?? data?.detail ?? "Upload failed.");
       }
       setEntries((prev) =>
-        prev.map((e) => (e.id === entry.id ? { ...e, status: "success" as const } : e)),
+        prev.map((e) =>
+          e.id === entry.id
+            ? {
+                ...e,
+                status: "success" as const,
+                documentId: entry.documentId,
+                collectionId: entry.collectionId,
+                bookId: entry.bookId,
+              }
+            : e,
+        ),
       );
       onDocumentsChange();
     } catch (err) {
@@ -108,10 +133,14 @@ export default function MultiBookUploader({ collectionId, onDocumentsChange }: P
                 ...e,
                 status: "failed" as const,
                 error: err instanceof Error ? err.message : "Upload failed.",
+                documentId: entry.documentId,
+                collectionId: entry.collectionId,
+                bookId: entry.bookId,
               }
             : e,
         ),
       );
+      if (entry.documentId) onDocumentsChange();
     }
   }
 
@@ -124,17 +153,20 @@ export default function MultiBookUploader({ collectionId, onDocumentsChange }: P
     }));
     setEntries((prev) => [...prev, ...fresh]);
     queueRef.current.push(...fresh);
+    fresh.forEach((entry) => queuedIdsRef.current.add(entry.id));
     pump();
   }
 
   function retry(entry: UploadEntry) {
     if (entry.status !== "failed" && entry.status !== "offline") return;
+    if (queuedIdsRef.current.has(entry.id) || activeIdsRef.current.has(entry.id)) return;
     setEntries((prev) =>
       prev.map((e) =>
         e.id === entry.id ? { ...e, status: "pending" as const, error: undefined } : e,
       ),
     );
     queueRef.current.push(entry);
+    queuedIdsRef.current.add(entry.id);
     pump();
   }
 

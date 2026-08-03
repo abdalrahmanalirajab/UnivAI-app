@@ -127,7 +127,10 @@ export default function CollectionsPage() {
             reloadKey={reloadKey}
           />
 
-          <MultiBookUploader onDocumentsChange={() => setReloadKey((k) => k + 1)} />
+          <MultiBookUploader
+            collectionId={active!.id}
+            onDocumentsChange={() => setReloadKey((k) => k + 1)}
+          />
         </Stack>
       )}
     </Stack>

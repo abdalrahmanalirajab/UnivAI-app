@@ -113,6 +113,19 @@ function createDbFake(): FakeDb {
   db.queryOne.mockImplementation(async (sql: string, params: unknown[]) => {
     if (sql.includes("SELECT offset_ms FROM clock_state")) return null;
 
+    if (sql.includes("pg_advisory_xact_lock") && sql.includes("INSERT INTO collections")) {
+      const existing = db.collections.find((c) => c.student_id === params[0]);
+      if (existing) return { ...existing, created: false };
+      const row = {
+        id: seq++,
+        student_id: params[0],
+        name: params[1],
+        created_at: "2026-07-28T00:00:00Z",
+      };
+      db.collections.push(row);
+      return { ...row, created: true };
+    }
+
     if (sql.includes("INSERT INTO books") && sql.includes("RETURNING id")) {
       const row = {
         id: seq++,
@@ -162,6 +175,43 @@ function createDbFake(): FakeDb {
       return null;
     }
 
+    if (sql.includes("UPDATE documents SET status = 'uploading'")) {
+      const row = db.documents.find(
+        (d) =>
+          d.id === params[0] &&
+          d.student_id === params[1] &&
+          ["pending", "failed"].includes(String(d.status)),
+      );
+      if (!row) return null;
+      row.status = "uploading";
+      row.error = null;
+      row.updated_at = "2026-07-28T00:01:00Z";
+      return row;
+    }
+
+    if (sql.includes("UPDATE documents SET status = $1")) {
+      const row = db.documents.find(
+        (d) => d.id === params[2] && d.student_id === params[3],
+      );
+      if (!row) return null;
+      row.status = params[0];
+      row.error = params[1];
+      row.updated_at = "2026-07-28T00:02:00Z";
+      return row;
+    }
+
+    if (sql.includes("WITH deleted_books AS") && sql.includes("deleted_document")) {
+      db.books = db.books.filter(
+        (b) => !(b.student_id === params[0] && b.filename === params[1]),
+      );
+      const index = db.documents.findIndex(
+        (d) => d.id === params[2] && d.student_id === params[0],
+      );
+      if (index === -1) return null;
+      const [removed] = db.documents.splice(index, 1);
+      return { id: removed.id };
+    }
+
     if (sql.includes("FROM collections WHERE id = $1 AND student_id = $2")) {
       return db.collections.find((c) => c.id === params[0] && c.student_id === params[1]) ?? null;
     }
@@ -174,8 +224,21 @@ function createDbFake(): FakeDb {
       return db.collections.find((c) => c.student_id === params[0]) ?? null;
     }
 
-    if (sql.includes("FROM books WHERE id = $1")) {
-      return db.books.find((b) => b.id === params[0]) ?? null;
+    if (sql.includes("FROM books") && sql.includes("WHERE id = $1")) {
+      return (
+        db.books.find(
+          (b) =>
+            b.id === params[0] &&
+            (params.length < 2 || b.student_id === params[1]) &&
+            (params.length < 3 || b.filename === params[2]),
+        ) ?? null
+      );
+    }
+
+    if (sql.includes("FROM books") && sql.includes("filename = $2") && sql.includes("LIMIT 1")) {
+      return (
+        db.books.find((b) => b.student_id === params[0] && b.filename === params[1]) ?? null
+      );
     }
 
     if (sql.includes("FROM documents WHERE id = $1 AND student_id = $2")) {
@@ -223,6 +286,16 @@ function createDbFake(): FakeDb {
       return row ? [row] : [];
     }
 
+    if (sql.includes("UPDATE books SET status = 'ingesting'")) {
+      const row = db.books.find((b) => b.id === params[0] && b.student_id === params[1]);
+      if (row) {
+        row.status = "ingesting";
+        row.error = null;
+        row.progress = "Preparing your book…";
+      }
+      return row ? [row] : [];
+    }
+
     if (sql.includes("DELETE FROM documents") && sql.includes("RETURNING id")) {
       const index = db.documents.findIndex((d) => d.id === params[0] && d.student_id === params[1]);
       if (index === -1) return [];
@@ -256,10 +329,14 @@ function makeRequest(url: string, init?: ConstructorParameters<typeof NextReques
   return new NextRequest(url, init);
 }
 
-function postForm(file: NodeFile, url = "http://localhost/api/upload"): NextRequest {
+function postForm(
+  file: NodeFile | null,
+  metadata: Record<string, string> = {},
+  url = "http://localhost/api/upload",
+): NextRequest {
   const req = new NextRequest(url, { method: "POST" });
   vi.spyOn(req, "formData").mockResolvedValue({
-    get: (key: string) => (key === "file" ? file : null),
+    get: (key: string) => (key === "file" ? file : metadata[key] ?? null),
   } as unknown as FormData);
   return req;
 }
@@ -516,6 +593,42 @@ describe("Upload route — multi-book library is additive", () => {
     expect(listingBody.book?.filename).toBe("second_book.pdf");
     expect(db.documents.length).toBe(2);
   });
+
+  it("retries the same failed document and book without creating duplicates", async () => {
+    const { POST } = await import("@/app/api/upload/route");
+    mockRunPython
+      .mockResolvedValueOnce({ stdout: '{"ok":false,"error":"temporary failure"}', stderr: "" })
+      .mockResolvedValueOnce({ stdout: '{"ok":true,"message":"indexed"}', stderr: "" });
+
+    const first = await POST(postForm(pdfFile("retry_book.pdf")));
+    expect(first.status).toBe(502);
+    const failed = (await first.json()) as {
+      documentId: number;
+      collectionId: number;
+      bookId: number;
+    };
+    expect(db.documents).toHaveLength(1);
+    expect(db.documents[0].status).toBe("failed");
+    expect(db.books).toHaveLength(1);
+
+    const retryMetadata = {
+      documentId: String(failed.documentId),
+      collectionId: String(failed.collectionId),
+      bookId: String(failed.bookId),
+    };
+    const retry = await POST(postForm(null, retryMetadata));
+    expect(retry.status).toBe(200);
+    expect(db.documents).toHaveLength(1);
+    expect(db.documents[0].status).toBe("ready");
+    expect(db.books).toHaveLength(1);
+    expect(db.books[0].id).toBe(failed.bookId);
+
+    const replay = await POST(postForm(null, retryMetadata));
+    expect(replay.status).toBe(200);
+    expect(db.documents).toHaveLength(1);
+    expect(db.books).toHaveLength(1);
+    expect(mockRunPython).toHaveBeenCalledTimes(2);
+  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -559,6 +672,27 @@ describe("Collections route — idempotent create", () => {
     expect(duplicateBody.collection.id).toBe(firstBody.collection.id);
     expect(db.collections.length).toBe(1);
   });
+
+  it("concurrent create requests resolve to one canonical collection", async () => {
+    const { POST } = await import("@/app/api/collections/route");
+    const request = () =>
+      POST(
+        makeRequest("http://localhost/api/collections", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: "My Library" }),
+        }),
+      );
+
+    const [first, second] = await Promise.all([request(), request()]);
+    const firstBody = (await first.json()) as { collection: { id: number }; created: boolean };
+    const secondBody = (await second.json()) as { collection: { id: number }; created: boolean };
+
+    expect([first.status, second.status].sort()).toEqual([200, 201]);
+    expect(firstBody.collection.id).toBe(secondBody.collection.id);
+    expect([firstBody.created, secondBody.created].sort()).toEqual([false, true]);
+    expect(db.collections).toHaveLength(1);
+  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -582,6 +716,12 @@ describe("Documents route — safe removal", () => {
     seedDocument(db, 10, 1, SID, "a.pdf", "ready");
     seedDocument(db, 11, 1, SID, "b.pdf", "ready");
     seedDocument(db, 12, 1, SID, "c.pdf", "ready");
+    db.books.push({
+      id: 20,
+      student_id: SID,
+      filename: "collections/1/11/b.pdf",
+      status: "ready",
+    });
 
     const res = await DELETE(
       makeRequest("http://localhost/api/collections/1/documents?documentId=11"),
@@ -594,6 +734,7 @@ describe("Documents route — safe removal", () => {
     const remaining = db.documents.map((d) => ({ id: d.id, filename: d.filename, status: d.status }));
     expect(remaining).toContainEqual({ id: 10, filename: "a.pdf", status: "ready" });
     expect(remaining).toContainEqual({ id: 12, filename: "c.pdf", status: "ready" });
+    expect(db.books).toHaveLength(0);
   });
 
   it("removing a document referenced by an approved plan is rejected with 409 and nothing is removed", async () => {

@@ -5,12 +5,14 @@ import { requireUserApi } from "@/lib/session";
 import { REPO_ROOT } from "@/lib/python";
 import {
   addDocument,
+  documentStorageKey,
   getDocument,
   getOwnedCollection,
   hasApprovedPlanReferencingDocument,
   hasInFlightCourseGeneration,
   listDocuments,
   removeDocument,
+  removeDocumentAndBook,
   validateFilename,
 } from "@/lib/collections";
 
@@ -184,8 +186,20 @@ export async function DELETE(
     String(documentId),
   );
 
-  await removeDocument(documentId, gate.studentId);
-  await fs.rm(docDir, { recursive: true, force: true }).catch(() => {});
+  try {
+    await fs.rm(docDir, { recursive: true, force: true });
+  } catch {
+    return Response.json({ error: "Could not remove the stored source." }, { status: 500 });
+  }
+
+  const removed = await removeDocumentAndBook(
+    documentId,
+    gate.studentId,
+    documentStorageKey(collectionId, documentId, doc.filename),
+  );
+  if (!removed.ok) {
+    return Response.json({ error: removed.error }, { status: 404 });
+  }
 
   return Response.json({ removed: true });
 }
