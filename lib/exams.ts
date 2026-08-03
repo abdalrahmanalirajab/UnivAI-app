@@ -49,6 +49,51 @@ export type ExamLink = {
 };
 
 /**
+ * A final exam's status as reported BY the Exam service — never derived here.
+ *
+ * The Exam service owns eligibility, publication, the attempt lifecycle,
+ * proctoring, grading, and finality. Every field on this type is echoed from
+ * the service's own response (ExamAttemptView from GET /api/exams/[examId] or
+ * the start routes, or the result webhook), and the app only renders it.
+ * In particular, "locked"/"unavailable" and their `reason` come from the
+ * service as-is (its 403 denial message or `lock_reason`) — there is no
+ * app-side eligibility or grading computation behind any of these values.
+ *
+ * Schema version: 1.0.0
+ */
+export type ExamServiceStatusV1 = {
+  /** The Exam service's exam id (ExamAttemptView._id / webhook exam_id). */
+  exam_id: string;
+  /** The exam title the Exam service assigned (ExamAttemptView.title). */
+  title: string;
+  /** The exam kind the Exam service reports — finals only for now. */
+  type: "final";
+  /**
+   * The lifecycle phase the Exam service reports:
+   * - "unavailable": the service has no exam for this learner (e.g. 404).
+   * - "locked": the service refused to start it, with a `reason`
+   *   (eligibility denial or an integrity lock).
+   * - "ready": published, no attempt started yet.
+   * - "active": an attempt is in progress (service `integrity_state` "active").
+   * - "submitted": submitted, result not final yet.
+   * - "awaiting-grade": service `result.grading_status` "pending_review".
+   * - "graded": service `result.grading_status` "graded" — final.
+   * - "flagged": service `integrity_status` "invalidated".
+   */
+  state:
+    | "locked"
+    | "ready"
+    | "active"
+    | "submitted"
+    | "awaiting-grade"
+    | "graded"
+    | "flagged"
+    | "unavailable";
+  /** The Exam service's own reason — set for "locked" and "unavailable". */
+  reason: string | null;
+};
+
+/**
  * Wipe ONE student's seeded exam world (used when they replace their book).
  * Scoped by owner so re-uploading never destroys another student's exams. We
  * delete their link + their chapters' question banks, and the docs owned by
