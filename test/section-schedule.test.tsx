@@ -10,14 +10,21 @@ import type { SessionUser } from "@/lib/auth-types";
 /*  Mock db for getSections (lib/lectures.ts) — hoisted first          */
 /* ------------------------------------------------------------------ */
 
-const { mockQuery, mockQueryOne } = vi.hoisted(() => ({
+const { mockQuery, mockQueryOne, mockGetSetting, mockSetSetting } = vi.hoisted(() => ({
   mockQuery: vi.fn(),
   mockQueryOne: vi.fn(),
+  mockGetSetting: vi.fn(),
+  mockSetSetting: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
   query: mockQuery,
   queryOne: mockQueryOne,
+}));
+
+vi.mock("@/lib/settings", () => ({
+  getSetting: mockGetSetting,
+  setSetting: mockSetSetting,
 }));
 
 // Real route handlers gate through lib/session → next/headers + lib/auth
@@ -59,6 +66,8 @@ const WEEK_STARTS = [
 ];
 
 const LECTURE_WINDOW_MS = 60 * 60_000;
+const APPROVED_PLAN = { ...SEVEN_WEEK_PLAN_V1, section_packs: SECTION_PACKS_V1 };
+const SCHEDULE_BINDING = JSON.stringify({ programmeId: 1, planVersion: 1, weekCount: 7 });
 
 function lectureRows(weeks: number) {
   return WEEK_STARTS.slice(0, weeks).map((startsAt, index) => {
@@ -81,23 +90,22 @@ function lectureRows(weeks: number) {
 describe("getSections — sections only after their lecture", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGetSetting.mockResolvedValue(SCHEDULE_BINDING);
     mockQueryOne.mockResolvedValue({ offset_ms: "0" });
-    mockQuery.mockImplementation(async () => {
-      throw new Error("unexpected query");
+    mockQuery.mockImplementation(async (sql) => {
+      const text = String(sql);
+      if (text.includes("SELECT id, plan_version, plan FROM programmes")) {
+        return [{ id: 1, plan_version: 1, plan: APPROVED_PLAN }];
+      }
+      if (text.includes("SELECT week FROM lectures")) {
+        return Array.from({ length: 7 }, (_, index) => ({ week: index + 1 }));
+      }
+      if (text.includes("SELECT l.id, l.week")) return lectureRows(7);
+      throw new Error(`unexpected query: ${text}`);
     });
   });
 
   it("schedules sections ONLY for weeks with a real SectionPack (weeks 1 and 5)", async () => {
-    const weeks = SEVEN_WEEK_PLAN_V1.workload.weeks_per_semester;
-    const answers = [
-      [{ plan: { workload: { weeks_per_semester: weeks } } }],
-      [{ count: String(weeks) }],
-      Array.from({ length: weeks }, (_, i) => ({ week: i + 1 })),
-      lectureRows(weeks),
-    ];
-    let call = 0;
-    mockQuery.mockImplementation(async () => answers[call++ % answers.length]);
-
     const { getSections } = await import("@/lib/lectures");
     const sections = await getSections("S-2026-000001");
 
@@ -110,16 +118,6 @@ describe("getSections — sections only after their lecture", () => {
   });
 
   it("types sections distinctly from lectures via session_type", async () => {
-    const weeks = SEVEN_WEEK_PLAN_V1.workload.weeks_per_semester;
-    const answers = [
-      [{ plan: { workload: { weeks_per_semester: weeks } } }],
-      [{ count: String(weeks) }],
-      Array.from({ length: weeks }, (_, i) => ({ week: i + 1 })),
-      lectureRows(weeks),
-    ];
-    let call = 0;
-    mockQuery.mockImplementation(async () => answers[call++ % answers.length]);
-
     const { getSections, getLectures } = await import("@/lib/lectures");
     const lectures = await getLectures("S-2026-000001");
     const sections = await getSections("S-2026-000001");
@@ -129,16 +127,6 @@ describe("getSections — sections only after their lecture", () => {
   });
 
   it("starts every section immediately after its own lecture ends", async () => {
-    const weeks = SEVEN_WEEK_PLAN_V1.workload.weeks_per_semester;
-    const answers = [
-      [{ plan: { workload: { weeks_per_semester: weeks } } }],
-      [{ count: String(weeks) }],
-      Array.from({ length: weeks }, (_, i) => ({ week: i + 1 })),
-      lectureRows(weeks),
-    ];
-    let call = 0;
-    mockQuery.mockImplementation(async () => answers[call++ % answers.length]);
-
     const { getSections, getLectures } = await import("@/lib/lectures");
     const lectures = await getLectures("S-2026-000001");
     const sections = await getSections("S-2026-000001");
@@ -149,6 +137,34 @@ describe("getSections — sections only after their lecture", () => {
       expect(section.startsAt.getTime()).toBe(lecture!.endsAt.getTime());
       expect(lecture!.endsAt.getTime() - lecture!.startsAt.getTime()).toBe(LECTURE_WINDOW_MS);
     }
+  });
+
+  it("rejects lecture rows bound to an older approved plan version", async () => {
+    mockGetSetting.mockResolvedValue(
+      JSON.stringify({ programmeId: 1, planVersion: 0, weekCount: 7 }),
+    );
+    const { getLectures } = await import("@/lib/lectures");
+
+    await expect(getLectures("S-2026-000001")).rejects.toMatchObject({
+      code: "STALE_SCHEDULE",
+    });
+  });
+
+  it("does not invent sections when the approved plan has no SectionPacks", async () => {
+    mockQuery.mockImplementation(async (sql) => {
+      const text = String(sql);
+      if (text.includes("SELECT id, plan_version, plan FROM programmes")) {
+        return [{ id: 1, plan_version: 1, plan: SEVEN_WEEK_PLAN_V1 }];
+      }
+      if (text.includes("SELECT week FROM lectures")) {
+        return Array.from({ length: 7 }, (_, index) => ({ week: index + 1 }));
+      }
+      if (text.includes("SELECT l.id, l.week")) return lectureRows(7);
+      throw new Error(`unexpected query: ${text}`);
+    });
+    const { getSections } = await import("@/lib/lectures");
+
+    await expect(getSections("S-2026-000001")).resolves.toEqual([]);
   });
 });
 
@@ -299,6 +315,7 @@ function sessionUser(overrides: Partial<SessionUser> = {}): SessionUser {
 describe("api routes — real backend behavior", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGetSetting.mockResolvedValue(SCHEDULE_BINDING);
     mockQueryOne.mockImplementation(async (sql: string) => {
       if (sql.includes("clock_state")) return { offset_ms: "0" };
       if (sql.includes("FROM books")) return { exists: true };
@@ -307,10 +324,9 @@ describe("api routes — real backend behavior", () => {
       return null;
     });
     mockQuery.mockImplementation(async (sql: string) => {
-      if (sql.includes("SELECT plan_version FROM programmes")) return [{ plan_version: 1 }];
-      if (sql.includes("SELECT plan FROM programmes"))
-        return [{ plan: { workload: { weeks_per_semester: 7 } } }];
-      if (sql.includes("COUNT(*)::text")) return [{ count: "7" }];
+      if (sql.includes("SELECT id, plan_version, plan FROM programmes")) {
+        return [{ id: 1, plan_version: 1, plan: APPROVED_PLAN }];
+      }
       if (sql.includes("SELECT week FROM lectures")) return WEEK_ROWS;
       if (sql.includes("completed_at")) return SESSION_LECTURE_ROWS;
       if (sql.includes("a.status")) return SESSION_ATTENDANCE_ROWS;
@@ -338,25 +354,40 @@ describe("api routes — real backend behavior", () => {
 
     const a = await first.json();
     const b = await second.json();
-    expect(a.lectures).toHaveLength(7);
+    expect(a.lectures).toHaveLength(9);
     expect(a).toEqual(b);
     expect(a.planVersion).toBe(1);
-    expect(a.lectures.map((lecture: { week: number }) => lecture.week)).toEqual([
+    expect(
+      a.lectures
+        .filter((record: { session_type: string }) => record.session_type === "lecture")
+        .map((lecture: { week: number }) => lecture.week),
+    ).toEqual([
       1, 2, 3, 4, 5, 6, 7,
     ]);
+    expect(
+      a.lectures
+        .filter((record: { session_type: string }) => record.session_type === "section")
+        .map((section: { week: number }) => section.week),
+    ).toEqual([1, 5]);
   });
 
   it("an approved plan with unusable data is rejected by the real corruption check", async () => {
     await setSession(sessionUser());
     mockQuery.mockImplementation(async (sql: string) => {
-      if (sql.includes("SELECT plan_version FROM programmes")) return [{ plan_version: 1 }];
-      if (sql.includes("SELECT plan FROM programmes")) return [{ plan: { workload: {} } }];
+      if (sql.includes("SELECT id, plan_version, plan FROM programmes")) {
+        return [{ id: 1, plan_version: 1, plan: { workload: {} } }];
+      }
       if (sql.includes("SELECT status, error FROM books")) return [];
       throw new Error(`unexpected query: ${sql}`);
     });
     const { GET } = await import("@/app/api/lectures/route");
 
-    await expect(GET()).rejects.toThrow("no valid weeks_per_semester");
+    const response = await GET();
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      code: "INVALID_APPROVED_PLAN",
+      error: "The approved programme has no valid weeks_per_semester.",
+    });
   });
 
   it("an unauthenticated session is denied by the real API guard (401)", async () => {
@@ -390,7 +421,7 @@ describe("api routes — real backend behavior", () => {
     expect(res.status).toBe(200);
 
     const planCall = mockQuery.mock.calls.find(([sql]) =>
-      String(sql).includes("SELECT plan FROM programmes")
+      String(sql).includes("SELECT id, plan_version, plan FROM programmes")
     );
     expect(planCall).toBeDefined();
     expect(planCall?.[1]).toEqual(["S-2026-000002"]);
@@ -426,11 +457,13 @@ describe("api routes — real backend behavior", () => {
     vi.stubEnv("UNIVAI_MODE", "standalone");
     try {
       await setSession(sessionUser({ role: "super_admin", studentId: "S-2026-000042" }));
+      mockGetSetting.mockResolvedValue(SCHEDULE_BINDING);
       mockQuery.mockImplementation(async (sql: string) => {
         if (sql.includes("MIN(starts_at)"))
           return [{ starts_at: new Date("2099-01-01T10:00:00.000Z") }];
-        if (sql.includes("SELECT plan FROM programmes"))
-          return [{ plan: { workload: { weeks_per_semester: 7 } } }];
+        if (sql.includes("SELECT id, plan_version, plan FROM programmes"))
+          return [{ id: 1, plan_version: 1, plan: APPROVED_PLAN }];
+        if (sql.includes("SELECT week FROM lectures")) return WEEK_ROWS;
         if (String(sql).startsWith("DELETE")) return [];
         if (String(sql).startsWith("UPDATE")) return [];
         throw new Error(`unexpected query: ${sql}`);
