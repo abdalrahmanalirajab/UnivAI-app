@@ -613,3 +613,148 @@ function EvidenceDialog({
     </Dialog>
   );
 }
+
+/**
+ * One reason approval must not proceed. `kind` identifies which check fired;
+ * `reason` is the specific, human-readable message shown in the UI (never a
+ * generic "cannot approve").
+ */
+export type ApprovalBlock = {
+  kind:
+    | "cycle"
+    | "low-confidence"
+    | "missing-evidence"
+    | "stale-version"
+    | "unresolved-alternative"
+    | "unresolved-override";
+  reason: string;
+};
+
+/**
+ * Cycle detection on the prerequisite graph: DFS with per-node
+ * visited/in-progress/done states (white-grey-black). When a back edge hits a
+ * node still "in-progress" on the current DFS stack, the stack slice from
+ * that node to the top is a real cycle, returned as its node ids in path
+ * order. This is the standard directed-graph cycle algorithm, not a heuristic
+ * like comparing duplicate ids.
+ */
+function findCycleIds(path: LearningPathV1): number[] | null {
+  const adjacency = new Map<number, number[]>();
+  for (const edge of path.edges) {
+    const neighbors = adjacency.get(edge.prerequisite_book_id) ?? [];
+    neighbors.push(edge.dependent_book_id);
+    adjacency.set(edge.prerequisite_book_id, neighbors);
+  }
+
+  const nodes = new Set<number>();
+  for (const book of path.books) nodes.add(book.id);
+  for (const edge of path.edges) {
+    nodes.add(edge.prerequisite_book_id);
+    nodes.add(edge.dependent_book_id);
+  }
+
+  const state = new Map<number, "unvisited" | "in-progress" | "done">();
+  for (const node of nodes) state.set(node, "unvisited");
+
+  const stack: number[] = [];
+
+  const visit = (node: number): number[] | null => {
+    state.set(node, "in-progress");
+    stack.push(node);
+    for (const neighbor of adjacency.get(node) ?? []) {
+      const neighborState = state.get(neighbor) ?? "unvisited";
+      if (neighborState === "in-progress") {
+        const cycleStart = stack.indexOf(neighbor);
+        return stack.slice(cycleStart).concat(neighbor);
+      }
+      if (neighborState === "unvisited") {
+        const cycle = visit(neighbor);
+        if (cycle) return cycle;
+      }
+    }
+    stack.pop();
+    state.set(node, "done");
+    return null;
+  };
+
+  for (const node of nodes) {
+    if ((state.get(node) ?? "unvisited") === "unvisited") {
+      const cycle = visit(node);
+      if (cycle) return cycle;
+    }
+  }
+  return null;
+}
+
+/**
+ * Evaluates a validated LearningPathV1 for the approval-blocking rules:
+ * cycles, low confidence, missing evidence, stale version, and unresolved
+ * alternatives/overrides. Returns every reason that applies, in a
+ * deterministic order — an empty array means none of the rules fire.
+ *
+ * `latestPlanVersion` is the exact version the app currently holds/fetched;
+ * when it is null (unknown) the stale check is skipped rather than guessed.
+ * This function only evaluates — it never approves; approval remains an
+ * explicit human action.
+ */
+export function getApprovalBlocks(
+  learningPath: LearningPathV1 | null,
+  latestPlanVersion: number | null,
+): ApprovalBlock[] {
+  const blocks: ApprovalBlock[] = [];
+  if (!learningPath) return blocks;
+
+  if (
+    latestPlanVersion !== null &&
+    learningPath.plan_version !== latestPlanVersion
+  ) {
+    blocks.push({
+      kind: "stale-version",
+      reason: `Learning path version ${learningPath.plan_version} does not match the current version ${latestPlanVersion}.`,
+    });
+  }
+
+  const bookTitle = (id: number) =>
+    learningPath.books.find((book) => book.id === id)?.title ?? `Book ${id}`;
+
+  const cycle = findCycleIds(learningPath);
+  if (cycle) {
+    blocks.push({
+      kind: "cycle",
+      reason: `Prerequisite cycle detected: ${cycle.map(bookTitle).join(" → ")}.`,
+    });
+  }
+
+  for (const edge of learningPath.edges) {
+    const label = `${bookTitle(edge.prerequisite_book_id)} → ${bookTitle(edge.dependent_book_id)}`;
+    if (edge.confidence < LOW_CONFIDENCE_THRESHOLD) {
+      blocks.push({
+        kind: "low-confidence",
+        reason: `Edge ${label} has confidence ${edge.confidence}, below the ${LOW_CONFIDENCE_THRESHOLD} threshold.`,
+      });
+    }
+    if (!edge.evidence) {
+      blocks.push({
+        kind: "missing-evidence",
+        reason: `Edge ${label} has no resolvable evidence.`,
+      });
+    }
+    const unresolvedAlternatives = edge.alternatives.filter(
+      (alternative) => !alternative.resolved,
+    );
+    if (unresolvedAlternatives.length > 0) {
+      blocks.push({
+        kind: "unresolved-alternative",
+        reason: `Edge ${label} has ${unresolvedAlternatives.length} unresolved alternative${unresolvedAlternatives.length > 1 ? "s" : ""}.`,
+      });
+    }
+    if (edge.override && !edge.override.resolved) {
+      blocks.push({
+        kind: "unresolved-override",
+        reason: `Edge ${label} has an unresolved override.`,
+      });
+    }
+  }
+
+  return blocks;
+}
