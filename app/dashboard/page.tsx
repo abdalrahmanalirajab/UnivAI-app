@@ -1,6 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import Alert from "@mui/material/Alert";
+import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
 import Chip from "@mui/material/Chip";
@@ -14,6 +17,8 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
 import { formatCountdown, formatDateTime, formatLateness, formatRelative, useVirtualClock } from "@/lib/time";
+import { FINAL_STATE_COLOR, FINAL_STATE_SUMMARY } from "@/lib/exam-status-view";
+import type { ExamServiceStatusV1 } from "@/lib/exams";
 
 type Attendance = {
   lectureId: number;
@@ -44,6 +49,8 @@ type Data = {
     feedback: string | null;
     flagged: boolean;
   }>;
+  /** The same Phase 1 contract the exams page renders — summary status here. */
+  final: ExamServiceStatusV1 | null;
 };
 
 const STATUS_COLOR: Record<Attendance["status"], "success" | "warning" | "error" | "default"> = {
@@ -62,11 +69,24 @@ const STATUS_LABEL: Record<Attendance["status"], string> = {
 
 export default function DashboardPage() {
   const [data, setData] = useState<Data | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const now = useVirtualClock();
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/dashboard", { cache: "no-store" });
-    setData(await res.json());
+    try {
+      const res = await fetch("/api/dashboard", { cache: "no-store" });
+      const body = await res.json();
+      if (!res.ok) {
+        setError(body?.error ?? "Could not load the dashboard.");
+        return;
+      }
+      setData(body);
+      setError(null);
+    } catch {
+      // Offline or unreachable — previously loaded data stays visible (stale)
+      // and the retry button / next load recovers.
+      setError("Could not reach the server — retrying.");
+    }
   }, []);
 
   useEffect(() => {
@@ -75,11 +95,62 @@ export default function DashboardPage() {
 
   if (!data) return <CircularProgress />;
 
-  const { summary } = data;
+  const { summary, final } = data;
 
   return (
     <Stack spacing={3}>
       <Typography variant="h4">Your dashboard</Typography>
+
+      {error ? (
+        <Alert
+          severity="error"
+          action={
+            <Button size="small" onClick={load}>
+              Retry
+            </Button>
+          }
+        >
+          {error}
+        </Alert>
+      ) : null}
+
+      <Card variant="outlined">
+        <CardContent>
+          <Stack spacing={2}>
+            <Typography variant="h6">Final exam</Typography>
+            {final === null ? (
+              <Typography variant="body2" color="text.secondary">
+                No final exam information yet — the exam system decides availability.
+              </Typography>
+            ) : (
+              <Grid container spacing={1}>
+                <Grid>
+                  <Chip
+                    size="small"
+                    color={FINAL_STATE_COLOR[final.state]}
+                    label={FINAL_STATE_SUMMARY[final.state]}
+                  />
+                </Grid>
+                <Grid>
+                  {final.state === "graded" && final.result ? (
+                    <Typography variant="body2">
+                      Result {final.result.mark} / {final.result.max_score} —{" "}
+                      {final.result.passed ? "passed" : "not passed"}.
+                    </Typography>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary">
+                      Summary status — see the exams page for full detail.
+                    </Typography>
+                  )}
+                </Grid>
+              </Grid>
+            )}
+            <Button component={Link} href="/exams" variant="outlined" size="small">
+              Open exams page
+            </Button>
+          </Stack>
+        </CardContent>
+      </Card>
 
       <Card variant="outlined">
         <CardContent>

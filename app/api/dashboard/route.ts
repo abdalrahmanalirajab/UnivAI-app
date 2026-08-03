@@ -1,5 +1,6 @@
 import { query } from "@/lib/db";
 import { getAttendance, summarize } from "@/lib/attendance";
+import { getFinalExamStatus } from "@/lib/exams";
 import { requirePreparedSourceApi } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -37,5 +38,8 @@ export async function GET() {
     })),
     summary: summarize(attendance),
     grades,
+    // The same session-scoped, callback-populated status the exams page shows
+    // (ExamServiceStatusV1) — one contract, two surfaces.
+    final: await getFinalExamStatus(sid),
   });
 }
