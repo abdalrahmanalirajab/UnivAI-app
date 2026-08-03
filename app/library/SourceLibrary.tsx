@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Alert from "@mui/material/Alert";
 import AlertTitle from "@mui/material/AlertTitle";
 import Button from "@mui/material/Button";
@@ -24,7 +24,15 @@ type Document = {
   status: string;
   error: string | null;
   created_at: string;
+  updated_at: string;
 };
+
+function signature(documents: Document[]): string {
+  return [...documents]
+    .sort((a, b) => a.id - b.id)
+    .map((d) => `${d.id}|${d.status}|${d.error ?? ""}|${d.updated_at}`)
+    .join("\n");
+}
 
 const STATUS_COLOR: Record<string, "success" | "error" | "warning" | "default"> = {
   ready: "success",
@@ -51,6 +59,8 @@ export default function SourceLibrary({ collectionId, reloadKey = 0 }: Props) {
   const [offline, setOffline] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
   const [removing, setRemoving] = useState<number | null>(null);
+  const [stale, setStale] = useState(false);
+  const documentsRef = useRef<Document[] | null>(null);
   const now = useVirtualClock();
 
   const load = useCallback(async () => {
@@ -82,12 +92,42 @@ export default function SourceLibrary({ collectionId, reloadKey = 0 }: Props) {
     }
     setError(null);
     setRemoveError(null);
+    setStale(false);
+    documentsRef.current = data.documents;
     setDocuments(data.documents);
   }, [collectionId]);
 
   useEffect(() => {
     void load();
   }, [load, reloadKey]);
+
+  useEffect(() => {
+    const check = async () => {
+      const current = documentsRef.current;
+      if (current === null) return;
+      let res: Response;
+      try {
+        res = await fetch(`/api/collections/${collectionId}/documents`, {
+          cache: "no-store",
+        });
+      } catch {
+        return;
+      }
+      let data: { documents?: unknown };
+      try {
+        data = await res.json();
+      } catch {
+        return;
+      }
+      if (!res.ok || !Array.isArray(data.documents)) return;
+      setOffline(false);
+      if (signature(data.documents) !== signature(current)) {
+        setStale(true);
+      }
+    };
+    const poll = setInterval(() => void check(), 15_000);
+    return () => clearInterval(poll);
+  }, [collectionId]);
 
   async function handleRemove(documentId: number) {
     setRemoveError(null);
@@ -149,6 +189,21 @@ export default function SourceLibrary({ collectionId, reloadKey = 0 }: Props) {
         >
           <AlertTitle>Could not load sources</AlertTitle>
           {error}
+        </Alert>
+      ) : null}
+
+      {stale ? (
+        <Alert
+          severity="warning"
+          action={
+            <Button variant="outlined" color="inherit" onClick={() => void load()}>
+              Refresh
+            </Button>
+          }
+        >
+          <AlertTitle>Your view may be out of date</AlertTitle>
+          The source list changed on the server since it was last loaded. Refresh to see the
+          current sources.
         </Alert>
       ) : null}
 
