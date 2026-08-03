@@ -13,6 +13,12 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ programmeId: string }> },
 ) {
+  // Authorization comes ONLY from the server session (auth.api.getSession via
+  // requireUserApi). Nothing client-sent is ever trusted for authorization:
+  // the session's studentId scopes every query, and the client-sent
+  // planVersion is used solely as the optimistic-concurrency check required
+  // for exact-version approval — never as an authorization signal. Any other
+  // client-sent user id, name, or status field in the body is ignored.
   const gate = await requireUserApi();
   if (gate instanceof Response) return gate;
 
@@ -29,6 +35,7 @@ export async function POST(
     return Response.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
+  // Only planVersion is read from the body; all other fields are ignored.
   const { planVersion } = body;
   if (typeof planVersion !== "number" || !Number.isInteger(planVersion) || planVersion < 1) {
     return Response.json(
@@ -40,15 +47,21 @@ export async function POST(
   const result = await approveProgramme(programmeId, gate.studentId, planVersion);
 
   if (!result.ok) {
-    const status =
-      result.error === "Programme not found." ? 404
-      : result.error === "Programme is already approved." ? 409
-      : 409;
+    // Conflicts carry the newest version's data (result.current includes the
+    // current plan_version), never just a bare error code.
+    const status = result.error === "Programme not found." ? 404 : 409;
     return Response.json(
       { error: result.error, current: result.current },
       { status },
     );
   }
 
-  return Response.json({ programme: result.programme });
+  // Names the exact approved version alongside the full programme so callers
+  // can verify which version was approved and refresh against the newest
+  // state. Re-approving the same version returns this identical response
+  // (idempotent).
+  return Response.json({
+    programme: result.programme,
+    approvedVersion: result.programme.plan_version,
+  });
 }
