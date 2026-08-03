@@ -155,16 +155,26 @@ export async function POST(request: NextRequest) {
 
   const collection = await getOrCreateCollection(sid);
   if (!collection.ok) {
+    const detail = collection.error;
+    await query(
+      "UPDATE books SET status = 'failed', error = $1, progress = NULL WHERE id = $2",
+      [detail, bookId]
+    );
     return Response.json(
-      { error: "Could not prepare your library.", detail: collection.error },
-      { status: 500 }
+      { error: "Could not prepare your library.", detail },
+      { status: 502 }
     );
   }
   const attached = await addDocument(collection.collection.id, sid, safeName);
   if (!attached.ok) {
+    const detail = attached.error;
+    await query(
+      "UPDATE books SET status = 'failed', error = $1, progress = NULL WHERE id = $2",
+      [detail, bookId]
+    );
     return Response.json(
-      { error: "Could not attach the uploaded PDF to your library.", detail: attached.error },
-      { status: 500 }
+      { error: "Could not attach the uploaded PDF to your library.", detail },
+      { status: 502 }
     );
   }
 
