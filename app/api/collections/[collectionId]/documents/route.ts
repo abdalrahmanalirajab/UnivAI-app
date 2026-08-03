@@ -7,6 +7,8 @@ import {
   addDocument,
   getDocument,
   getOwnedCollection,
+  hasApprovedPlanReferencingDocument,
+  hasInFlightCourseGeneration,
   listDocuments,
   removeDocument,
   validateFilename,
@@ -151,6 +153,26 @@ export async function DELETE(
   const doc = await getDocument(documentId, gate.studentId);
   if (!doc || doc.collection_id !== collectionId) {
     return Response.json({ error: "Document not found." }, { status: 404 });
+  }
+
+  const planReferenced = await hasApprovedPlanReferencingDocument(
+    gate.studentId,
+    documentId,
+    collectionId,
+  );
+  if (planReferenced) {
+    return Response.json(
+      { error: "This source is part of your approved plan and cannot be removed." },
+      { status: 409 },
+    );
+  }
+
+  const generationInFlight = await hasInFlightCourseGeneration(gate.studentId);
+  if (generationInFlight) {
+    return Response.json(
+      { error: "A course is still being generated. Wait for it to finish before removing sources." },
+      { status: 409 },
+    );
   }
 
   const docDir = path.join(

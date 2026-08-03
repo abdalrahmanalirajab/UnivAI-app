@@ -94,6 +94,36 @@ export async function getOwnedCollection(
   return { owned: false, exists: Boolean(exists) };
 }
 
+export async function hasApprovedPlanReferencingDocument(
+  studentId: string,
+  documentId: number,
+  collectionId: number,
+): Promise<boolean> {
+  const row = await queryOne<{ id: number }>(
+    `SELECT id FROM programmes
+     WHERE student_id = $1 AND status = 'approved' AND collection_id = $2
+       AND EXISTS (
+         SELECT 1 FROM jsonb_array_elements(plan->'source_coverage') AS s
+         WHERE (s->>'document_id')::int = $3
+       )
+     LIMIT 1`,
+    [studentId, collectionId, documentId],
+  );
+  return Boolean(row);
+}
+
+export async function hasInFlightCourseGeneration(
+  studentId: string,
+): Promise<boolean> {
+  const row = await queryOne<{ id: number }>(
+    `SELECT id FROM books
+     WHERE student_id = $1 AND status IN ('ingesting', 'generating')
+     LIMIT 1`,
+    [studentId],
+  );
+  return Boolean(row);
+}
+
 export async function listCollections(studentId: string): Promise<Collection[]> {
   return query<Collection>(
     `SELECT ${COLLECTION_COLUMNS} FROM collections WHERE student_id = $1 ORDER BY created_at DESC`,
