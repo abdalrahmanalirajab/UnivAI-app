@@ -7,13 +7,13 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { AccessToken, TokenVerifier } from "livekit-server-sdk";
+import { AccessToken, RoomServiceClient, TokenVerifier } from "livekit-server-sdk";
 
 const {
   mockGate,
   mockQueryOne,
   mockGetLectures,
-  mockApprovedPlanVersion,
+  mockReadScript,
   mockStampJoin,
   mockEnv,
   mockBlockedMessage,
@@ -21,7 +21,7 @@ const {
   mockGate: vi.fn(),
   mockQueryOne: vi.fn(),
   mockGetLectures: vi.fn(),
-  mockApprovedPlanVersion: vi.fn(),
+  mockReadScript: vi.fn(),
   mockStampJoin: vi.fn(),
   mockEnv: {
     LIVEKIT_API_KEY: "test-api-key",
@@ -41,7 +41,7 @@ vi.mock("@/lib/db", () => ({ queryOne: mockQueryOne }));
 vi.mock("@/lib/attendance", () => ({ stampJoin: mockStampJoin }));
 vi.mock("@/lib/lectures", () => ({
   getLectures: mockGetLectures,
-  approvedPlanVersion: mockApprovedPlanVersion,
+  readScript: mockReadScript,
   BLOCKED_MESSAGE: mockBlockedMessage,
 }));
 vi.mock("@/lib/env", () => ({ env: mockEnv }));
@@ -56,6 +56,9 @@ import {
 } from "@/app/api/lecture/[id]/token/route";
 
 const VERIFIER = new TokenVerifier(mockEnv.LIVEKIT_API_KEY, mockEnv.LIVEKIT_API_SECRET);
+const listRoomsSpy = vi.spyOn(RoomServiceClient.prototype, "listRooms");
+const createRoomSpy = vi.spyOn(RoomServiceClient.prototype, "createRoom");
+const updateRoomMetadataSpy = vi.spyOn(RoomServiceClient.prototype, "updateRoomMetadata");
 
 const MOHAMED = {
   studentId: "S-2026-000042",
@@ -177,10 +180,19 @@ describe("POST /api/lecture/[id]/token — personalized signed metadata", () => 
   beforeEach(() => {
     vi.clearAllMocks();
     mockGate.mockResolvedValue(MOHAMED);
-    mockQueryOne.mockResolvedValue(LECTURE);
+    mockQueryOne.mockImplementation(async (sql: string) =>
+      sql.includes("FROM programmes") ? { id: 7, plan_version: 3 } : LECTURE,
+    );
     mockGetLectures.mockResolvedValue([{ id: 1, joinable: true, blockedReason: null }]);
-    mockApprovedPlanVersion.mockResolvedValue(3);
+    mockReadScript.mockResolvedValue({
+      lectureId: "course-ai-101",
+      title: "Week 3",
+      segments: [{ slide: 1, text: "Grounded segment", citations: [{ page: 3 }] }],
+    });
     mockStampJoin.mockResolvedValue({ status: "on_time", lateMinutes: 0 });
+    listRoomsSpy.mockReset().mockResolvedValue([]);
+    createRoomSpy.mockReset().mockResolvedValue({} as never);
+    updateRoomMetadataSpy.mockReset().mockResolvedValue({} as never);
   });
 
   it("mints a verifiable signed token whose metadata holds only the learner's safe spoken name", async () => {
@@ -210,6 +222,21 @@ describe("POST /api/lecture/[id]/token — personalized signed metadata", () => 
       "v",
       "week",
     ]);
+    expect(createRoomSpy).toHaveBeenCalledTimes(1);
+    const roomOptions = createRoomSpy.mock.calls[0][0];
+    expect(JSON.parse(roomOptions.metadata ?? "{}")).toEqual({
+      schema_name: "univai.live.lecture-session",
+      schema_version: "1",
+      programme_id: "7",
+      course_id: "course-ai-101",
+      plan_version: 3,
+      week: 3,
+      lecture_id: "course-ai-101",
+      learner_id: MOHAMED.studentId,
+      nonce: metadata.nonce,
+      display_name: "Mohamed Hany",
+      segments: [{ order: 1, slide: 1, text: "Grounded segment" }],
+    });
   });
 
   it("never puts email, phone, or other profile data in the token", async () => {
@@ -315,5 +342,29 @@ describe("POST /api/lecture/[id]/token — personalized signed metadata", () => 
     } finally {
       mockEnv.LIVEKIT_API_SECRET = "test-api-secret-with-enough-entropy";
     }
+  });
+
+  it("does not stamp attendance when trusted room setup fails", async () => {
+    createRoomSpy.mockRejectedValue(new Error("provider unavailable"));
+    listRoomsSpy.mockResolvedValue([]);
+    const response = await post();
+    expect(response.status).toBe(503);
+    expect(mockStampJoin).not.toHaveBeenCalled();
+  });
+
+  it("updates metadata on an existing learner room", async () => {
+    listRoomsSpy.mockResolvedValue([{}] as never);
+    const response = await post();
+    expect(response.status).toBe(200);
+    expect(createRoomSpy).not.toHaveBeenCalled();
+    expect(updateRoomMetadataSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks minting when the approved plan or generated script is absent", async () => {
+    mockReadScript.mockResolvedValue(null);
+    const response = await post();
+    expect(response.status).toBe(409);
+    expect(createRoomSpy).not.toHaveBeenCalled();
+    expect(mockStampJoin).not.toHaveBeenCalled();
   });
 });
