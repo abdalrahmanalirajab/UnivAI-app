@@ -143,11 +143,14 @@ async function seedPreparedSchedule(page: Page, email: string) {
  * because Next.js 16's AppRouter installs its own window.history.replaceState
  * wrapper, so patching History.prototype cannot observe router navigations.
  */
-async function expectSingleReplaceToLogin(page: Page) {
-  const historyLength = await page.evaluate(() => history.length);
-
+async function expectSingleReplaceToLogin(
+  page: Page,
+  historyLengthBeforeSignOut: number
+) {
   // A push would have grown the history by one; a replace leaves it as-is.
-  expect(await page.evaluate(() => history.length)).toBe(historyLength);
+  expect(await page.evaluate(() => history.length)).toBe(
+    historyLengthBeforeSignOut
+  );
 
   // No second navigation: the URL is still the bare sign-in path moments later.
   await page.waitForTimeout(500);
@@ -182,6 +185,7 @@ test("sign-out from /schedule: one replace to /login, back shows no schedule, re
   await expect(page.getByText(/^Week 1 —/)).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText(/^Week 4 —/)).toBeVisible();
 
+  const historyLengthBeforeSignOut = await page.evaluate(() => history.length);
   await signOutViaAccountMenu(page);
 
   // Requirement 1: URL is /login immediately — a single replaceState to the
@@ -190,7 +194,7 @@ test("sign-out from /schedule: one replace to /login, back shows no schedule, re
   // several seconds, but once it lands it must be a single replace to /login.
   await expect(page).toHaveURL(/\/login$/, { timeout: 20_000 });
   expect(new URL(page.url()).search).toBe("");
-  await expectSingleReplaceToLogin(page);
+  await expectSingleReplaceToLogin(page, historyLengthBeforeSignOut);
 
   // The session is really gone: the navbar shows the signed-out UI.
   await expect(page.getByRole("link", { name: "Log in" })).toBeVisible();
@@ -236,11 +240,12 @@ test("sign-out from /upload: one replace to /login, back shows no uploader, refr
   await page.goto("/upload");
   await expect(page.getByText("Upload your books")).toBeVisible();
 
+  const historyLengthBeforeSignOut = await page.evaluate(() => history.length);
   await signOutViaAccountMenu(page);
 
   await expect(page).toHaveURL(/\/login$/, { timeout: 20_000 });
   expect(new URL(page.url()).search).toBe("");
-  await expectSingleReplaceToLogin(page);
+  await expectSingleReplaceToLogin(page, historyLengthBeforeSignOut);
 
   await expect(page.getByRole("link", { name: "Log in" })).toBeVisible();
 

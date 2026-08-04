@@ -30,7 +30,8 @@ export function useSignOut() {
     setSigningOut(true);
     setError(false);
     try {
-      await signOut();
+      const result = await signOut();
+      if (result.error) throw new Error("SIGN_OUT_FAILED");
       router.replace(SIGN_IN_PATH);
     } catch {
       setError(true);
