@@ -53,6 +53,22 @@ async function signUp(page: Page, tag: string): Promise<string> {
   return email;
 }
 
+async function verifyEmail(email: string) {
+  const pool = new Pool({
+    connectionString:
+      process.env.DATABASE_URL ??
+      "postgresql://univai:univai@127.0.0.1:5434/univai_app_standalone",
+  });
+  try {
+    await pool.query(
+      'UPDATE "user" SET "emailVerified" = TRUE WHERE email = $1',
+      [email],
+    );
+  } finally {
+    await pool.end();
+  }
+}
+
 /**
  * Seeds what the /schedule page's real guards and route need: a prepared
  * source (requirePreparedSource) and an approved 4-week programme (the
@@ -230,7 +246,8 @@ test("sign-out from /upload: one replace to /login, back shows no uploader, refr
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await signUp(page, "upload-signout");
+  const email = await signUp(page, "upload-signout");
+  await verifyEmail(email);
   // No prepared source: /upload renders (its layout redirects to /library
   // only when a source already exists) and /schedule stays out of reach.
 
