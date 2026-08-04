@@ -15,7 +15,7 @@ import {
   type Document,
 } from "@/lib/collections";
 import { spawnGeneration } from "@/lib/generation";
-import { requireUserApi } from "@/lib/session";
+import { requireUserApi, requireVerifiedUserApi } from "@/lib/session";
 import { env } from "@/lib/env";
 import { isStandalone } from "@/lib/runtime";
 
@@ -80,7 +80,8 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const gate = await requireUserApi();
+  // Authorization must run before multipart parsing or any upload side effect.
+  const gate = await requireVerifiedUserApi();
   if (gate instanceof Response) return gate;
   const sid = gate.studentId;
 
