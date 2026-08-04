@@ -28,16 +28,19 @@ function DrawerHost() {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.auth.signOut.mockResolvedValue(undefined);
+  mocks.auth.signOut.mockResolvedValue({
+    data: { success: true },
+    error: null,
+  });
 });
 
 describe("useSignOut", () => {
   it("clears the session before replace-navigating", async () => {
     let resolveSignOut: () => void = () => {};
     mocks.auth.signOut.mockReturnValueOnce(
-      new Promise<void>((resolve) => {
+      new Promise((resolve) => {
         resolveSignOut = resolve;
-      })
+      }).then(() => ({ data: { success: true }, error: null }))
     );
     const user = userEvent.setup();
     render(<AccountMenuHost />);
@@ -73,6 +76,26 @@ describe("useSignOut", () => {
     await user.click(screen.getByRole("button", { name: "Sign out" }));
 
     await waitFor(() => expect(mocks.auth.signOut).toHaveBeenCalledTimes(1));
+    expect(mocks.router.replace).not.toHaveBeenCalled();
+    expect(mocks.router.push).not.toHaveBeenCalled();
+  });
+
+  it("does not navigate when the auth server rejects sign-out", async () => {
+    mocks.auth.signOut.mockResolvedValueOnce({
+      data: null,
+      error: { status: 500, statusText: "Internal Server Error" },
+    });
+    const user = userEvent.setup();
+    render(<AccountMenuHost />);
+
+    await user.click(screen.getByRole("button", { name: "Sign out" }));
+
+    await waitFor(() =>
+      expect(
+        (screen.getByRole("button", { name: "Sign out" }) as HTMLButtonElement)
+          .disabled
+      ).toBe(false)
+    );
     expect(mocks.router.replace).not.toHaveBeenCalled();
     expect(mocks.router.push).not.toHaveBeenCalled();
   });
