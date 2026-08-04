@@ -1,7 +1,9 @@
 import { test, expect } from "@playwright/test";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { Pool } from "pg";
 import { TokenVerifier } from "livekit-server-sdk";
+import { LECTURES_ROOT } from "@/lib/paths";
 
 /* ------------------------------------------------------------------ */
 /*  Personalized live session metadata — real integration gate         */
@@ -297,7 +299,7 @@ async function seedLearner(email: string): Promise<string> {
  * real getLectures/approvedPlanVersion/stampJoin paths all run server-side.
  */
 async function seedLecture(sid: string, title: string): Promise<number> {
-  return withPool(async (pool) => {
+  const lectureId = await withPool(async (pool) => {
     const collection = await pool.query<{ id: number }>(
       `INSERT INTO collections (student_id, name) VALUES ($1, $2) RETURNING id`,
       [sid, "Personalized Collection"],
@@ -326,4 +328,15 @@ async function seedLecture(sid: string, title: string): Promise<number> {
     );
     return lecture.rows[0].id;
   });
+  const folder = path.join(LECTURES_ROOT, sid, "week-1");
+  await mkdir(folder, { recursive: true });
+  await writeFile(
+    path.join(folder, "script.json"),
+    JSON.stringify({
+      lectureId: "course-personalized-1",
+      title,
+      segments: [{ slide: 1, text: "Grounded personalized lecture segment.", citations: [{ page: 1 }] }],
+    }),
+  );
+  return lectureId;
 }
