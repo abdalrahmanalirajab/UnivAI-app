@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import AppBar from "@mui/material/AppBar";
 import Alert from "@mui/material/Alert";
 import Avatar from "@mui/material/Avatar";
@@ -36,8 +36,8 @@ import QuizOutlined from "@mui/icons-material/QuizOutlined";
 import SettingsOutlined from "@mui/icons-material/SettingsOutlined";
 import UploadFileOutlined from "@mui/icons-material/UploadFileOutlined";
 import ThemeModeMenu from "./ThemeModeMenu";
-import { signOut } from "@/lib/auth-client";
 import { useHydratedSession } from "@/lib/use-hydrated-session";
+import { useSignOut } from "@/lib/use-sign-out";
 import { getStudentNavItems } from "@/lib/onboarding-flow";
 import { useOnboarding } from "./OnboardingProvider";
 
@@ -63,30 +63,24 @@ const STUDENT_ICONS = {
 } as const;
 
 export default function NavBar() {
-  const router = useRouter();
   const pathname = usePathname();
   const { data: session } = useHydratedSession();
   const { state: onboarding } = useOnboarding();
   const user = session?.user;
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [signingOut, setSigningOut] = useState(false);
+  const { performSignOut, signingOut, error: signOutFailed } = useSignOut();
   const [signOutError, setSignOutError] = useState(false);
   const menuOpen = Boolean(anchorEl);
 
-  const handleLogout = async () => {
-    setSigningOut(true);
-    setSignOutError(false);
-    try {
-      await signOut();
-      setAnchorEl(null);
-      setDrawerOpen(false);
-      router.push("/login");
-    } catch {
-      setSignOutError(true);
-    } finally {
-      setSigningOut(false);
-    }
+  useEffect(() => {
+    if (signOutFailed) setSignOutError(true);
+  }, [signOutFailed]);
+
+  const handleLogout = () => {
+    setAnchorEl(null);
+    setDrawerOpen(false);
+    void performSignOut();
   };
 
   const navLinks = (): NavItem[] => {
