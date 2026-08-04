@@ -28,6 +28,13 @@ export async function requireUser(currentPath?: string): Promise<SessionUser> {
   return user;
 }
 
+/** Requires an authenticated account whose email address is verified. */
+export async function requireVerifiedUser(currentPath?: string): Promise<SessionUser> {
+  const user = await requireUser(currentPath);
+  if (!user.emailVerified) redirect("/verify-email");
+  return user;
+}
+
 /** Requires the student's first learning source to be fully prepared. */
 export async function requirePreparedSource(currentPath?: string): Promise<SessionUser> {
   const user = await requireUser(currentPath);
@@ -69,6 +76,19 @@ export async function requireSuperAdmin(): Promise<SessionUser> {
 export async function requireUserApi(): Promise<SessionUser | Response> {
   const user = await getSessionUser();
   if (!user) return Response.json({ error: "Not authenticated." }, { status: 401 });
+  return user;
+}
+
+/** API equivalent of requireVerifiedUser; does not require an uploaded source. */
+export async function requireVerifiedUserApi(): Promise<SessionUser | Response> {
+  const user = await requireUserApi();
+  if (user instanceof Response) return user;
+  if (!user.emailVerified) {
+    return Response.json(
+      { error: "Verify your email to use this feature.", code: "EMAIL_VERIFICATION_REQUIRED" },
+      { status: 403 },
+    );
+  }
   return user;
 }
 

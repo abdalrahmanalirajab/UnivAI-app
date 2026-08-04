@@ -27,13 +27,17 @@ vi.mock("@/lib/db", () => ({
 const SID = "S-2026-000001";
 const OTHER_SID = "S-2026-000002";
 
-const { mockRequireUserApi, mockRunPython, mockSpawnGeneration } = vi.hoisted(() => ({
+const { mockRequireUserApi, mockRequireVerifiedUserApi, mockRunPython, mockSpawnGeneration } = vi.hoisted(() => ({
   mockRequireUserApi: vi.fn(),
+  mockRequireVerifiedUserApi: vi.fn(),
   mockRunPython: vi.fn(),
   mockSpawnGeneration: vi.fn(),
 }));
 
-vi.mock("@/lib/session", () => ({ requireUserApi: mockRequireUserApi }));
+vi.mock("@/lib/session", () => ({
+  requireUserApi: mockRequireUserApi,
+  requireVerifiedUserApi: mockRequireVerifiedUserApi,
+}));
 vi.mock("@/lib/python", () => ({
   runPython: mockRunPython,
   parseJsonLine: (stdout: string) => {
@@ -559,6 +563,10 @@ describe("Upload route — multi-book library is additive", () => {
     db = createDbFake();
     useFakeDb(db);
     mockRequireUserApi.mockResolvedValue({ studentId: SID });
+    mockRequireVerifiedUserApi.mockResolvedValue({
+      studentId: SID,
+      emailVerified: true,
+    });
     mockRunPython.mockResolvedValue({ stdout: '{"ok":true,"message":"indexed"}', stderr: "" });
     mockSpawnGeneration.mockResolvedValue(undefined);
   });
