@@ -161,8 +161,13 @@ export async function POST(request: NextRequest) {
     const attached = await addDocument(collectionId, sid, safeName);
     if (!attached.ok) {
       return Response.json(
-        { error: "Could not attach the uploaded PDF to your library." },
-        { status: 502 },
+        {
+          error: attached.error,
+          code: attached.code,
+          documentId: attached.document?.id,
+          collectionId,
+        },
+        { status: attached.code === "DOCUMENT_ALREADY_ACTIVE" ? 409 : 502 },
       );
     }
     document = attached.document;
@@ -292,7 +297,11 @@ export async function POST(request: NextRequest) {
   // A full textbook takes the RAG service a while to chunk and embed on this
   // machine — a 600-page book measured ~29 minutes. The MCP client must stay
   // connected the whole time: their server aborts the ingest on disconnect.
-  const result = await runPython("services/rag-tools/rag_ingest.py", [destination, sid], 60 * 60_000);
+  const result = await runPython(
+    "services/rag-tools/rag_ingest.py",
+    [destination, sid, String(collectionId)],
+    180 * 60_000,
+  );
   const payload = parseJsonLine<{ ok: boolean; message?: string; error?: string }>(result.stdout);
 
   if (!payload?.ok) {
