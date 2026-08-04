@@ -92,7 +92,18 @@ export function lectureDir(sid: string, week: number): string {
 
 export async function readScript(sid: string, week: number): Promise<Script | null> {
   try {
-    const raw = await fs.readFile(path.join(lectureDir(sid, week), "script.json"), "utf-8");
+    const rows = await query<{ storage_ref: string }>(
+      `SELECT ca.storage_ref 
+       FROM lectures l 
+       JOIN content_artifacts ca ON l.script_artifact_key = ca.content_key 
+       WHERE l.student_id = $1 AND l.week = $2`,
+      [sid, week]
+    );
+    let scriptPath = path.join(lectureDir(sid, week), "script.json");
+    if (rows.length > 0 && rows[0].storage_ref) {
+      scriptPath = path.resolve(REPO_ROOT, rows[0].storage_ref);
+    }
+    const raw = await fs.readFile(scriptPath, "utf-8");
     return JSON.parse(raw) as Script;
   } catch {
     return null;

@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { Pool } from "pg";
 
 /* ------------------------------------------------------------------ */
 /*  Demo script from the issue, end to end against the real /library  */
@@ -18,6 +19,9 @@ import { test, expect, type Page } from "@playwright/test";
 /* ------------------------------------------------------------------ */
 
 const STUDENT_ID = "S-2026-000999";
+const DATABASE_URL =
+  process.env.DATABASE_URL ??
+  "postgresql://univai:univai@127.0.0.1:5434/univai_app_standalone";
 
 const COLLECTION = {
   id: 1,
@@ -208,6 +212,16 @@ async function prepareAuthenticatedLearner(page: Page) {
     expect(signin.ok(), await signin.text()).toBeTruthy();
   }
 
+  const pool = new Pool({ connectionString: DATABASE_URL });
+  try {
+    await pool.query(
+      'UPDATE "user" SET "emailVerified" = TRUE WHERE email = $1',
+      [credentials.email],
+    );
+  } finally {
+    await pool.end();
+  }
+
   // Server layouts check prepared-source state directly in PostgreSQL. Seed
   // one deterministic standalone source before browser API interception.
   const seed = await page.request.post("/api/upload", {
@@ -234,6 +248,11 @@ test("multi-book library demo script: three uploads, one forced failure, refresh
   await mockApis(page);
 
   const chip = (label: string) => page.locator(".MuiChip-root").filter({ hasText: label });
+  const uploader = page.locator(".MuiCard-root").filter({
+    has: page.getByRole("heading", { name: "Upload PDFs" }),
+  });
+  const uploadChip = (label: string) =>
+    uploader.locator(".MuiChip-root").filter({ hasText: label });
   const pdf = (name: string) => ({
     name,
     mimeType: "application/pdf",
@@ -256,8 +275,10 @@ test("multi-book library demo script: three uploads, one forced failure, refresh
   for (const name of ["a.pdf", "b.pdf", "c.pdf"]) {
     await expect(page.getByText(name).first()).toBeVisible();
   }
-  await expect(chip("Uploaded")).toHaveCount(2);
-  await expect(chip("Failed")).toHaveCount(1);
+  expect(apiState.uploadsByFile).toEqual({});
+  await page.getByRole("button", { name: "Start upload" }).click();
+  await expect(uploadChip("Uploaded")).toHaveCount(2);
+  await expect(uploadChip("Failed")).toHaveCount(1);
   await expect(page.getByText("Could not prepare this book.").first()).toBeVisible();
 
   // All three states are durable: the failed source remains retryable after refresh.
@@ -309,5 +330,5 @@ test("multi-book library demo script: three uploads, one forced failure, refresh
   await expect(page.getByRole("button", { name: "Remove source c.pdf" })).toBeEnabled();
   await expect(page.getByText("Could not load sources")).toHaveCount(0);
   await expect(page.getByText("No connection")).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Build Curriculum" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Build Curriculum" })).toBeVisible();
 });

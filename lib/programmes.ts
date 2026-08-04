@@ -93,6 +93,48 @@ export async function createProgramme(
   return toProgramme(row!);
 }
 
+export async function getProgrammeForCollection(
+  collectionId: number,
+  studentId: string,
+): Promise<Programme | null> {
+  const row = await queryOne<Record<string, unknown>>(
+    `SELECT ${COLUMNS} FROM programmes
+     WHERE collection_id = $1 AND student_id = $2
+     ORDER BY created_at ASC, id ASC LIMIT 1`,
+    [collectionId, studentId],
+  );
+  return row ? toProgramme(row) : null;
+}
+
+export async function createProgrammeIfMissing(
+  studentId: string,
+  collectionId: number,
+  name: string,
+  plan: ProgrammePlanV1,
+): Promise<Programme> {
+  const row = await queryOne<Record<string, unknown>>(
+    `WITH lock AS (
+       SELECT pg_advisory_xact_lock(
+         hashtextextended($1::text || ':' || $2::integer::text || ':programme', 0)
+       )
+     ), existing AS (
+       SELECT ${COLUMNS} FROM programmes, lock
+       WHERE student_id = $1 AND collection_id = $2
+       ORDER BY created_at ASC, id ASC LIMIT 1
+     ), inserted AS (
+       INSERT INTO programmes (student_id, collection_id, name, plan, plan_version)
+       SELECT $1, $2, $3, $4::jsonb, 1 FROM lock
+       WHERE NOT EXISTS (SELECT 1 FROM existing)
+       RETURNING ${COLUMNS}
+     )
+     SELECT * FROM inserted
+     UNION ALL SELECT * FROM existing
+     LIMIT 1`,
+    [studentId, collectionId, name, JSON.stringify(plan)],
+  );
+  return toProgramme(row!);
+}
+
 export async function updateProgrammePlan(
   programmeId: number,
   studentId: string,

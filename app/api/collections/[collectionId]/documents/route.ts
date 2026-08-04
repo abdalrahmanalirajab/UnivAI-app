@@ -103,7 +103,14 @@ export async function POST(
 
   const result = await addDocument(collectionId, gate.studentId, safeName);
   if (!result.ok) {
-    return Response.json({ error: result.error }, { status: 500 });
+    return Response.json(
+      {
+        error: result.error,
+        code: result.code,
+        document: result.document,
+      },
+      { status: result.code === "DOCUMENT_ALREADY_ACTIVE" ? 409 : 500 },
+    );
   }
 
   const uploadsDir = path.join(

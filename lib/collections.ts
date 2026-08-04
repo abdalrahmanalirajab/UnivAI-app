@@ -32,6 +32,15 @@ export type DocumentResult =
   | { ok: true; document: Document }
   | { ok: false; error: string };
 
+export type AddDocumentResult =
+  | { ok: true; document: Document }
+  | {
+      ok: false;
+      error: string;
+      code: "DOCUMENT_ALREADY_ACTIVE" | "DOCUMENT_CREATE_FAILED";
+      document?: Document;
+    };
+
 const COLLECTION_COLUMNS = "id, student_id, name, created_at";
 const DOCUMENT_COLUMNS =
   "id, collection_id, student_id, filename, status, error, created_at, updated_at";
@@ -185,16 +194,56 @@ export async function addDocument(
   collectionId: number,
   studentId: string,
   filename: string,
-): Promise<DocumentResult> {
+): Promise<AddDocumentResult> {
   const nameMsg = validateFilename(filename);
-  if (nameMsg) return { ok: false, error: nameMsg };
+  if (nameMsg) {
+    return { ok: false, error: nameMsg, code: "DOCUMENT_CREATE_FAILED" };
+  }
 
-  const doc = await queryOne<Document>(
-    `INSERT INTO documents (collection_id, student_id, filename, status)
-     VALUES ($1, $2, $3, 'pending') RETURNING ${DOCUMENT_COLUMNS}`,
+  // Serialize only attempts for this learner/collection/filename tuple. Other
+  // learners never share this advisory lock and can start their own jobs at
+  // once. The existing check and insert are one transaction-scoped operation,
+  // so two tabs cannot enqueue duplicate active ingestion work.
+  const doc = await queryOne<Document & { created: boolean }>(
+    `WITH lock AS (
+       SELECT pg_advisory_xact_lock(
+         hashtextextended($2::text || ':' || $1::integer::text || ':' || $3::text, 0)
+       )
+     ), existing AS (
+       SELECT ${DOCUMENT_COLUMNS}
+       FROM documents, lock
+       WHERE collection_id = $1 AND student_id = $2 AND filename = $3
+         AND status IN ('pending', 'uploading')
+       ORDER BY created_at ASC, id ASC
+       LIMIT 1
+     ), inserted AS (
+       INSERT INTO documents (collection_id, student_id, filename, status)
+       SELECT $1, $2, $3, 'pending' FROM lock
+       WHERE NOT EXISTS (SELECT 1 FROM existing)
+       RETURNING ${DOCUMENT_COLUMNS}
+     )
+     SELECT inserted.*, TRUE AS created FROM inserted
+     UNION ALL
+     SELECT existing.*, FALSE AS created FROM existing
+     LIMIT 1`,
     [collectionId, studentId, filename],
   );
-  return { ok: true, document: doc! };
+  if (!doc) {
+    return {
+      ok: false,
+      error: "Could not attach this book to your library.",
+      code: "DOCUMENT_CREATE_FAILED",
+    };
+  }
+  if (!doc.created) {
+    return {
+      ok: false,
+      error: "This book is already being uploaded for this account.",
+      code: "DOCUMENT_ALREADY_ACTIVE",
+      document: doc,
+    };
+  }
+  return { ok: true, document: doc };
 }
 
 export async function listDocuments(

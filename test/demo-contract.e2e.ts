@@ -106,6 +106,10 @@ async function mockApis(page: Page) {
     }
   });
 
+  await page.route("**/api/programmes", async (route) => {
+    await route.fulfill({ status: 201, json: { programme: { id: 1 } } });
+  });
+
   const APPROVED_AT = "2026-07-28T12:00:00Z";
 
   await page.route("**/api/programmes/1", async (route) => {
@@ -236,7 +240,7 @@ test.describe("Demo Contract — multi-book curriculum e2e", () => {
     await expect(page.getByText("Failed")).toHaveCount(0, { timeout: 5_000 });
 
     // Step 4 — Build Curriculum → inspect proposed programme
-    await page.getByRole("link", { name: "Build Curriculum" }).click();
+    await page.getByRole("button", { name: "Build Curriculum" }).click();
     await page.waitForURL("**/curriculum/1");
     await expect(page.getByText("Curriculum Workspace")).toBeVisible();
     await expect(page.getByText("Test Programme")).toBeVisible();
@@ -303,7 +307,7 @@ test.describe("Demo Contract — multi-book curriculum e2e", () => {
     await page.getByRole("button", { name: "Retry" }).click();
     await expect(page.getByText("Failed")).toHaveCount(0, { timeout: 5_000 });
 
-    await page.getByRole("link", { name: "Build Curriculum" }).click();
+    await page.getByRole("button", { name: "Build Curriculum" }).click();
     await page.waitForURL("**/curriculum/1");
     await expect(page.getByText("Curriculum Workspace")).toBeVisible();
     await expect(page.getByText("Request Approval")).toBeVisible();

@@ -5,6 +5,7 @@ import { env } from "./env";
 import { query, queryOne } from "./db";
 import { now, HOUR_MS, DAY_MS } from "./clock";
 import { getLectures, LECTURES_DIR } from "./lectures";
+import { DATA_ROOT } from "./paths";
 import { COURSE_SIZES, DEFAULT_SIZE, isCourseSize } from "./course-size";
 import { getSetting } from "./settings";
 import { isStandalone } from "./runtime";
@@ -446,10 +447,18 @@ export async function syncQuestionBanks(link: ExamLink): Promise<void> {
   for (const chapter of link.chapters) {
     let parsed: { title?: string; questions?: unknown[] } | null = null;
     try {
-      const raw = await fs.readFile(
-        path.join(LECTURES_DIR, link.sid, `week-${chapter.week}`, "quiz.json"),
-        "utf-8"
+      const rows = await query<{ storage_ref: string }>(
+        `SELECT ca.storage_ref 
+         FROM lectures l 
+         JOIN content_artifacts ca ON l.quiz_artifact_key = ca.content_key 
+         WHERE l.student_id = $1 AND l.week = $2`,
+        [link.sid, chapter.week]
       );
+      let quizPath = path.join(LECTURES_DIR, link.sid, `week-${chapter.week}`, "quiz.json");
+      if (rows.length > 0 && rows[0].storage_ref) {
+        quizPath = path.resolve(DATA_ROOT, rows[0].storage_ref);
+      }
+      const raw = await fs.readFile(quizPath, "utf-8");
       parsed = JSON.parse(raw);
     } catch {
       continue; // no generated quiz for this week (yet) — the bank stays as-is

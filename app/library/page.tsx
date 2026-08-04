@@ -10,7 +10,7 @@ import CircularProgress from "@mui/material/CircularProgress";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import MultiBookUploader from "./MultiBookUploader";
 import SourceLibrary from "./SourceLibrary";
 
@@ -21,11 +21,13 @@ type Collection = {
 };
 
 export default function CollectionsPage() {
+  const router = useRouter();
   const [collections, setCollections] = useState<Collection[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
+  const [building, setBuilding] = useState(false);
 
   const active = collections?.[0] ?? null;
 
@@ -65,6 +67,28 @@ export default function CollectionsPage() {
       setError(err instanceof Error ? err.message : "Failed to create collection.");
     } finally {
       setCreating(false);
+    }
+  }
+
+  async function buildCurriculum() {
+    if (!active) return;
+    setBuilding(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/programmes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ collectionId: active.id }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.programme?.id) {
+        throw new Error(data.error ?? "Failed to build the curriculum.");
+      }
+      router.push(`/curriculum/${data.programme.id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to build the curriculum.");
+    } finally {
+      setBuilding(false);
     }
   }
 
@@ -117,9 +141,14 @@ export default function CollectionsPage() {
             Collection: {active?.name}
           </Typography>
 
-          <Button variant="contained" component={Link} href={`/curriculum/${active!.id}`}>
-            Build Curriculum
+          <Button variant="contained" onClick={buildCurriculum} disabled={building}>
+            {building ? "Building Curriculum…" : "Build Curriculum"}
           </Button>
+          {building ? (
+            <Alert severity="info" icon={<CircularProgress size={20} />}>
+              Analysing your ready books and creating the curriculum. This can take several minutes.
+            </Alert>
+          ) : null}
 
           <SourceLibrary
             key={active!.id}

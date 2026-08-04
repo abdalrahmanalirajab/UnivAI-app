@@ -190,6 +190,10 @@ async function mockApis(page: import("@playwright/test").Page) {
     }
   });
 
+  await page.route("**/api/programmes", async (route) => {
+    await route.fulfill({ status: 201, json: { programme: { id: 1 } } });
+  });
+
   const APPROVED_AT = "2026-07-28T12:00:00Z";
 
   await page.route("**/api/programmes/1", async (route) => {
@@ -328,7 +332,7 @@ async function approveSevenWeekPlan(page: import("@playwright/test").Page) {
   ]);
   await expect(page.getByText("Uploaded").first()).toBeVisible();
 
-  await page.getByRole("link", { name: "Build Curriculum" }).click();
+  await page.getByRole("button", { name: "Build Curriculum" }).click();
   await page.waitForURL("**/curriculum/1");
   await expect(page.getByText("Curriculum Workspace")).toBeVisible();
   await expect(page.getByText(/v1/)).toBeVisible();

@@ -152,6 +152,29 @@ function createDbFake(): FakeDb {
       return row;
     }
 
+    if (sql.includes("pg_advisory_xact_lock") && sql.includes("INSERT INTO documents")) {
+      const existing = db.documents.find(
+        (d) =>
+          d.collection_id === params[0] &&
+          d.student_id === params[1] &&
+          d.filename === params[2] &&
+          ["pending", "uploading"].includes(String(d.status)),
+      );
+      if (existing) return { ...existing, created: false };
+      const row = {
+        id: seq++,
+        collection_id: params[0],
+        student_id: params[1],
+        filename: params[2],
+        status: "pending",
+        error: null,
+        created_at: "2026-07-28T00:00:00Z",
+        updated_at: "2026-07-28T00:00:00Z",
+      };
+      db.documents.push(row);
+      return { ...row, created: true };
+    }
+
     if (sql.includes("INSERT INTO documents") && sql.includes("RETURNING")) {
       const row = {
         id: seq++,
@@ -410,6 +433,10 @@ describe("MultiBookUploader — independent upload statuses", () => {
 
     await user.upload(input, [fileA, fileB, fileC]);
 
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(screen.queryAllByText("Selected")).toHaveLength(3);
+    await user.click(screen.getByRole("button", { name: "Start upload" }));
+
     await waitFor(() => {
       expect(screen.getByText("a.pdf")).toBeTruthy();
       expect(screen.getByText("c.pdf")).toBeTruthy();
@@ -598,6 +625,35 @@ describe("Upload route — multi-book library is additive", () => {
     expect(listingBody.books[0].filename).toBe("second_book.pdf");
     expect(listingBody.book?.filename).toBe("second_book.pdf");
     expect(db.documents.length).toBe(2);
+  });
+
+  it("rejects a duplicate active upload for the same learner without starting RAG again", async () => {
+    const { POST } = await import("@/app/api/upload/route");
+    db.collections.push({
+      id: 41,
+      student_id: SID,
+      name: "My Library",
+      created_at: "2026-07-28T00:00:00Z",
+    });
+    db.documents.push({
+      id: 42,
+      collection_id: 41,
+      student_id: SID,
+      filename: "same_book.pdf",
+      status: "uploading",
+      error: null,
+      created_at: "2026-07-28T00:00:00Z",
+      updated_at: "2026-07-28T00:00:00Z",
+    });
+
+    const response = await POST(postForm(pdfFile("same_book.pdf")));
+    const body = (await response.json()) as { code?: string; documentId?: number };
+
+    expect(response.status).toBe(409);
+    expect(body.code).toBe("DOCUMENT_ALREADY_ACTIVE");
+    expect(body.documentId).toBe(42);
+    expect(db.documents).toHaveLength(1);
+    expect(mockRunPython).not.toHaveBeenCalled();
   });
 
   it("retries the same failed document and book without creating duplicates", async () => {

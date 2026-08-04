@@ -7,7 +7,6 @@ import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
 import Chip from "@mui/material/Chip";
-import Input from "@mui/material/Input";
 import LinearProgress from "@mui/material/LinearProgress";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
@@ -40,14 +39,16 @@ const STATUS_COLOR: Record<UploadStatus, "default" | "warning" | "success" | "er
 
 const STATUS_LABEL: Record<UploadStatus, string> = {
   idle: "Idle",
-  pending: "Pending",
+  pending: "Selected",
   uploading: "Uploading…",
   success: "Uploaded",
   failed: "Failed",
   offline: "You're offline",
 };
 
-const MAX_CONCURRENT = 2;
+// The Agent owns one ordered lane per learner. Keep this client honest too:
+// books from one account run in order while other accounts run independently.
+const MAX_CONCURRENT = 1;
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -152,9 +153,32 @@ export default function MultiBookUploader({ collectionId, onDocumentsChange }: P
       status: "pending" as const,
     }));
     setEntries((prev) => [...prev, ...fresh]);
-    queueRef.current.push(...fresh);
-    fresh.forEach((entry) => queuedIdsRef.current.add(entry.id));
+  }
+
+  function startUploads() {
+    const selected = entries.filter(
+      (entry) =>
+        entry.status === "pending" &&
+        !queuedIdsRef.current.has(entry.id) &&
+        !activeIdsRef.current.has(entry.id),
+    );
+    if (selected.length === 0) return;
+    queueRef.current.push(...selected);
+    selected.forEach((entry) => queuedIdsRef.current.add(entry.id));
     pump();
+  }
+
+  function removeSelected(entry: UploadEntry) {
+    if (entry.status !== "pending" || queuedIdsRef.current.has(entry.id)) return;
+    setEntries((prev) => prev.filter((candidate) => candidate.id !== entry.id));
+  }
+
+  function clearSelected() {
+    setEntries((prev) =>
+      prev.filter(
+        (entry) => entry.status !== "pending" || queuedIdsRef.current.has(entry.id),
+      ),
+    );
   }
 
   function retry(entry: UploadEntry) {
@@ -199,18 +223,16 @@ export default function MultiBookUploader({ collectionId, onDocumentsChange }: P
           <Stack direction="row" spacing={2}>
             <Button variant="contained" component="label">
               Choose PDFs
-              <Input
-                inputRef={inputRef}
+              <input
+                ref={inputRef}
                 type="file"
                 hidden
-                disableUnderline
-                inputProps={{
-                  multiple: true,
-                  accept: "application/pdf,.pdf",
+                multiple
+                accept="application/pdf,.pdf"
+                onChange={(event) => {
+                  enqueue(event.currentTarget.files);
+                  event.currentTarget.value = "";
                 }}
-                onChange={(event) =>
-                  enqueue((event.target as HTMLInputElement).files)
-                }
               />
             </Button>
             <Typography variant="body2" color={dragging ? "primary" : "text.secondary"}>
@@ -220,6 +242,16 @@ export default function MultiBookUploader({ collectionId, onDocumentsChange }: P
 
           {entries.length > 0 ? (
             <Stack spacing={1}>
+              {entries.some((entry) => entry.status === "pending") ? (
+                <Stack direction="row" spacing={1}>
+                  <Button variant="contained" onClick={startUploads}>
+                    Start upload
+                  </Button>
+                  <Button variant="outlined" onClick={clearSelected}>
+                    Clear selected
+                  </Button>
+                </Stack>
+              ) : null}
               {entries.some((entry) => entry.status === "offline") ? (
                 <Alert severity="warning">
                   <AlertTitle>No connection</AlertTitle>
@@ -247,13 +279,19 @@ export default function MultiBookUploader({ collectionId, onDocumentsChange }: P
                       {entry.error}
                     </Typography>
                   ) : null}
-                  <Button
-                    size="small"
-                    disabled={entry.status !== "failed" && entry.status !== "offline"}
-                    onClick={() => retry(entry)}
-                  >
-                    Retry
-                  </Button>
+                  {entry.status === "pending" ? (
+                    <Button size="small" onClick={() => removeSelected(entry)}>
+                      Remove
+                    </Button>
+                  ) : (
+                    <Button
+                      size="small"
+                      disabled={entry.status !== "failed" && entry.status !== "offline"}
+                      onClick={() => retry(entry)}
+                    >
+                      Retry
+                    </Button>
+                  )}
                 </Stack>
               ))}
             </Stack>
