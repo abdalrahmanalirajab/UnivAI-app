@@ -1,19 +1,95 @@
+import { randomUUID } from "node:crypto";
 import { NextRequest } from "next/server";
 import { AccessToken } from "livekit-server-sdk";
 import { queryOne } from "@/lib/db";
 import { stampJoin } from "@/lib/attendance";
-import { getLectures, BLOCKED_MESSAGE } from "@/lib/lectures";
+import { getLectures, approvedPlanVersion, BLOCKED_MESSAGE } from "@/lib/lectures";
 import { requireLearningActionApi } from "@/lib/session";
 import { env } from "@/lib/env";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Mint a LiveKit token for this lecture's room and stamp attendance.
+ * Live session metadata v1 (signed into the LiveKit JWT).
  *
- * The join time comes from the ClockService, so an admin time-jump makes the
- * student on-time, late or absent exactly as the demo requires.
+ * The voice worker (UnivAI-live) reads this to know which learner is speaking
+ * and to speak their name in pre-rendered phrases ("Yes, Mohamed Hany?").
+ * Everything here is bound to the authenticated learner and the lecture they
+ * joined — the client contributes nothing. `spokenName` is the ONLY personal
+ * field; email, phone and unrelated profile data never cross into Live.
+ *
+ * Contract version: 1. The worker fails closed on any other version.
  */
+export const LIVE_METADATA_VERSION = 1;
+
+/** Spoken-name cap, in code points (not UTF-16 units), for safe TTS. */
+export const SPOKEN_NAME_MAX_LENGTH = 60;
+
+/** How long a minted room token stays valid. Short-lived on purpose. */
+export const TOKEN_TTL_SECONDS = 600;
+
+export type LiveSessionMetadataV1 = {
+  v: typeof LIVE_METADATA_VERSION;
+  lectureId: number;
+  week: number;
+  sid: string;
+  planVersion: number | null;
+  /** Fresh per issuance; lets the worker reject replays and dedupe. */
+  nonce: string;
+  /** Safe spoken name; `null` means "use the generic phrase" in Live. */
+  spokenName: string | null;
+};
+
+/**
+ * Turn a display name into a safe string for the voice worker to speak.
+ *
+ * - Unicode-normalizes (NFKC), removes control/format/lone-surrogate chars
+ *   (zero-width joiners vanish, control chars become separators), collapses
+ *   whitespace, trims, and caps the length in code points.
+ * - Returns `null` (the generic-phrase fallback) when nothing speakable is
+ *   left — an empty name, or a string with no letter or number at all. No
+ *   global `STUDENT_NAME` constant is ever consulted.
+ */
+export function safeSpokenName(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const decomposed = raw
+    .normalize("NFKC")
+    .replace(/[\p{Cc}]/gu, " ") // control chars → separators
+    .replace(/[\p{Cf}\p{Cs}]/gu, ""); // zero-width/format/lone surrogates → removed
+  const collapsed = decomposed.replace(/\s+/gu, " ").trim();
+  if (collapsed.length === 0) return null;
+
+  const codePoints = Array.from(collapsed);
+  if (!codePoints.some((char) => /\p{L}|\p{N}/u.test(char))) return null;
+
+  if (codePoints.length > SPOKEN_NAME_MAX_LENGTH) {
+    return codePoints
+      .slice(0, SPOKEN_NAME_MAX_LENGTH)
+      .join("")
+      .replace(/\s+$/u, "")
+      .replace(/[\p{M}\u{FE0F}]$/u, ""); // never end on a dangling combining mark
+  }
+  return collapsed;
+}
+
+export function buildLiveSessionMetadata(input: {
+  lectureId: number;
+  week: number;
+  sid: string;
+  planVersion: number | null;
+  spokenName: string | null;
+}): LiveSessionMetadataV1 {
+  return {
+    v: LIVE_METADATA_VERSION,
+    lectureId: input.lectureId,
+    week: input.week,
+    sid: input.sid,
+    planVersion: input.planVersion,
+    nonce: randomUUID(),
+    spokenName: input.spokenName,
+  };
+}
+
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const gate = await requireLearningActionApi();
   if (gate instanceof Response) return gate;
@@ -57,11 +133,29 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   // (lectures/<sid>/) and queries RAG under their namespace. Parsed back with
   // /^lecture-(?<sid>.+)-week-(?<week>\d+)$/ in UnivAI-live/worker.py.
   const room = `lecture-${sid}-week-${lecture.week}`;
+
+  // The display name comes ONLY from the authenticated session (the DB-backed
+  // Better Auth user record via gate.name) — the request body is never read.
+  // planVersion binds the metadata to the learner's current approved plan so
+  // Live can invalidate cached personalized audio when the plan changes.
+  const spokenName = safeSpokenName(gate.name);
+  const metadata = buildLiveSessionMetadata({
+    lectureId,
+    week: lecture.week,
+    sid,
+    planVersion: await approvedPlanVersion(sid),
+    spokenName,
+  });
+
   const token = new AccessToken(apiKey, apiSecret, {
     identity: sid,
-    name: gate.name,
-    // The voice worker reads this to know which script to speak.
-    metadata: JSON.stringify({ lectureId, week: lecture.week, sid }),
+    // The safe spoken name is the participant's display name too: Live speaks
+    // this, so the raw (unnormalized) name must never leak into the token.
+    name: spokenName ?? undefined,
+    ttl: TOKEN_TTL_SECONDS,
+    // The voice worker reads this to know which script to speak and to greet
+    // the learner by name. Signed by LIVEKIT_API_SECRET inside the JWT.
+    metadata: JSON.stringify(metadata),
   });
   token.addGrant({ room, roomJoin: true, canPublish: true, canSubscribe: true });
 
