@@ -149,7 +149,7 @@ export default function CollectionsPage() {
           <Button
             variant="contained"
             onClick={buildCurriculum}
-            disabled={building || readiness?.ready !== true}
+            disabled={building || readiness?.usable !== true}
           >
             {building ? "Building Curriculum…" : "Build Curriculum"}
           </Button>
@@ -162,13 +162,21 @@ export default function CollectionsPage() {
               Checking your books…
             </Alert>
           ) : readiness.processing ? (
-            <Alert severity="info" icon={<CircularProgress size={20} />}>
-              <AlertTitle>Preparing your course</AlertTitle>
+            <Alert
+              severity={readiness.usable ? "success" : "info"}
+              icon={<CircularProgress size={20} />}
+            >
+              <AlertTitle>
+                {readiness.usable ? "Course usable while generation continues" : "Preparing your course"}
+              </AlertTitle>
               {readiness.message} This status updates automatically.
+              {readiness.usable ? " You can build the curriculum now." : ""}
             </Alert>
           ) : readiness.failed ? (
-            <Alert severity="error">
-              <AlertTitle>Course preparation failed</AlertTitle>
+            <Alert severity={readiness.usable ? "warning" : "error"}>
+              <AlertTitle>
+                {readiness.usable ? "Completed work is still usable" : "Course preparation failed"}
+              </AlertTitle>
               {readiness.message}
             </Alert>
           ) : readiness.ready ? (
@@ -177,7 +185,11 @@ export default function CollectionsPage() {
               {readiness.message}
             </Alert>
           ) : (
-            <Alert severity="info">{readiness.message}</Alert>
+            <Alert severity={readiness.usable ? "warning" : "info"}>
+              <AlertTitle>{readiness.usable ? "Course partially ready" : "Preparing course"}</AlertTitle>
+              {readiness.message}
+              {readiness.usable ? " Build now or generate the next step when convenient." : ""}
+            </Alert>
           )}
 
           <SourceLibrary

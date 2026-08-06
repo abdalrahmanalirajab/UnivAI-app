@@ -29,10 +29,26 @@ type Document = {
   generation_status?: string | null;
   generation_progress?: string | null;
   generation_error?: string | null;
+  generation_stage?: string | null;
+  generation_total_weeks?: number;
+  generation_ready_weeks?: number;
+  generation_audio_ready_weeks?: number;
+  generation_stalled?: boolean;
+  generation_milestones?: GenerationMilestone[];
+};
+
+type GenerationMilestone = {
+  week: number;
+  stage: "plan" | "lecture" | "quiz" | "slides" | "audio";
+  status: "pending" | "running" | "ready" | "failed" | "deferred";
+  progress: string | null;
+  error: string | null;
+  attempt_count: number;
 };
 
 export type CurriculumReadiness = {
   ready: boolean;
+  usable: boolean;
   processing: boolean;
   failed: boolean;
   message: string;
@@ -50,6 +66,12 @@ function signature(documents: Document[]): string {
         d.generation_status ?? "",
         d.generation_progress ?? "",
         d.generation_error ?? "",
+        d.generation_stage ?? "",
+        d.generation_total_weeks ?? 0,
+        d.generation_ready_weeks ?? 0,
+        d.generation_audio_ready_weeks ?? 0,
+        d.generation_stalled ?? false,
+        JSON.stringify(d.generation_milestones ?? []),
       ].join("|"),
     )
     .join("\n");
@@ -67,9 +89,20 @@ function courseStatus(doc: Document): {
   label: string;
   detail: string | null;
   processing: boolean;
+  usable: boolean;
+  complete: boolean;
+  failed: boolean;
 } {
   if (doc.status === "failed") {
-    return { color: "error", label: "Indexing failed", detail: doc.error, processing: false };
+    return {
+      color: "error",
+      label: "Indexing failed",
+      detail: doc.error,
+      processing: false,
+      usable: false,
+      complete: false,
+      failed: true,
+    };
   }
   if (doc.status !== "ready") {
     return {
@@ -77,14 +110,32 @@ function courseStatus(doc: Document): {
       label: doc.status === "uploading" ? "Indexing book" : STATUS_LABEL[doc.status] ?? doc.status,
       detail: doc.status === "uploading" ? "Reading and embedding the PDF…" : null,
       processing: true,
+      usable: false,
+      complete: false,
+      failed: false,
     };
   }
-  if (doc.generation_status === "failed") {
+  const usableWeeks = doc.generation_ready_weeks ?? 0;
+  if (doc.generation_stalled) {
     return {
       color: "error",
-      label: "Course generation failed",
-      detail: doc.generation_error ?? null,
+      label: usableWeeks > 0 ? "Generation interrupted" : "Generation stalled",
+      detail: "No generator heartbeat was received. Resume continues from completed milestones.",
       processing: false,
+      usable: usableWeeks > 0,
+      complete: false,
+      failed: true,
+    };
+  }
+  if (["failed", "partial_failed"].includes(doc.generation_status ?? "")) {
+    return {
+      color: "error",
+      label: usableWeeks > 0 ? "Paused after a failure" : "Course generation failed",
+      detail: doc.generation_progress ?? doc.generation_error ?? null,
+      processing: false,
+      usable: usableWeeks > 0,
+      complete: false,
+      failed: true,
     };
   }
   if (doc.generation_status === "ready") {
@@ -93,51 +144,124 @@ function courseStatus(doc: Document): {
       label: "Course ready",
       detail: doc.generation_progress ?? null,
       processing: false,
+      usable: true,
+      complete: true,
+      failed: false,
+    };
+  }
+  if (doc.generation_status === "partial") {
+    return {
+      color: "warning",
+      label: "Course usable",
+      detail: doc.generation_progress ?? "Completed milestones are ready to use.",
+      processing: false,
+      usable: usableWeeks > 0,
+      complete: false,
+      failed: false,
     };
   }
   // Older API fixtures only carried the document status. Keep those consumers
   // compatible; the live endpoint always returns this field (including null).
   if (doc.generation_status === undefined) {
-    return { color: "success", label: "Course ready", detail: null, processing: false };
+    return {
+      color: "success",
+      label: "Course ready",
+      detail: null,
+      processing: false,
+      usable: true,
+      complete: true,
+      failed: false,
+    };
   }
   return {
     color: "warning",
-    label: doc.generation_status === "ingesting" ? "Indexing book" : "Generating course",
+    label: doc.generation_status === "ingesting"
+      ? "Indexing book"
+      : usableWeeks > 0
+        ? "Generating more content"
+        : "Generating course",
     detail: doc.generation_progress ?? "Preparing course generation…",
     processing: true,
+    usable: usableWeeks > 0,
+    complete: false,
+    failed: false,
   };
 }
 
 function curriculumReadiness(documents: Document[]): CurriculumReadiness {
   if (documents.length === 0) {
-    return { ready: false, processing: false, failed: false, message: "Upload a PDF to begin." };
-  }
-  const failed = documents.find((doc) => doc.status === "failed" || doc.generation_status === "failed");
-  if (failed) {
-    const status = courseStatus(failed);
     return {
       ready: false,
+      usable: false,
       processing: false,
-      failed: true,
-      message: `${failed.filename}: ${status.detail ?? status.label}`,
+      failed: false,
+      message: "Upload a PDF to begin.",
     };
   }
+  const blockedFailure = documents.find((doc) => {
+    const status = courseStatus(doc);
+    return status.failed && !status.usable;
+  });
+  if (blockedFailure) {
+    const status = courseStatus(blockedFailure);
+    return {
+      ready: false,
+      usable: false,
+      processing: false,
+      failed: true,
+      message: `${blockedFailure.filename}: ${status.detail ?? status.label}`,
+    };
+  }
+  const usable = documents.every((doc) => courseStatus(doc).usable);
   const unfinished = documents.find((doc) => courseStatus(doc).processing);
   if (unfinished) {
     const status = courseStatus(unfinished);
     return {
       ready: false,
+      usable,
       processing: true,
       failed: false,
       message: `${unfinished.filename}: ${status.detail ?? status.label}`,
     };
   }
+  const paused = documents.find((doc) => !courseStatus(doc).complete);
+  if (paused) {
+    const status = courseStatus(paused);
+    return {
+      ready: false,
+      usable,
+      processing: false,
+      failed: status.failed,
+      message: `${paused.filename}: ${status.detail ?? status.label}`,
+    };
+  }
   return {
     ready: true,
+    usable: true,
     processing: false,
     failed: false,
     message: "Every book has finished generating. Your curriculum is ready to build.",
   };
+}
+
+function milestoneLines(doc: Document): string[] {
+  const total = doc.generation_total_weeks ?? 0;
+  if (total < 1) return [];
+  const milestones = doc.generation_milestones ?? [];
+  const byKey = new Map(milestones.map((item) => [`${item.week}:${item.stage}`, item]));
+  const lines = [
+    `Course plan: ${byKey.get("0:plan")?.status ?? "pending"}`,
+    `Published lectures: ${doc.generation_ready_weeks ?? 0}/${total}; audio: ${doc.generation_audio_ready_weeks ?? 0}/${total}`,
+  ];
+  for (let week = 1; week <= total; week += 1) {
+    const stages = (["lecture", "quiz", "slides", "audio"] as const).map((stage) => {
+      const milestone = byKey.get(`${week}:${stage}`);
+      const state = milestone?.status ?? "pending";
+      return `${stage} ${state}`;
+    });
+    lines.push(`Week ${week}: ${stages.join(" • ")}`);
+  }
+  return lines;
 }
 
 type Props = {
@@ -381,17 +505,35 @@ export default function SourceLibrary({
                           </Typography>
                         ) : null}
                         {status.processing ? <LinearProgress /> : null}
+                        {milestoneLines(doc).map((line) => (
+                          <Typography
+                            key={line}
+                            variant="caption"
+                            color="text.secondary"
+                            component="div"
+                          >
+                            {line}
+                          </Typography>
+                        ))}
                       </Stack>
                     </TableCell>
                     <TableCell align="right">
                       <Stack direction="row" spacing={1}>
-                        {doc.status === "failed" ? (
+                        {doc.status === "failed" ||
+                        doc.generation_stalled ||
+                        ["failed", "partial_failed", "partial"].includes(
+                          doc.generation_status ?? "",
+                        ) ? (
                           <Button
                             size="small"
                             onClick={() => void handleRetry(doc)}
                             disabled={retrying === doc.id || removing === doc.id}
                           >
-                            {retrying === doc.id ? "Retrying…" : "Retry"}
+                            {retrying === doc.id
+                              ? "Resuming…"
+                              : doc.generation_status === "partial"
+                                ? "Generate next step"
+                                : "Resume generation"}
                           </Button>
                         ) : null}
                         <IconButton

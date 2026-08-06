@@ -21,6 +21,19 @@ export type Document = {
   generation_status?: string | null;
   generation_progress?: string | null;
   generation_error?: string | null;
+  generation_stage?: string | null;
+  generation_total_weeks?: number;
+  generation_ready_weeks?: number;
+  generation_audio_ready_weeks?: number;
+  generation_stalled?: boolean;
+  generation_milestones?: Array<{
+    week: number;
+    stage: string;
+    status: string;
+    progress: string | null;
+    error: string | null;
+    attempt_count: number;
+  }>;
 };
 
 export type CollectionResult =
@@ -266,7 +279,47 @@ export async function listDocuments(
        (SELECT b.error FROM books b
          WHERE b.student_id = documents.student_id
            AND b.filename = 'collections/' || documents.collection_id || '/' || documents.id || '/' || documents.filename
-         ORDER BY b.id DESC LIMIT 1) AS generation_error
+         ORDER BY b.id DESC LIMIT 1) AS generation_error,
+       (SELECT b.generation_stage FROM books b
+         WHERE b.student_id = documents.student_id
+           AND b.filename = 'collections/' || documents.collection_id || '/' || documents.id || '/' || documents.filename
+         ORDER BY b.id DESC LIMIT 1) AS generation_stage,
+       COALESCE((SELECT b.generation_total_weeks FROM books b
+         WHERE b.student_id = documents.student_id
+           AND b.filename = 'collections/' || documents.collection_id || '/' || documents.id || '/' || documents.filename
+         ORDER BY b.id DESC LIMIT 1), 0) AS generation_total_weeks,
+       COALESCE((SELECT b.generation_ready_weeks FROM books b
+         WHERE b.student_id = documents.student_id
+           AND b.filename = 'collections/' || documents.collection_id || '/' || documents.id || '/' || documents.filename
+         ORDER BY b.id DESC LIMIT 1), 0) AS generation_ready_weeks,
+       COALESCE((SELECT b.generation_audio_ready_weeks FROM books b
+         WHERE b.student_id = documents.student_id
+           AND b.filename = 'collections/' || documents.collection_id || '/' || documents.id || '/' || documents.filename
+         ORDER BY b.id DESC LIMIT 1), 0) AS generation_audio_ready_weeks,
+       COALESCE((SELECT b.status = 'generating'
+                         AND b.heartbeat_at IS NOT NULL
+                         AND b.heartbeat_at < CURRENT_TIMESTAMP - INTERVAL '2 minutes'
+         FROM books b
+         WHERE b.student_id = documents.student_id
+           AND b.filename = 'collections/' || documents.collection_id || '/' || documents.id || '/' || documents.filename
+         ORDER BY b.id DESC LIMIT 1), FALSE) AS generation_stalled,
+       COALESCE((
+         SELECT jsonb_agg(jsonb_build_object(
+           'week', m.week,
+           'stage', m.stage,
+           'status', m.status,
+           'progress', m.progress,
+           'error', m.error,
+           'attempt_count', m.attempt_count
+         ) ORDER BY m.week, m.stage)
+         FROM course_generation_milestones m
+         WHERE m.book_id = (
+           SELECT b.id FROM books b
+           WHERE b.student_id = documents.student_id
+             AND b.filename = 'collections/' || documents.collection_id || '/' || documents.id || '/' || documents.filename
+           ORDER BY b.id DESC LIMIT 1
+         )
+       ), '[]'::jsonb) AS generation_milestones
      FROM documents WHERE collection_id = $1 AND student_id = $2 ORDER BY created_at DESC`,
     [collectionId, studentId],
   );

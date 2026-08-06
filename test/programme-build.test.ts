@@ -241,4 +241,34 @@ describe("POST /api/programmes", () => {
       ],
     });
   });
+
+  it("allows curriculum building after the first published week while generation continues", async () => {
+    mocks.query.mockResolvedValue([{
+      filename: "collections/5/11/Lecturer_1.pdf",
+      status: "generating",
+      error: null,
+      generation_ready_weeks: 1,
+    }]);
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(201);
+    expect(mocks.runPython).toHaveBeenCalledTimes(1);
+  });
+
+  it("waits only until the first usable week has been published", async () => {
+    mocks.query.mockResolvedValue([{
+      filename: "collections/5/11/Lecturer_1.pdf",
+      status: "generating",
+      error: null,
+      generation_ready_weeks: 0,
+    }]);
+
+    const response = await POST(request());
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.error).toContain("first usable lecture");
+    expect(mocks.runPython).not.toHaveBeenCalled();
+  });
 });

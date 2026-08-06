@@ -15,9 +15,33 @@ CREATE TABLE IF NOT EXISTS books (
   error TEXT,
   uploaded_at TIMESTAMPTZ NOT NULL,
   progress TEXT,
-  student_id TEXT
+  student_id TEXT,
+  source_sha256 TEXT,
+  generation_stage TEXT,
+  generation_total_weeks INTEGER NOT NULL DEFAULT 0,
+  generation_ready_weeks INTEGER NOT NULL DEFAULT 0,
+  generation_audio_ready_weeks INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS books_student_idx ON books(student_id);
+
+CREATE TABLE IF NOT EXISTS course_generation_milestones (
+  id BIGSERIAL PRIMARY KEY,
+  book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+  student_id TEXT NOT NULL,
+  week INTEGER NOT NULL CHECK (week >= 0),
+  stage TEXT NOT NULL CHECK (stage IN ('plan', 'lecture', 'quiz', 'slides', 'audio')),
+  status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'ready', 'failed', 'deferred')),
+  attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+  progress TEXT,
+  error TEXT,
+  artifact_ref TEXT,
+  started_at TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (book_id, week, stage)
+);
+CREATE INDEX IF NOT EXISTS course_generation_milestones_book_idx
+  ON course_generation_milestones(book_id, week, stage);
 
 -- Generated lecture output lives in content_artifacts; lectures points at it.
 -- Mirrors infra/migrations/003_sprint3_learning_flow.sql and 005_lecture_

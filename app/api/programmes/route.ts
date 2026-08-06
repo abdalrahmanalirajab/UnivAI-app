@@ -284,18 +284,26 @@ export async function POST(request: NextRequest) {
   const storageKeys = readyDocuments.map((document) =>
     documentStorageKey(collectionId, document.id, document.filename)
   );
-  const generatedBooks = await query<{ filename: string; status: string; error: string | null }>(
-    `SELECT filename, status, error FROM books
+  const generatedBooks = await query<{
+    filename: string;
+    status: string;
+    error: string | null;
+    generation_ready_weeks: number;
+  }>(
+    `SELECT filename, status, error, generation_ready_weeks FROM books
       WHERE student_id = $1 AND filename = ANY($2::text[])`,
     [gate.studentId, storageKeys],
   );
   const generatedByFilename = new Map(generatedBooks.map((book) => [book.filename, book]));
   const unfinished = storageKeys.filter(
-    (storageKey) => generatedByFilename.get(storageKey)?.status !== "ready"
+    (storageKey) => {
+      const book = generatedByFilename.get(storageKey);
+      return !book || (book.status !== "ready" && (book.generation_ready_weeks ?? 0) < 1);
+    },
   );
   if (unfinished.length > 0) {
     return Response.json(
-      { error: "Your books are still being turned into courses. Wait until generation finishes." },
+      { error: "Your first usable lecture is still being generated. Progress will update automatically." },
       { status: 409 },
     );
   }
