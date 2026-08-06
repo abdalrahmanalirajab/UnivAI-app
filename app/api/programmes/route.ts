@@ -7,6 +7,7 @@ import {
   getProgrammeForCollection,
 } from "@/lib/programmes";
 import { requireUserApi } from "@/lib/session";
+import { MAX_SEMESTER_WEEKS } from "@/lib/semester-plan";
 import type { ProgrammePlanV1 } from "@/test/fixtures/programme-plan-v1";
 
 export const dynamic = "force-dynamic";
@@ -53,16 +54,13 @@ function normalizeFilename(value: string): string {
  * semester — which is why a book that generated one week of content still
  * showed fourteen lectures, thirteen of them permanently empty.
  *
- * Two months, matching TARGET_SEMESTER_WEEKS in the Agent's
- * planning/semester_planner.py, which caps a course at three months. Keep the
- * two in step.
- *
- * This is still an estimate made before the book is generated. The schedule and
- * the generated semester plan (lectures/<sid>/semester-plan.json, whose
- * week_count reflects the book's real chapters) are not yet bound to each other,
- * so a book that compresses to a different length will not match exactly.
+ * Before generation discovers the book's chapters, reserve the Agent's
+ * three-month maximum. lib/lectures.ts replaces this placeholder with the
+ * authoritative 1-12 week count from lectures/<sid>/semester-plan.json and
+ * reconciles the unstarted schedule. Reserving the maximum ensures generation
+ * never writes a week for which no lecture row exists.
  */
-const WEEKS_PER_SEMESTER = 8;
+const WEEKS_PER_SEMESTER = MAX_SEMESTER_WEEKS;
 
 // Filing words a filename carries that a textbook's prose never does, plus the
 // ordinal suffixes left behind once digits are stripped ("3rd" -> "rd").

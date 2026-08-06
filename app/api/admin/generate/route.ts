@@ -10,9 +10,8 @@ import { requireAdminApi } from "@/lib/session";
 export const dynamic = "force-dynamic";
 
 /**
- * The admin's course-size dial. GET the current size; POST a size and a mode
- * ("full" rebuilds lectures + quizzes + voice, "quizzes" rewrites only the
- * question banks) and the course regenerates from the already-uploaded book.
+ * The admin's assessment-size setting plus explicit regeneration actions.
+ * Lecture duration is material-derived in UnivAI-Agent, independent of size.
  */
 
 export async function GET() {
@@ -65,8 +64,8 @@ export async function POST(request: NextRequest) {
         progress = $1 WHERE id = $2`,
     [
       mode === "full"
-        ? `Rebuilding the course at size ${size} — lectures, quizzes and voice…`
-        : `Rewriting the quizzes at size ${size}…`,
+        ? "Rebuilding the course — lectures, quizzes and voice…"
+        : "Rewriting the generated question banks…",
       book.id,
     ]
   );

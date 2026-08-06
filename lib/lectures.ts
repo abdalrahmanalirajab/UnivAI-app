@@ -5,6 +5,11 @@ import { now, MINUTE_MS } from "./clock";
 import { DATA_ROOT, LECTURES_ROOT } from "./paths";
 import type { ProgrammePlanV1 } from "@/test/fixtures/programme-plan-v1";
 import { getSetting, setSetting } from "./settings";
+import {
+  GeneratedSemesterPlanError,
+  readGeneratedSemesterWeekCount,
+} from "./semester-plan";
+import { LEGACY_LECTURE_MINUTES, scriptDurationMinutes } from "./lecture-duration";
 
 /**
  * Lecture content is PREMADE and committed under lectures/week-N/:
@@ -17,7 +22,7 @@ export const REPO_ROOT = DATA_ROOT;
 export const LECTURES_DIR = LECTURES_ROOT;
 
 /** How long a lecture is "on" for. */
-export const LECTURE_WINDOW_MINUTES = 60;
+export const LECTURE_WINDOW_MINUTES = LEGACY_LECTURE_MINUTES;
 /**
  * You cannot walk into a lecture that is already half over — you would miss the
  * material the quiz is about. Turning up after this is an absence, not a late arrival.
@@ -25,7 +30,13 @@ export const LECTURE_WINDOW_MINUTES = 60;
 export const JOIN_CUTOFF_MINUTES = LECTURE_WINDOW_MINUTES / 2;
 
 export type Segment = { slide: number; text: string; citations: { page: number }[] };
-export type Script = { lectureId: string; title: string; segments: Segment[] };
+export type Script = {
+  lectureId: string;
+  title: string;
+  /** Written by the Agent; absent on legacy and fixture scripts. */
+  durationMinutes?: number;
+  segments: Segment[];
+};
 
 /** Why a lecture cannot be opened. `null` means it can. */
 export type BlockedReason = "not_started" | "too_late" | "completed" | "missed" | null;
@@ -117,6 +128,7 @@ type ApprovedSchedulePlan = {
   planVersion: number;
   weekCount: number;
   sectionPacks: SectionPackV1[];
+  generated: boolean;
 };
 
 type ScheduleBinding = {
@@ -209,7 +221,16 @@ async function approvedSchedulePlan(sid: string): Promise<ApprovedSchedulePlan |
 
   const row = rows[0];
   const plan = row.plan as Partial<ProgrammePlanV1> & { section_packs?: unknown };
-  const weeks = plan?.workload?.weeks_per_semester;
+  let generatedWeeks: number | null;
+  try {
+    generatedWeeks = await readGeneratedSemesterWeekCount(sid);
+  } catch (error) {
+    if (error instanceof GeneratedSemesterPlanError) {
+      throw new ScheduleIntegrityError("INVALID_GENERATED_PLAN", error.message);
+    }
+    throw error;
+  }
+  const weeks = generatedWeeks ?? plan?.workload?.weeks_per_semester;
   if (typeof weeks !== "number" || !Number.isInteger(weeks) || weeks < 1) {
     throw new ScheduleIntegrityError(
       "INVALID_APPROVED_PLAN",
@@ -222,6 +243,7 @@ async function approvedSchedulePlan(sid: string): Promise<ApprovedSchedulePlan |
     planVersion: row.plan_version,
     weekCount: weeks,
     sectionPacks: parseSectionPacks(plan.section_packs, weeks),
+    generated: generatedWeeks !== null,
   };
 }
 
@@ -297,14 +319,59 @@ export async function ensureSchedule(sid: string): Promise<ApprovedSchedulePlan 
 
   const binding = await scheduleBinding(sid);
   if (binding) {
-    if (
-      binding.programmeId !== approved.programmeId ||
-      binding.planVersion !== approved.planVersion ||
-      binding.weekCount !== approved.weekCount
-    ) {
+    if (binding.programmeId !== approved.programmeId || binding.planVersion !== approved.planVersion) {
       throw new ScheduleIntegrityError(
         "STALE_SCHEDULE",
         "The saved schedule belongs to an older approved plan. Rebuild it before continuing.",
+      );
+    }
+    if (binding.weekCount !== approved.weekCount) {
+      if (!approved.generated || (await semesterHasStarted(sid))) {
+        throw new ScheduleIntegrityError(
+          "STALE_SCHEDULE",
+          "The saved schedule has a different semester length. Rebuild it before continuing.",
+        );
+      }
+      // Generation has replaced the pre-generation maximum with the book's
+      // actual plan. Before week 1 starts it is safe to resize in place: retain
+      // existing rows/artifact links, remove only the unused tail, and add any
+      // missing rows for a legacy shorter placeholder.
+      const starts = await query<{ starts_at: Date | null }>(
+        "SELECT MIN(starts_at) AS starts_at FROM lectures WHERE student_id = $1",
+        [sid],
+      );
+      const start = starts[0]?.starts_at
+        ? new Date(starts[0].starts_at)
+        : firstLectureStart(await now());
+      await query("DELETE FROM lectures WHERE student_id = $1 AND week > $2", [
+        sid,
+        approved.weekCount,
+      ]);
+      const existingWeeks = new Set(rows.map((row) => row.week));
+      for (let week = 1; week <= approved.weekCount; week++) {
+        const startsAt = new Date(start.getTime() + (week - 1) * WEEK_MS);
+        if (existingWeeks.has(week)) {
+          await query("UPDATE lectures SET starts_at = $1 WHERE student_id = $2 AND week = $3", [
+            startsAt,
+            sid,
+            week,
+          ]);
+        } else {
+          const script = await readScript(sid, week);
+          await query(
+            `INSERT INTO lectures (student_id, week, title, starts_at, status) VALUES ($1, $2, $3, $4, 'ready')
+             ON CONFLICT (student_id, week) DO NOTHING`,
+            [sid, week, script?.title ?? `Week ${week}`, startsAt],
+          );
+        }
+      }
+      await setSetting(
+        scheduleBindingKey(sid),
+        JSON.stringify({
+          programmeId: approved.programmeId,
+          planVersion: approved.planVersion,
+          weekCount: approved.weekCount,
+        } satisfies ScheduleBinding),
       );
     }
     return approved;
@@ -461,10 +528,12 @@ export async function getLectures(sid: string): Promise<Lecture[]> {
     [sid]
   );
 
-  return rows.map((row) => {
+  return Promise.all(rows.map(async (row) => {
     const startsAt = new Date(row.starts_at);
-    const cutoff = new Date(startsAt.getTime() + JOIN_CUTOFF_MINUTES * MINUTE_MS);
-    const endsAt = new Date(startsAt.getTime() + LECTURE_WINDOW_MINUTES * MINUTE_MS);
+    const durationMinutes = scriptDurationMinutes(await readScript(sid, row.week));
+    const cutoffMinutes = durationMinutes / 2;
+    const cutoff = new Date(startsAt.getTime() + cutoffMinutes * MINUTE_MS);
+    const endsAt = new Date(startsAt.getTime() + durationMinutes * MINUTE_MS);
     const completed = Boolean(row.completed_at);
 
     let state: Lecture["state"] = "upcoming";
@@ -499,13 +568,13 @@ export async function getLectures(sid: string): Promise<Lecture[]> {
       joinable: blockedReason === null,
       blockedReason,
     };
-  });
+  }));
 }
 
 export const BLOCKED_MESSAGE: Record<NonNullable<BlockedReason>, string> = {
   not_started: "This lecture has not started yet.",
-  too_late: `You cannot rejoin: more than ${JOIN_CUTOFF_MINUTES} minutes of the lecture have passed.`,
-  missed: `You missed this lecture. The doors close ${JOIN_CUTOFF_MINUTES} minutes after it starts.`,
+  too_late: "You cannot rejoin after the lecture's halfway point.",
+  missed: "You missed this lecture. The doors close halfway through.",
   completed: "You have already finished this lecture.",
 };
 

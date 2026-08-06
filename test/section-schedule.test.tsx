@@ -10,11 +10,12 @@ import type { SessionUser } from "@/lib/auth-types";
 /*  Mock db for getSections (lib/lectures.ts) — hoisted first          */
 /* ------------------------------------------------------------------ */
 
-const { mockQuery, mockQueryOne, mockGetSetting, mockSetSetting } = vi.hoisted(() => ({
+const { mockQuery, mockQueryOne, mockGetSetting, mockSetSetting, mockGeneratedWeekCount } = vi.hoisted(() => ({
   mockQuery: vi.fn(),
   mockQueryOne: vi.fn(),
   mockGetSetting: vi.fn(),
   mockSetSetting: vi.fn(),
+  mockGeneratedWeekCount: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -26,6 +27,11 @@ vi.mock("@/lib/settings", () => ({
   getSetting: mockGetSetting,
   setSetting: mockSetSetting,
 }));
+
+vi.mock("@/lib/semester-plan", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/semester-plan")>();
+  return { ...actual, readGeneratedSemesterWeekCount: mockGeneratedWeekCount };
+});
 
 // Real route handlers gate through lib/session → next/headers + lib/auth
 // (better-auth). We mock those two leaves so the handlers run for real:
@@ -90,6 +96,7 @@ function lectureRows(weeks: number) {
 describe("getSections — sections only after their lecture", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGeneratedWeekCount.mockResolvedValue(null);
     mockGetSetting.mockResolvedValue(SCHEDULE_BINDING);
     mockQueryOne.mockResolvedValue({ offset_ms: "0" });
     mockQuery.mockImplementation(async (sql) => {
@@ -315,6 +322,7 @@ function sessionUser(overrides: Partial<SessionUser> = {}): SessionUser {
 describe("api routes — real backend behavior", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGeneratedWeekCount.mockResolvedValue(null);
     mockGetSetting.mockResolvedValue(SCHEDULE_BINDING);
     mockQueryOne.mockImplementation(async (sql: string) => {
       if (sql.includes("clock_state")) return { offset_ms: "0" };
@@ -388,6 +396,35 @@ describe("api routes — real backend behavior", () => {
       code: "INVALID_APPROVED_PLAN",
       error: "The approved programme has no valid weeks_per_semester.",
     });
+  });
+
+  it("reconciles an unstarted placeholder schedule to the generated week count", async () => {
+    mockGeneratedWeekCount.mockResolvedValue(5);
+    mockGetSetting.mockResolvedValue(SCHEDULE_BINDING);
+    mockQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("SELECT id, plan_version, plan FROM programmes")) {
+        return [{ id: 1, plan_version: 1, plan: APPROVED_PLAN }];
+      }
+      if (sql.includes("SELECT week FROM lectures")) return WEEK_ROWS;
+      if (sql.includes("MIN(starts_at)")) {
+        return [{ starts_at: new Date("2099-01-01T10:00:00.000Z") }];
+      }
+      if (sql.startsWith("DELETE") || sql.startsWith("UPDATE")) return [];
+      throw new Error(`unexpected query: ${sql}`);
+    });
+
+    const { ensureSchedule } = await import("@/lib/lectures");
+    const result = await ensureSchedule("S-2026-000001");
+
+    expect(result?.weekCount).toBe(5);
+    expect(mockQuery).toHaveBeenCalledWith(
+      "DELETE FROM lectures WHERE student_id = $1 AND week > $2",
+      ["S-2026-000001", 5],
+    );
+    expect(mockSetSetting).toHaveBeenCalledWith(
+      "schedule:S-2026-000001:approved-plan",
+      JSON.stringify({ programmeId: 1, planVersion: 1, weekCount: 5 }),
+    );
   });
 
   it("an unauthenticated session is denied by the real API guard (401)", async () => {

@@ -30,11 +30,11 @@ test("live vocabulary remains compatible", () => {
   assert.equal(LIVE_STATES.includes("ended"), true);
 });
 
-test("scenario selection and course sizes are stable", () => {
+test("scenario selection and assessment sizes are stable", () => {
   assert.equal(normalizeScenario("generation-error"), "generation-error");
   assert.equal(normalizeScenario("unknown"), "happy");
   assert.deepEqual(
-    Object.fromEntries(Object.entries(COURSE_SIZES).map(([name, value]) => [name, value.slides])),
-    { XS: 3, S: 5, M: 8, L: 12, XL: 16 }
+    Object.fromEntries(Object.entries(COURSE_SIZES).map(([name, value]) => [name, value.quizPaper])),
+    { XS: 5, S: 6, M: 10, L: 12, XL: 15 }
   );
 });
