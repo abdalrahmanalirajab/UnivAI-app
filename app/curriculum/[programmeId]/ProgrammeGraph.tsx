@@ -220,11 +220,15 @@ function CourseCadence({
   structure: NonNullable<ProgrammePlanV1["course_structure"]>[number]["semesters"][number] | undefined;
 }) {
   if (!structure) return null;
+  const counted = (count: number, singular: string, plural = `${singular}s`) =>
+    `${count} ${count === 1 ? singular : plural}`;
   return (
     <Typography variant="body2" color="text.secondary">
-      {structure.week_count} weeks · {structure.theoretical_lectures} theory lectures ·{" "}
-      {structure.practical_sections} practical sections · {structure.quizzes} quizzes ·{" "}
-      {structure.midterms} midterm{structure.midterms === 1 ? "" : "s"} · {structure.finals} final
+      {counted(structure.week_count, "week")} ·{" "}
+      {counted(structure.theoretical_lectures, "theory lecture")} ·{" "}
+      {counted(structure.practical_sections, "practical section")} ·{" "}
+      {counted(structure.quizzes, "quiz", "quizzes")} ·{" "}
+      {counted(structure.midterms, "midterm")} · {counted(structure.finals, "final")}
     </Typography>
   );
 }
