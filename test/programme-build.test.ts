@@ -9,12 +9,22 @@ const mocks = vi.hoisted(() => ({
   parseJsonLine: vi.fn(),
   getProgrammeForCollection: vi.fn(),
   createProgrammeIfMissing: vi.fn(),
+  updateProgrammePlan: vi.fn(),
+  query: vi.fn(),
+  readGeneratedSemesterPlan: vi.fn(),
 }));
 
 vi.mock("@/lib/session", () => ({ requireUserApi: mocks.requireUserApi }));
 vi.mock("@/lib/collections", () => ({
   getOwnedCollection: mocks.getOwnedCollection,
   listDocuments: mocks.listDocuments,
+  documentStorageKey: (collectionId: number, documentId: number, filename: string) =>
+    `collections/${collectionId}/${documentId}/${filename}`,
+}));
+vi.mock("@/lib/db", () => ({ query: mocks.query }));
+vi.mock("@/lib/semester-plan", () => ({
+  MAX_SEMESTER_WEEKS: 12,
+  readGeneratedSemesterPlan: mocks.readGeneratedSemesterPlan,
 }));
 vi.mock("@/lib/python", () => ({
   runPython: mocks.runPython,
@@ -23,6 +33,7 @@ vi.mock("@/lib/python", () => ({
 vi.mock("@/lib/programmes", () => ({
   getProgrammeForCollection: mocks.getProgrammeForCollection,
   createProgrammeIfMissing: mocks.createProgrammeIfMissing,
+  updateProgrammePlan: mocks.updateProgrammePlan,
 }));
 
 import { POST } from "@/app/api/programmes/route";
@@ -53,6 +64,17 @@ describe("POST /api/programmes", () => {
       updated_at: "2026-08-04T00:00:00Z",
     }]);
     mocks.runPython.mockResolvedValue({ ok: true, stdout: "result", stderr: "" });
+    mocks.query.mockResolvedValue([{
+      filename: "collections/5/11/Lecturer_1.pdf",
+      status: "ready",
+      error: null,
+    }]);
+    mocks.readGeneratedSemesterPlan.mockResolvedValue({
+      chapterCount: 7,
+      semesterCount: 1,
+      weekCount: 7,
+      semesters: [{ semester: 1, weekCount: 7 }],
+    });
     mocks.parseJsonLine.mockReturnValue({
       ok: true,
       result: {
@@ -97,8 +119,26 @@ describe("POST /api/programmes", () => {
     expect(savedPlan.source_coverage).toEqual([{
       document_id: 11,
       filename: "Lecturer_1.pdf",
-      course_ids: ["T01"],
+      course_ids: ["book-11"],
       pages: "4",
+    }]);
+    expect(savedPlan.courses).toHaveLength(1);
+    expect(savedPlan.courses[0]).toMatchObject({ id: "book-11", title: "Lecturer 1" });
+    expect(savedPlan.semesters).toEqual([
+      { id: "semester-1", name: "Semester 1", order: 1, course_ids: ["book-11"] },
+    ]);
+    expect(savedPlan.course_structure).toEqual([{
+      course_id: "book-11",
+      chapter_count: 7,
+      semesters: [{
+        semester: 1,
+        week_count: 7,
+        theoretical_lectures: 7,
+        practical_sections: 7,
+        quizzes: 7,
+        midterms: 1,
+        finals: 1,
+      }],
     }]);
   });
 
@@ -111,5 +151,94 @@ describe("POST /api/programmes", () => {
     expect(response.status).toBe(200);
     expect(body.programme.id).toBe(12);
     expect(mocks.runPython).not.toHaveBeenCalled();
+  });
+
+  it("repairs an unapproved legacy topic-as-course plan", async () => {
+    mocks.getProgrammeForCollection.mockResolvedValue({
+      id: 12,
+      status: "proposed",
+      plan_version: 1,
+      plan: {
+        courses: [{ id: "T01" }, { id: "T02" }, { id: "T03" }],
+        semesters: [{ id: "semester-1", course_ids: ["T01"] }],
+      },
+    });
+    mocks.updateProgrammePlan.mockImplementation(
+      async (_id: number, _sid: string, plan: unknown) => ({
+        ok: true,
+        programme: { id: 12, plan_version: 2, plan },
+      }),
+    );
+
+    const response = await POST(request());
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.programme.plan.courses).toHaveLength(1);
+    expect(body.programme.plan.courses[0].id).toBe("book-11");
+    expect(mocks.updateProgrammePlan).toHaveBeenCalledWith(
+      12,
+      "S-2026-000004",
+      expect.any(Object),
+      1,
+    );
+  });
+
+  it("keeps many extracted topics from one book inside one course and one semester", async () => {
+    const topic = (id: string, title: string) => ({
+      topic_id: id,
+      title,
+      summary: `${title} summary`,
+      prerequisites: [],
+      contact_hours: 1,
+      total_hours: 2,
+      citations: [{ source_filename: "Lecturer_1.pdf", page: Number(id.slice(1)) }],
+    });
+    mocks.parseJsonLine.mockReturnValue({
+      ok: true,
+      result: {
+        plan: {
+          semesters: [
+            { index: 1, title: "Semester 1", topics: [topic("T01", "Introduction")] },
+            { index: 2, title: "Semester 2", topics: [topic("T02", "Systems")] },
+            { index: 3, title: "Semester 3", topics: [topic("T03", "Models")] },
+          ],
+        },
+      },
+    });
+
+    const response = await POST(request());
+    const body = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(body.programme.plan.courses).toHaveLength(1);
+    expect(body.programme.plan.semesters).toHaveLength(1);
+    expect(body.programme.plan.semesters[0].course_ids).toEqual(["book-11"]);
+  });
+
+  it("shows a 30-chapter book as one course split across two semesters", async () => {
+    mocks.readGeneratedSemesterPlan.mockResolvedValue({
+      chapterCount: 30,
+      semesterCount: 2,
+      weekCount: 24,
+      semesters: [
+        { semester: 1, weekCount: 12 },
+        { semester: 2, weekCount: 12 },
+      ],
+    });
+
+    const response = await POST(request());
+    const body = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(body.programme.plan.courses).toHaveLength(1);
+    expect(body.programme.plan.semesters).toHaveLength(2);
+    expect(body.programme.plan.course_structure[0]).toMatchObject({
+      chapter_count: 30,
+      semesters: [
+        { week_count: 12, quizzes: 12, midterms: 3, finals: 1 },
+        { week_count: 12, quizzes: 12, midterms: 3, finals: 1 },
+      ],
+    });
   });
 });

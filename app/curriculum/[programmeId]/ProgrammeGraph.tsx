@@ -74,6 +74,7 @@ export default function ProgrammeGraph({
             key={semester.id}
             semester={semester}
             courses={plan.courses}
+            structures={plan.course_structure ?? []}
           />
         ))}
 
@@ -143,9 +144,11 @@ function WorkloadCard({ workload }: { workload: ProgrammePlanV1["workload"] }) {
 function SemesterCard({
   semester,
   courses,
+  structures,
 }: {
   semester: Semester;
   courses: Course[];
+  structures: NonNullable<ProgrammePlanV1["course_structure"]>;
 }) {
   const semesterCourses = semester.course_ids
     .map((id) => courses.find((c) => c.id === id))
@@ -198,11 +201,31 @@ function SemesterCard({
                   {course.description}
                 </Typography>
               ) : null}
+              <CourseCadence
+                structure={structures
+                  .find((candidate) => candidate.course_id === course.id)
+                  ?.semesters.find((candidate) => candidate.semester === semester.order)}
+              />
             </Stack>
           ))}
         </Stack>
       </CardContent>
     </Card>
+  );
+}
+
+function CourseCadence({
+  structure,
+}: {
+  structure: NonNullable<ProgrammePlanV1["course_structure"]>[number]["semesters"][number] | undefined;
+}) {
+  if (!structure) return null;
+  return (
+    <Typography variant="body2" color="text.secondary">
+      {structure.week_count} weeks · {structure.theoretical_lectures} theory lectures ·{" "}
+      {structure.practical_sections} practical sections · {structure.quizzes} quizzes ·{" "}
+      {structure.midterms} midterm{structure.midterms === 1 ? "" : "s"} · {structure.finals} final
+    </Typography>
   );
 }
 

@@ -44,12 +44,28 @@ export type SourceCoverage = {
   pages: string;
 };
 
+export type CourseStructure = {
+  course_id: string;
+  chapter_count: number;
+  semesters: Array<{
+    semester: number;
+    week_count: number;
+    theoretical_lectures: number;
+    practical_sections: number;
+    quizzes: number;
+    midterms: number;
+    finals: number;
+  }>;
+};
+
 export type ProgrammePlanV1 = {
   semesters: Semester[];
   courses: Course[];
   prerequisites: Prerequisite[];
   workload: Workload;
   source_coverage: SourceCoverage[];
+  /** Chapter-derived teaching and assessment cadence for generated courses. */
+  course_structure?: CourseStructure[];
   /** Agent-owned versioned contract; absent until cross-book analysis completes. */
   learning_path?: LearningPathV1 | null;
   /** Human edits that changed the serial order or resolved an override. */

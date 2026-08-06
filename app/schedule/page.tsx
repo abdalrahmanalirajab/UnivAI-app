@@ -46,7 +46,7 @@ type Lecture = {
   attendance: { status: string; joinedAt: string | null; lateMinutes: number } | null;
 };
 
-/** A scheduled section (tutorial/lab) — appears only where a real SectionPack exists. */
+/** The weekly practical session scheduled immediately after theory. */
 type Section = {
   session_type: "section";
   id: string;
@@ -55,6 +55,8 @@ type Section = {
   title: string;
   /** Immediately after its lecture ends. */
   startsAt: string;
+  endsAt: string;
+  durationMinutes: number;
 };
 
 type ScheduleRecord = Lecture | Section;
@@ -315,7 +317,7 @@ export default function SchedulePage() {
                   <ListItem key={section.id}>
                     <ListItemText
                       primary={`Section — ${section.title}`}
-                      secondary={`${formatDateTime(section.startsAt)} · immediately after this lecture`}
+                      secondary={`${formatDateTime(section.startsAt)} · ${section.durationMinutes} min · immediately after this lecture`}
                     />
                     <Grid container spacing={1}>
                       <Grid>

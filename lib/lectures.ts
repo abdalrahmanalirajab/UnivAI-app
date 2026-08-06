@@ -56,6 +56,7 @@ export type SectionPackV1 = {
     week: number;
     kind: SectionKind;
     title: string;
+    duration_minutes?: number;
   }>;
 };
 
@@ -76,10 +77,9 @@ export type Lecture = {
 };
 
 /**
- * A scheduled section (tutorial/lab) that follows its lecture. Sections are
- * produced ONLY from a real, approved SectionPack for the week — never
- * speculatively. They are not persisted: the versioned fixture is their
- * temporary source of truth until the Agent producer lands.
+ * A scheduled practical section that follows its theoretical lecture. The
+ * weekly session always exists; an approved SectionPack replaces its default
+ * title, kind, and duration with generated details.
  */
 export type Section = {
   id: string;
@@ -89,7 +89,13 @@ export type Section = {
   title: string;
   /** Immediately after its lecture ends. */
   startsAt: Date;
+  endsAt: Date;
+  durationMinutes: number;
 };
+
+export const DEFAULT_SECTION_MINUTES = 45;
+export const MIN_SECTION_MINUTES = 30;
+export const MAX_SECTION_MINUTES = 60;
 
 /**
  * Per-student on-disk course layout: lectures/<studentId>/week-N/. Each learner
@@ -188,7 +194,11 @@ function parseSectionPacks(value: unknown, weekCount: number): SectionPackV1[] {
         section.week !== packWeek ||
         (section.kind !== "tutorial" && section.kind !== "lab") ||
         typeof section.title !== "string" ||
-        section.title.trim().length === 0
+        section.title.trim().length === 0 ||
+        (section.duration_minutes !== undefined &&
+          (!Number.isInteger(section.duration_minutes) ||
+            section.duration_minutes < MIN_SECTION_MINUTES ||
+            section.duration_minutes > MAX_SECTION_MINUTES))
       ) {
         invalidSectionPacks();
       }
@@ -198,6 +208,7 @@ function parseSectionPacks(value: unknown, weekCount: number): SectionPackV1[] {
         week: packWeek,
         kind: section.kind,
         title: section.title,
+        duration_minutes: section.duration_minutes ?? DEFAULT_SECTION_MINUTES,
       };
     });
     return { week: packWeek, sections };
@@ -579,10 +590,9 @@ export const BLOCKED_MESSAGE: Record<NonNullable<BlockedReason>, string> = {
 };
 
 /**
- * The student's scheduled sections. A section exists ONLY when a real,
- * approved SectionPack exists in the exact approved plan version. Every
- * section starts immediately after its lecture ends; absent packs never create
- * placeholder sections.
+ * The student's weekly practical sections. An approved SectionPack supplies
+ * its exact title/kind/duration; until detailed content is generated, the
+ * course rule still schedules one 45-minute practical directly after theory.
  */
 export async function getSections(sid: string): Promise<Section[]> {
   const lectures = await getLectures(sid);
@@ -591,9 +601,18 @@ export async function getSections(sid: string): Promise<Section[]> {
   const sections: Section[] = [];
   for (const lecture of lectures) {
     const pack = approved.sectionPacks.find((candidate) => candidate.week === lecture.week);
-    if (!pack) continue;
     const startsAt = new Date(lecture.endsAt.getTime());
-    for (const record of pack.sections) {
+    const plannedSections = pack?.sections.length
+      ? pack.sections
+      : [{
+          id: `section-week-${lecture.week}`,
+          week: lecture.week,
+          kind: "tutorial" as const,
+          title: `Practical — ${lecture.title}`,
+          duration_minutes: DEFAULT_SECTION_MINUTES,
+        }];
+    for (const record of plannedSections) {
+      const durationMinutes = record.duration_minutes ?? DEFAULT_SECTION_MINUTES;
       sections.push({
         id: record.id,
         session_type: "section",
@@ -601,6 +620,8 @@ export async function getSections(sid: string): Promise<Section[]> {
         kind: record.kind,
         title: record.title,
         startsAt,
+        endsAt: new Date(startsAt.getTime() + durationMinutes * MINUTE_MS),
+        durationMinutes,
       });
     }
   }

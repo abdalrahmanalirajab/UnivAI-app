@@ -287,6 +287,9 @@ export function mergeCourses(
       ...sc,
       course_ids: dedup(sc.course_ids),
     })),
+    course_structure: plan.course_structure?.filter(
+      (structure) => !targetIds.includes(structure.course_id),
+    ),
   };
 }
 
@@ -343,6 +346,9 @@ export function splitCourse(
       ...sc,
       course_ids: sc.course_ids.flatMap(replaceId),
     })),
+    course_structure: plan.course_structure?.filter(
+      (structure) => structure.course_id !== courseId,
+    ),
   };
 }
 
@@ -383,5 +389,8 @@ export function excludeCourse(plan: ProgrammePlanV1, courseId: string): Programm
       ...sc,
       course_ids: sc.course_ids.filter((id) => id !== courseId),
     })),
+    course_structure: plan.course_structure?.filter(
+      (structure) => structure.course_id !== courseId,
+    ),
   };
 }

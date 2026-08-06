@@ -325,7 +325,7 @@ export async function POST(request: NextRequest) {
 
   await query(
     `UPDATE books SET status = 'generating', title = $1,
-        progress = 'Preparing your four-week course…' WHERE id = $2`,
+        progress = 'Finding chapters and planning your course…' WHERE id = $2`,
     [safeName, bookId]
   );
   const readyDocument = await updateDocumentStatus(document.id, sid, "ready");
