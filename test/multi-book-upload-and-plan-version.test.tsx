@@ -952,17 +952,80 @@ describe("SourceLibrary — re-fetch reflects the real API status per document",
       expect(screen.getByText("c.pdf")).toBeTruthy();
     });
 
-    expect(screen.queryAllByText("ready").length).toBe(2);
-    expect(screen.queryAllByText("failed").length).toBe(1);
+    expect(screen.queryAllByText("Course ready").length).toBe(2);
+    expect(screen.queryAllByText("Indexing failed").length).toBe(1);
     expect(screen.getByText("Could not prepare this book.")).toBeTruthy();
 
     rerender(<SourceLibrary collectionId={1} reloadKey={1} />);
 
     await waitFor(() => {
-      expect(screen.queryAllByText("failed").length).toBe(0);
+      expect(screen.queryAllByText("Indexing failed").length).toBe(0);
     });
 
-    expect(screen.queryAllByText("ready").length).toBe(3);
+    expect(screen.queryAllByText("Course ready").length).toBe(3);
     expect(screen.queryByText("Could not prepare this book.")).toBeNull();
+  });
+
+  it("shows live course-generation progress and reports when Build can be enabled", async () => {
+    const onReadinessChange = vi.fn();
+    const generating = {
+      ...READY_A,
+      generation_status: "generating",
+      generation_progress: "Recording the lecturer's voice…",
+      generation_error: null,
+    };
+    const generated = {
+      ...generating,
+      generation_status: "ready",
+      generation_progress: "Course ready — 5 lectures generated from 139 pages.",
+    };
+    let documentCall = 0;
+    globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes("/api/clock")) {
+        return { ok: true, status: 200, json: async () => ({ now: "2026-07-28T12:00:00.000Z" }) };
+      }
+      if (url.includes("/api/collections/1/documents")) {
+        documentCall += 1;
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ documents: documentCall === 1 ? [generating] : [generated] }),
+        };
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    const { rerender } = render(
+      <SourceLibrary
+        collectionId={1}
+        reloadKey={0}
+        onReadinessChange={onReadinessChange}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Generating course")).toBeTruthy();
+      expect(screen.getByText("Recording the lecturer's voice…")).toBeTruthy();
+      expect(onReadinessChange).toHaveBeenLastCalledWith(expect.objectContaining({
+        ready: false,
+        processing: true,
+      }));
+    });
+
+    rerender(
+      <SourceLibrary
+        collectionId={1}
+        reloadKey={1}
+        onReadinessChange={onReadinessChange}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Course ready")).toBeTruthy();
+      expect(onReadinessChange).toHaveBeenLastCalledWith(expect.objectContaining({
+        ready: true,
+        processing: false,
+      }));
+    });
   });
 });
