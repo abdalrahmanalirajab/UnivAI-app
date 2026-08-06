@@ -289,6 +289,21 @@ function createDbFake(): FakeDb {
       );
     }
 
+    if (sql.includes("UPDATE books SET status = 'generating', generation_stage = 'resuming'")) {
+      const row = db.books.find(
+        (b) =>
+          b.id === params[0] &&
+          b.student_id === params[1] &&
+          ["failed", "partial_failed", "partial"].includes(String(b.status)),
+      );
+      if (!row) return null;
+      row.status = "generating";
+      row.generation_stage = "resuming";
+      row.error = null;
+      row.progress = "Checking completed milestones…";
+      return row;
+    }
+
     throw new Error(`Unhandled queryOne SQL in test fake: ${sql}`);
   });
 
@@ -691,6 +706,37 @@ describe("Upload route — multi-book library is additive", () => {
     expect(db.books).toHaveLength(1);
     expect(mockRunPython).toHaveBeenCalledTimes(2);
   });
+
+  it("resumes failed course generation without re-indexing or replacing the book", async () => {
+    const { POST } = await import("@/app/api/upload/route");
+    mockRunPython.mockResolvedValue({ stdout: '{"ok":true,"message":"indexed"}', stderr: "" });
+
+    const first = await POST(postForm(pdfFile("resume_course.pdf")));
+    expect(first.status).toBe(200);
+    const uploaded = (await first.json()) as {
+      documentId: number;
+      collectionId: number;
+      bookId: number;
+    };
+    db.books[0].status = "partial_failed";
+    db.books[0].generation_ready_weeks = 2;
+    db.books[0].error = "audio timeout";
+
+    const resumed = await POST(postForm(null, {
+      documentId: String(uploaded.documentId),
+      collectionId: String(uploaded.collectionId),
+      bookId: String(uploaded.bookId),
+    }));
+    const body = (await resumed.json()) as { resumed?: boolean; bookId?: number };
+
+    expect(resumed.status).toBe(200);
+    expect(body.resumed).toBe(true);
+    expect(body.bookId).toBe(uploaded.bookId);
+    expect(db.books).toHaveLength(1);
+    expect(db.books[0].status).toBe("generating");
+    expect(mockRunPython).toHaveBeenCalledTimes(1);
+    expect(mockSpawnGeneration).toHaveBeenCalledTimes(2);
+  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -1024,6 +1070,53 @@ describe("SourceLibrary — re-fetch reflects the real API status per document",
       expect(screen.getByText("Course ready")).toBeTruthy();
       expect(onReadinessChange).toHaveBeenLastCalledWith(expect.objectContaining({
         ready: true,
+        processing: false,
+      }));
+    });
+  });
+
+  it("keeps completed weeks usable and exposes the next resumable step", async () => {
+    const onReadinessChange = vi.fn();
+    const partial = {
+      ...READY_A,
+      generation_status: "partial",
+      generation_progress: "Course usable — 2/5 lectures ready; 1/5 audio tracks ready.",
+      generation_error: null,
+      generation_stage: "paused",
+      generation_total_weeks: 5,
+      generation_ready_weeks: 2,
+      generation_audio_ready_weeks: 1,
+      generation_milestones: [
+        { week: 0, stage: "plan", status: "ready", progress: "Course plan saved", error: null, attempt_count: 0 },
+        { week: 1, stage: "lecture", status: "ready", progress: null, error: null, attempt_count: 1 },
+        { week: 1, stage: "quiz", status: "ready", progress: null, error: null, attempt_count: 1 },
+        { week: 1, stage: "slides", status: "ready", progress: null, error: null, attempt_count: 1 },
+        { week: 1, stage: "audio", status: "ready", progress: null, error: null, attempt_count: 1 },
+        { week: 2, stage: "audio", status: "deferred", progress: null, error: null, attempt_count: 0 },
+      ],
+    };
+    globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes("/api/clock")) {
+        return { ok: true, status: 200, json: async () => ({ now: "2026-07-28T12:00:00.000Z" }) };
+      }
+      if (url.includes("/api/collections/1/documents")) {
+        return { ok: true, status: 200, json: async () => ({ documents: [partial] }) };
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    render(
+      <SourceLibrary collectionId={1} onReadinessChange={onReadinessChange} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Course usable")).toBeTruthy();
+      expect(screen.getByText("Generate next step")).toBeTruthy();
+      expect(screen.getByText("Published lectures: 2/5; audio: 1/5")).toBeTruthy();
+      expect(screen.getByText(/Week 2:.*audio deferred/)).toBeTruthy();
+      expect(onReadinessChange).toHaveBeenLastCalledWith(expect.objectContaining({
+        ready: false,
+        usable: true,
         processing: false,
       }));
     });

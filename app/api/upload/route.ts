@@ -44,9 +44,16 @@ type Book = {
   status: string;
   error: string | null;
   progress: string | null;
+  generation_stage: string | null;
+  generation_total_weeks: number;
+  generation_ready_weeks: number;
+  generation_audio_ready_weeks: number;
+  heartbeat_at: string | null;
 };
 
-const BOOK_COLUMNS = "id, filename, title, pages, status, error, progress";
+const BOOK_COLUMNS = `id, filename, title, pages, status, error, progress,
+  generation_stage, generation_total_weeks, generation_ready_weeks,
+  generation_audio_ready_weeks, heartbeat_at`;
 
 function positiveFormId(value: FormDataEntryValue | null): number | null {
   if (typeof value !== "string" || value.trim() === "") return null;
@@ -179,6 +186,56 @@ export async function POST(request: NextRequest) {
       `SELECT ${BOOK_COLUMNS} FROM books WHERE student_id = $1 AND filename = $2 ORDER BY id DESC LIMIT 1`,
       [sid, storageKey],
     );
+    if (book && ["failed", "partial_failed", "partial", "generating"].includes(book.status)) {
+      const resumed = await queryOne<Book>(
+        `UPDATE books SET status = 'generating', generation_stage = 'resuming',
+            error = NULL, progress = 'Checking completed milestones…',
+            heartbeat_at = CURRENT_TIMESTAMP
+         WHERE id = $1 AND student_id = $2
+           AND (
+             status IN ('failed', 'partial_failed', 'partial')
+             OR (status = 'generating' AND heartbeat_at IS NOT NULL
+                 AND heartbeat_at < CURRENT_TIMESTAMP - INTERVAL '2 minutes')
+           )
+         RETURNING ${BOOK_COLUMNS}`,
+        [book.id, sid],
+      );
+      if (!resumed) {
+        return Response.json({
+          book: publicBook(book),
+          document,
+          message: "Course generation is already running. Progress will update automatically.",
+          documentId: document.id,
+          collectionId,
+          bookId: book.id,
+        });
+      }
+      const destination = uploadPath(sid, storageKey);
+      try {
+        await fs.access(destination);
+      } catch {
+        await query(
+          `UPDATE books SET status = 'partial_failed', generation_stage = 'source',
+              error = 'The stored PDF is missing.', progress = 'Resume needs the original PDF.'
+           WHERE id = $1`,
+          [book.id],
+        );
+        return Response.json(
+          { error: "The stored PDF is missing. Upload the original file again." },
+          { status: 409 },
+        );
+      }
+      spawnGeneration(destination, book.id);
+      return Response.json({
+        book: publicBook(resumed),
+        document,
+        documentId: document.id,
+        collectionId,
+        bookId: book.id,
+        resumed: true,
+        message: "Generation resumed from completed milestones.",
+      });
+    }
     return Response.json({
       book: publicBook(book),
       document,
@@ -325,7 +382,8 @@ export async function POST(request: NextRequest) {
 
   await query(
     `UPDATE books SET status = 'generating', title = $1,
-        progress = 'Finding chapters and planning your course…' WHERE id = $2`,
+        progress = 'Finding chapters and planning your course…',
+        heartbeat_at = CURRENT_TIMESTAMP WHERE id = $2`,
     [safeName, bookId]
   );
   const readyDocument = await updateDocumentStatus(document.id, sid, "ready");
