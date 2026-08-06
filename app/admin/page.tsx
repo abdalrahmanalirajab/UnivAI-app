@@ -383,11 +383,11 @@ export default function AdminPage() {
       <Card variant="outlined">
         <CardContent>
           <Stack spacing={2}>
-            <Typography variant="h6">Course size</Typography>
+            <Typography variant="h6">Assessment size</Typography>
             <Typography variant="body2" color="text.secondary">
-              One dial for how big the course is: slides and spoken length per lecture,
-              and how many questions each quiz and the midterm carry. Regenerating
-              rebuilds from the already-uploaded book.
+              Choose how many questions each served quiz and midterm carries. Lecture
+              length is calculated from each week&apos;s source material and stays within
+              30–120 minutes. Regenerating rebuilds from the already-uploaded book.
             </Typography>
 
             <ToggleButtonGroup
@@ -407,7 +407,6 @@ export default function AdminPage() {
             {sizes ? (
               <Typography variant="body2" color="text.secondary">
                 {size} — {sizes[size].blurb}. Midterm: {sizes[size].midPaper} questions.
-                {size === "M" ? " (the normal lecture)" : ""}
               </Typography>
             ) : null}
 
@@ -434,8 +433,8 @@ export default function AdminPage() {
                   )}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
-                  Live from the build — this line updates every few seconds. Big sizes on
-                  the local models take a while; the voice re-render comes last.
+                  Live from the build — this line updates every few seconds. Content-heavy
+                  weeks take longer on local models; the voice re-render comes last.
                 </Typography>
               </Stack>
             ) : (
