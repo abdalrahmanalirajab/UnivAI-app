@@ -27,41 +27,6 @@ const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY ?? "";
 const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET ?? "";
 const LIVEKIT_URL = process.env.LIVEKIT_URL ?? "";
 
-// The programmes/collections tables are not part of the standalone schema.
-// They are created here from the versioned contract in
-// docs/proposed-ddl-collections-documents-programmes.md so that
-// lib/lectures.getLectures / approvedPlanVersion run their real code paths.
-const PROGRAMMES_DDL = `
-CREATE TABLE IF NOT EXISTS collections (
-  id         SERIAL PRIMARY KEY,
-  student_id TEXT NOT NULL,
-  name       TEXT NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-CREATE TABLE IF NOT EXISTS documents (
-  id            SERIAL PRIMARY KEY,
-  collection_id INTEGER NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
-  student_id    TEXT NOT NULL,
-  filename      TEXT NOT NULL,
-  status        TEXT NOT NULL DEFAULT 'pending',
-  error         TEXT,
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-CREATE TABLE IF NOT EXISTS programmes (
-  id            SERIAL PRIMARY KEY,
-  student_id    TEXT NOT NULL,
-  collection_id INTEGER NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
-  name          TEXT NOT NULL,
-  status        TEXT NOT NULL DEFAULT 'proposed',
-  plan_version  INTEGER NOT NULL DEFAULT 1,
-  plan          JSONB NOT NULL DEFAULT '{}'::jsonb,
-  approved_at   TIMESTAMPTZ,
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-`;
-
 const PLAN_V1 = {
   workload: { weeks_per_semester: 1 },
   section_packs: [],
@@ -76,7 +41,6 @@ test.beforeAll(async () => {
   const pool = new Pool({ connectionString: DB_URL });
   try {
     await pool.query(await readFile("standalone/schema.sql", "utf8"));
-    await pool.query(PROGRAMMES_DDL);
     // Deterministic: start from real time so the seeded lecture is live but
     // still inside the join window.
     await pool.query("UPDATE clock_state SET offset_ms = 0 WHERE id = 1");
