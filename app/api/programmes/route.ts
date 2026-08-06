@@ -45,6 +45,25 @@ function normalizeFilename(value: string): string {
   return path.basename(value).trim().toLocaleLowerCase();
 }
 
+/**
+ * Weeks a semester is scheduled for.
+ *
+ * ensureSchedule seeds one lecture row per week from this number, so it decides
+ * how many lectures a learner sees. It was hardcoded at 14 — a generic academic
+ * semester — which is why a book that generated one week of content still
+ * showed fourteen lectures, thirteen of them permanently empty.
+ *
+ * Two months, matching TARGET_SEMESTER_WEEKS in the Agent's
+ * planning/semester_planner.py, which caps a course at three months. Keep the
+ * two in step.
+ *
+ * This is still an estimate made before the book is generated. The schedule and
+ * the generated semester plan (lectures/<sid>/semester-plan.json, whose
+ * week_count reflects the book's real chapters) are not yet bound to each other,
+ * so a book that compresses to a different length will not match exactly.
+ */
+const WEEKS_PER_SEMESTER = 8;
+
 // Filing words a filename carries that a textbook's prose never does, plus the
 // ordinal suffixes left behind once digits are stripped ("3rd" -> "rd").
 const FILENAME_NOISE = new Set([
@@ -140,7 +159,7 @@ function appPlan(agentPlan: AgentPlan, documents: Document[]): ProgrammePlanV1 {
       total_lecture_hours: courses.reduce((total, course) => total + course.lecture_hours, 0),
       total_tutorial_hours: 0,
       total_lab_hours: 0,
-      weeks_per_semester: 14,
+      weeks_per_semester: WEEKS_PER_SEMESTER,
     },
     source_coverage: [...coverage.entries()].map(([documentId, item]) => ({
       document_id: documentId,
