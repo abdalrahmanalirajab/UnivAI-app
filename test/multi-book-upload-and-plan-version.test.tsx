@@ -308,7 +308,7 @@ function createDbFake(): FakeDb {
       if (row) {
         row.status = "generating";
         row.title = params[0];
-        row.progress = "Preparing your four-week course…";
+        row.progress = "Finding chapters and planning your course…";
       }
       return row ? [row] : [];
     }

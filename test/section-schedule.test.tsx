@@ -112,16 +112,16 @@ describe("getSections — sections only after their lecture", () => {
     });
   });
 
-  it("schedules sections ONLY for weeks with a real SectionPack (weeks 1 and 5)", async () => {
+  it("schedules one practical section every week and preserves generated packs", async () => {
     const { getSections } = await import("@/lib/lectures");
     const sections = await getSections("S-2026-000001");
 
-    expect(sections).toHaveLength(2);
-    expect(sections.map((s) => s.week)).toEqual([1, 5]);
-    expect(sections.map((s) => s.title)).toEqual([
-      "Introduction to AI — Tutorial",
-      "Calculus I — Tutorial",
-    ]);
+    expect(sections).toHaveLength(7);
+    expect(sections.map((s) => s.week)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(sections.find((s) => s.week === 1)?.title).toBe("Introduction to AI — Tutorial");
+    expect(sections.find((s) => s.week === 5)?.title).toBe("Calculus I — Tutorial");
+    expect(sections.find((s) => s.week === 2)?.title).toBe("Practical — Week 2");
+    expect(sections.every((s) => s.durationMinutes >= 30 && s.durationMinutes <= 60)).toBe(true);
   });
 
   it("types sections distinctly from lectures via session_type", async () => {
@@ -157,7 +157,7 @@ describe("getSections — sections only after their lecture", () => {
     });
   });
 
-  it("does not invent sections when the approved plan has no SectionPacks", async () => {
+  it("uses the canonical 45-minute practical when detailed SectionPacks are absent", async () => {
     mockQuery.mockImplementation(async (sql) => {
       const text = String(sql);
       if (text.includes("SELECT id, plan_version, plan FROM programmes")) {
@@ -171,7 +171,9 @@ describe("getSections — sections only after their lecture", () => {
     });
     const { getSections } = await import("@/lib/lectures");
 
-    await expect(getSections("S-2026-000001")).resolves.toEqual([]);
+    const sections = await getSections("S-2026-000001");
+    expect(sections).toHaveLength(7);
+    expect(sections.every((section) => section.durationMinutes === 45)).toBe(true);
   });
 });
 
@@ -209,6 +211,10 @@ describe("schedule page — section placement and typing", () => {
         startsAt: new Date(
           new Date(WEEK_STARTS[section.week - 1]).getTime() + LECTURE_WINDOW_MS
         ).toISOString(),
+        endsAt: new Date(
+          new Date(WEEK_STARTS[section.week - 1]).getTime() + LECTURE_WINDOW_MS + 45 * 60_000
+        ).toISOString(),
+        durationMinutes: 45,
       }))
     );
     const records = lectures.flatMap((lecture) => {
@@ -362,7 +368,7 @@ describe("api routes — real backend behavior", () => {
 
     const a = await first.json();
     const b = await second.json();
-    expect(a.lectures).toHaveLength(9);
+    expect(a.lectures).toHaveLength(14);
     expect(a).toEqual(b);
     expect(a.planVersion).toBe(1);
     expect(
@@ -376,7 +382,7 @@ describe("api routes — real backend behavior", () => {
       a.lectures
         .filter((record: { session_type: string }) => record.session_type === "section")
         .map((section: { week: number }) => section.week),
-    ).toEqual([1, 5]);
+    ).toEqual([1, 2, 3, 4, 5, 6, 7]);
   });
 
   it("an approved plan with unusable data is rejected by the real corruption check", async () => {

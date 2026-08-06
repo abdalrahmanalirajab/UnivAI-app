@@ -43,7 +43,7 @@ export async function GET() {
 }
 
 /**
- * Start an exam: body { kind: "quiz", week: 2 }, { kind: "mid" }, or
+ * Start an exam: body { kind: "quiz", week: 2 }, { kind: "mid", week: 4 }, or
  * { kind: "final" }. Quiz and mid go through the app's windowed flow; the
  * final is started by the Exam service, which owns eligibility and the
  * attempt lifecycle. Returns the URL to take it.
@@ -63,13 +63,17 @@ export async function POST(request: NextRequest) {
   if (kind === "final") {
     return startFinalExam(gate);
   }
+  const assessmentWeek = Number(week);
+  if (!Number.isInteger(assessmentWeek) || assessmentWeek < 1) {
+    return Response.json({ error: "quiz and midterm requests require their course week" }, { status: 400 });
+  }
 
   try {
     const url = await startExam(
       gate.studentId,
       gate.name,
       kind,
-      kind === "quiz" ? Number(week) : null
+      assessmentWeek,
     );
     return Response.json({ url });
   } catch (error) {
