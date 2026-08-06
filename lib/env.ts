@@ -21,7 +21,15 @@ const envPath =
     : process.env.UNIVAI_INTEGRATION_ROOT
       ? path.resolve(process.env.UNIVAI_INTEGRATION_ROOT, ".env")
       : path.resolve(process.cwd(), "..", ".env");
-const parsed = config({ path: envPath, quiet: true }).parsed ?? {};
+// processEnv: {} keeps the file out of process.env — we only ever read `parsed`.
+// Loading it the default way copies every value into this long-lived server's
+// environment, and lib/python spawns the Python side with that environment
+// inherited. python-dotenv does not override a variable that is already set, so
+// the values this process read at boot outlive any edit to .env: changing
+// LLM_PRIMARY did nothing until the server was restarted, and course generation
+// kept failing on the model named in the file hours earlier. Real environment
+// variables still work — read() falls back to them.
+const parsed = config({ path: envPath, quiet: true, processEnv: {} }).parsed ?? {};
 
 function read(name: string, fallback = ""): string {
   return parsed[name] ?? process.env[name] ?? fallback;
