@@ -151,7 +151,7 @@ function appPlan(
     const contactHours = courseTopics.reduce((total, topic) => total + topic.contact_hours, 0);
     const summaries = [...new Set(courseTopics.map((topic) => topic.summary.trim()).filter(Boolean))];
     const generatedDetail = documents.length === 1 && generatedPlan
-      ? `${generatedPlan.chapterCount ?? "Detected"} chapters across ${generatedPlan.semesterCount} semester${generatedPlan.semesterCount === 1 ? "" : "s"}.`
+      ? `${generatedPlan.chapterCount ?? "Detected"} chapter${generatedPlan.chapterCount === 1 ? "" : "s"} across ${generatedPlan.semesterCount} semester${generatedPlan.semesterCount === 1 ? "" : "s"}.`
       : "One uploaded book, one course.";
     return {
       id: `book-${document.id}`,
