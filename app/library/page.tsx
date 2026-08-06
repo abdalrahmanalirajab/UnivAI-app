@@ -12,7 +12,7 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useRouter } from "next/navigation";
 import MultiBookUploader from "./MultiBookUploader";
-import SourceLibrary from "./SourceLibrary";
+import SourceLibrary, { type CurriculumReadiness } from "./SourceLibrary";
 
 type Collection = {
   id: number;
@@ -28,8 +28,13 @@ export default function CollectionsPage() {
   const [name, setName] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
   const [building, setBuilding] = useState(false);
+  const [readiness, setReadiness] = useState<CurriculumReadiness | null>(null);
 
   const active = collections?.[0] ?? null;
+
+  const handleReadinessChange = useCallback((next: CurriculumReadiness) => {
+    setReadiness(next);
+  }, []);
 
   const loadCollections = useCallback(async () => {
     try {
@@ -141,19 +146,45 @@ export default function CollectionsPage() {
             Collection: {active?.name}
           </Typography>
 
-          <Button variant="contained" onClick={buildCurriculum} disabled={building}>
+          <Button
+            variant="contained"
+            onClick={buildCurriculum}
+            disabled={building || readiness?.ready !== true}
+          >
             {building ? "Building Curriculum…" : "Build Curriculum"}
           </Button>
           {building ? (
             <Alert severity="info" icon={<CircularProgress size={20} />}>
               Analysing your ready books and creating the curriculum. This can take several minutes.
             </Alert>
-          ) : null}
+          ) : readiness === null ? (
+            <Alert severity="info" icon={<CircularProgress size={20} />}>
+              Checking your books…
+            </Alert>
+          ) : readiness.processing ? (
+            <Alert severity="info" icon={<CircularProgress size={20} />}>
+              <AlertTitle>Preparing your course</AlertTitle>
+              {readiness.message} This status updates automatically.
+            </Alert>
+          ) : readiness.failed ? (
+            <Alert severity="error">
+              <AlertTitle>Course preparation failed</AlertTitle>
+              {readiness.message}
+            </Alert>
+          ) : readiness.ready ? (
+            <Alert severity="success">
+              <AlertTitle>Ready to build</AlertTitle>
+              {readiness.message}
+            </Alert>
+          ) : (
+            <Alert severity="info">{readiness.message}</Alert>
+          )}
 
           <SourceLibrary
             key={active!.id}
             collectionId={active!.id}
             reloadKey={reloadKey}
+            onReadinessChange={handleReadinessChange}
           />
 
           <MultiBookUploader

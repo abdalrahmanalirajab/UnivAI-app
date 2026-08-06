@@ -18,6 +18,9 @@ export type Document = {
   error: string | null;
   created_at: string;
   updated_at: string;
+  generation_status?: string | null;
+  generation_progress?: string | null;
+  generation_error?: string | null;
 };
 
 export type CollectionResult =
@@ -251,7 +254,20 @@ export async function listDocuments(
   studentId: string,
 ): Promise<Document[]> {
   return query<Document>(
-    `SELECT ${DOCUMENT_COLUMNS} FROM documents WHERE collection_id = $1 AND student_id = $2 ORDER BY created_at DESC`,
+    `SELECT ${DOCUMENT_COLUMNS},
+       (SELECT b.status FROM books b
+         WHERE b.student_id = documents.student_id
+           AND b.filename = 'collections/' || documents.collection_id || '/' || documents.id || '/' || documents.filename
+         ORDER BY b.id DESC LIMIT 1) AS generation_status,
+       (SELECT b.progress FROM books b
+         WHERE b.student_id = documents.student_id
+           AND b.filename = 'collections/' || documents.collection_id || '/' || documents.id || '/' || documents.filename
+         ORDER BY b.id DESC LIMIT 1) AS generation_progress,
+       (SELECT b.error FROM books b
+         WHERE b.student_id = documents.student_id
+           AND b.filename = 'collections/' || documents.collection_id || '/' || documents.id || '/' || documents.filename
+         ORDER BY b.id DESC LIMIT 1) AS generation_error
+     FROM documents WHERE collection_id = $1 AND student_id = $2 ORDER BY created_at DESC`,
     [collectionId, studentId],
   );
 }

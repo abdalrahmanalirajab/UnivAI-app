@@ -8,6 +8,7 @@ import Card from "@mui/material/Card";
 import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
 import IconButton from "@mui/material/IconButton";
+import LinearProgress from "@mui/material/LinearProgress";
 import Stack from "@mui/material/Stack";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
@@ -25,21 +26,34 @@ type Document = {
   error: string | null;
   created_at: string;
   updated_at: string;
+  generation_status?: string | null;
+  generation_progress?: string | null;
+  generation_error?: string | null;
+};
+
+export type CurriculumReadiness = {
+  ready: boolean;
+  processing: boolean;
+  failed: boolean;
+  message: string;
 };
 
 function signature(documents: Document[]): string {
   return [...documents]
     .sort((a, b) => a.id - b.id)
-    .map((d) => `${d.id}|${d.status}|${d.error ?? ""}|${d.updated_at}`)
+    .map((d) =>
+      [
+        d.id,
+        d.status,
+        d.error ?? "",
+        d.updated_at,
+        d.generation_status ?? "",
+        d.generation_progress ?? "",
+        d.generation_error ?? "",
+      ].join("|"),
+    )
     .join("\n");
 }
-
-const STATUS_COLOR: Record<string, "success" | "error" | "warning" | "default"> = {
-  ready: "success",
-  failed: "error",
-  uploading: "warning",
-  pending: "default",
-};
 
 const STATUS_LABEL: Record<string, string> = {
   ready: "ready",
@@ -48,19 +62,101 @@ const STATUS_LABEL: Record<string, string> = {
   pending: "pending",
 };
 
+function courseStatus(doc: Document): {
+  color: "success" | "error" | "warning" | "default";
+  label: string;
+  detail: string | null;
+  processing: boolean;
+} {
+  if (doc.status === "failed") {
+    return { color: "error", label: "Indexing failed", detail: doc.error, processing: false };
+  }
+  if (doc.status !== "ready") {
+    return {
+      color: doc.status === "uploading" ? "warning" : "default",
+      label: doc.status === "uploading" ? "Indexing book" : STATUS_LABEL[doc.status] ?? doc.status,
+      detail: doc.status === "uploading" ? "Reading and embedding the PDF…" : null,
+      processing: true,
+    };
+  }
+  if (doc.generation_status === "failed") {
+    return {
+      color: "error",
+      label: "Course generation failed",
+      detail: doc.generation_error ?? null,
+      processing: false,
+    };
+  }
+  if (doc.generation_status === "ready") {
+    return {
+      color: "success",
+      label: "Course ready",
+      detail: doc.generation_progress ?? null,
+      processing: false,
+    };
+  }
+  // Older API fixtures only carried the document status. Keep those consumers
+  // compatible; the live endpoint always returns this field (including null).
+  if (doc.generation_status === undefined) {
+    return { color: "success", label: "Course ready", detail: null, processing: false };
+  }
+  return {
+    color: "warning",
+    label: doc.generation_status === "ingesting" ? "Indexing book" : "Generating course",
+    detail: doc.generation_progress ?? "Preparing course generation…",
+    processing: true,
+  };
+}
+
+function curriculumReadiness(documents: Document[]): CurriculumReadiness {
+  if (documents.length === 0) {
+    return { ready: false, processing: false, failed: false, message: "Upload a PDF to begin." };
+  }
+  const failed = documents.find((doc) => doc.status === "failed" || doc.generation_status === "failed");
+  if (failed) {
+    const status = courseStatus(failed);
+    return {
+      ready: false,
+      processing: false,
+      failed: true,
+      message: `${failed.filename}: ${status.detail ?? status.label}`,
+    };
+  }
+  const unfinished = documents.find((doc) => courseStatus(doc).processing);
+  if (unfinished) {
+    const status = courseStatus(unfinished);
+    return {
+      ready: false,
+      processing: true,
+      failed: false,
+      message: `${unfinished.filename}: ${status.detail ?? status.label}`,
+    };
+  }
+  return {
+    ready: true,
+    processing: false,
+    failed: false,
+    message: "Every book has finished generating. Your curriculum is ready to build.",
+  };
+}
+
 type Props = {
   collectionId: number;
   reloadKey?: number;
+  onReadinessChange?: (readiness: CurriculumReadiness) => void;
 };
 
-export default function SourceLibrary({ collectionId, reloadKey = 0 }: Props) {
+export default function SourceLibrary({
+  collectionId,
+  reloadKey = 0,
+  onReadinessChange,
+}: Props) {
   const [documents, setDocuments] = useState<Document[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [offline, setOffline] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
   const [removing, setRemoving] = useState<number | null>(null);
   const [retrying, setRetrying] = useState<number | null>(null);
-  const [stale, setStale] = useState(false);
   const documentsRef = useRef<Document[] | null>(null);
   const now = useVirtualClock();
 
@@ -93,10 +189,13 @@ export default function SourceLibrary({ collectionId, reloadKey = 0 }: Props) {
     }
     setError(null);
     setRemoveError(null);
-    setStale(false);
     documentsRef.current = data.documents;
     setDocuments(data.documents);
   }, [collectionId]);
+
+  useEffect(() => {
+    if (documents !== null) onReadinessChange?.(curriculumReadiness(documents));
+  }, [documents, onReadinessChange]);
 
   useEffect(() => {
     void load();
@@ -123,10 +222,11 @@ export default function SourceLibrary({ collectionId, reloadKey = 0 }: Props) {
       if (!res.ok || !Array.isArray(data.documents)) return;
       setOffline(false);
       if (signature(data.documents) !== signature(current)) {
-        setStale(true);
+        documentsRef.current = data.documents;
+        setDocuments(data.documents);
       }
     };
-    const poll = setInterval(() => void check(), 15_000);
+    const poll = setInterval(() => void check(), 5_000);
     return () => clearInterval(poll);
   }, [collectionId]);
 
@@ -217,21 +317,6 @@ export default function SourceLibrary({ collectionId, reloadKey = 0 }: Props) {
         </Alert>
       ) : null}
 
-      {stale ? (
-        <Alert
-          severity="warning"
-          action={
-            <Button variant="outlined" color="inherit" onClick={() => void load()}>
-              Refresh
-            </Button>
-          }
-        >
-          <AlertTitle>Your view may be out of date</AlertTitle>
-          The source list changed on the server since it was last loaded. Refresh to see the
-          current sources.
-        </Alert>
-      ) : null}
-
       {removeError ? (
         <Alert severity="error">
           <AlertTitle>Could not remove source</AlertTitle>
@@ -266,57 +351,67 @@ export default function SourceLibrary({ collectionId, reloadKey = 0 }: Props) {
               </TableRow>
             </TableHead>
             <TableBody>
-              {documents.map((doc) => (
-                <TableRow key={doc.id}>
-                  <TableCell>{doc.filename}</TableCell>
-                  <TableCell>
-                    {formatDateTime(doc.created_at)}
-                    <Typography variant="caption" color="text.secondary" component="div">
-                      {formatRelative(doc.created_at, now)}
-                    </Typography>
-                  </TableCell>
-                  <TableCell>
-                    <Stack direction="row" spacing={1}>
-                      <Chip
-                        size="small"
-                        color={STATUS_COLOR[doc.status] ?? "default"}
-                        label={STATUS_LABEL[doc.status] ?? doc.status}
-                      />
-                      {doc.status === "failed" && doc.error ? (
-                        <Typography variant="caption" color="error">
-                          {doc.error}
-                        </Typography>
-                      ) : null}
-                    </Stack>
-                  </TableCell>
-                  <TableCell align="right">
-                    <Stack direction="row" spacing={1}>
-                      {doc.status === "failed" ? (
-                        <Button
+              {documents.map((doc) => {
+                const status = courseStatus(doc);
+                return (
+                  <TableRow key={doc.id}>
+                    <TableCell>{doc.filename}</TableCell>
+                    <TableCell>
+                      {formatDateTime(doc.created_at)}
+                      <Typography variant="caption" color="text.secondary" component="div">
+                        {formatRelative(doc.created_at, now)}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Stack spacing={1}>
+                        <Stack direction="row" spacing={1}>
+                          <Chip
+                            size="small"
+                            color={status.color}
+                            label={status.label}
+                          />
+                          {status.processing ? <CircularProgress size={16} /> : null}
+                        </Stack>
+                        {status.detail ? (
+                          <Typography
+                            variant="caption"
+                            color={status.color === "error" ? "error" : "text.secondary"}
+                          >
+                            {status.detail}
+                          </Typography>
+                        ) : null}
+                        {status.processing ? <LinearProgress /> : null}
+                      </Stack>
+                    </TableCell>
+                    <TableCell align="right">
+                      <Stack direction="row" spacing={1}>
+                        {doc.status === "failed" ? (
+                          <Button
+                            size="small"
+                            onClick={() => void handleRetry(doc)}
+                            disabled={retrying === doc.id || removing === doc.id}
+                          >
+                            {retrying === doc.id ? "Retrying…" : "Retry"}
+                          </Button>
+                        ) : null}
+                        <IconButton
                           size="small"
-                          onClick={() => void handleRetry(doc)}
-                          disabled={retrying === doc.id || removing === doc.id}
+                          color="error"
+                          onClick={() => void handleRemove(doc.id)}
+                          disabled={removing === doc.id || retrying === doc.id}
+                          aria-label={`Remove source ${doc.filename}`}
                         >
-                          {retrying === doc.id ? "Retrying…" : "Retry"}
-                        </Button>
-                      ) : null}
-                      <IconButton
-                        size="small"
-                        color="error"
-                        onClick={() => void handleRemove(doc.id)}
-                        disabled={removing === doc.id || retrying === doc.id}
-                        aria-label={`Remove source ${doc.filename}`}
-                      >
-                        {removing === doc.id ? (
-                          <CircularProgress size={16} />
-                        ) : (
-                          <DeleteIcon fontSize="small" />
-                        )}
-                      </IconButton>
-                    </Stack>
-                  </TableCell>
-                </TableRow>
-              ))}
+                          {removing === doc.id ? (
+                            <CircularProgress size={16} />
+                          ) : (
+                            <DeleteIcon fontSize="small" />
+                          )}
+                        </IconButton>
+                      </Stack>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </Card>
