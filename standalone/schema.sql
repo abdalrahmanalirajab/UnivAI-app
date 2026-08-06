@@ -19,6 +19,25 @@ CREATE TABLE IF NOT EXISTS books (
 );
 CREATE INDEX IF NOT EXISTS books_student_idx ON books(student_id);
 
+-- Generated lecture output lives in content_artifacts; lectures points at it.
+-- Mirrors infra/migrations/003_sprint3_learning_flow.sql and 005_lecture_
+-- artifact_keys.sql — lib/lectures.readScript and lib/exams JOIN these, so
+-- standalone needs them to run the same code paths as integrated mode.
+CREATE TABLE IF NOT EXISTS content_artifacts (
+  content_key          TEXT PRIMARY KEY CHECK (content_key ~ '^sha256:[a-f0-9]{64}\.pipeline:[a-f0-9]{64}$'),
+  schema_version       TEXT NOT NULL CHECK (schema_version = 'content-artifact-v1'),
+  original_sha256      TEXT NOT NULL CHECK (original_sha256 ~ '^[a-f0-9]{64}$'),
+  pipeline_fingerprint JSONB NOT NULL,
+  state                TEXT NOT NULL CHECK (state IN ('building', 'ready', 'failed', 'cleanup_eligible')),
+  byte_length          BIGINT NOT NULL CHECK (byte_length > 0),
+  page_count           INTEGER NOT NULL CHECK (page_count > 0),
+  artifact_checksum    TEXT NOT NULL CHECK (artifact_checksum ~ '^[a-f0-9]{64}$'),
+  storage_ref          TEXT NOT NULL,
+  created_at           TIMESTAMPTZ NOT NULL,
+  updated_at           TIMESTAMPTZ NOT NULL,
+  UNIQUE (original_sha256, pipeline_fingerprint)
+);
+
 CREATE TABLE IF NOT EXISTS lectures (
   id SERIAL PRIMARY KEY,
   book_id INTEGER REFERENCES books(id) ON DELETE CASCADE,
@@ -26,7 +45,11 @@ CREATE TABLE IF NOT EXISTS lectures (
   title TEXT NOT NULL,
   starts_at TIMESTAMPTZ NOT NULL,
   status TEXT NOT NULL DEFAULT 'ready',
-  student_id TEXT
+  student_id TEXT,
+  -- NULL until generation finishes and registers the artifacts.
+  script_artifact_key TEXT REFERENCES content_artifacts(content_key) ON DELETE SET NULL,
+  slides_artifact_key TEXT REFERENCES content_artifacts(content_key) ON DELETE SET NULL,
+  quiz_artifact_key   TEXT REFERENCES content_artifacts(content_key) ON DELETE SET NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS lectures_student_week_key ON lectures(student_id, week);
 
@@ -165,3 +188,46 @@ CREATE TABLE IF NOT EXISTS auth_audit (
   detail JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- The library flow: collections group a learner's uploaded documents, and a
+-- programme is the plan built from one collection. lib/collections.ts and
+-- lib/programmes.ts run the same queries in standalone as in integrated mode,
+-- so these must match infra/migrations/004_app_library.sql in the parent
+-- monorepo.
+CREATE TABLE IF NOT EXISTS collections (
+  id         SERIAL PRIMARY KEY,
+  student_id TEXT NOT NULL,
+  name       TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_collections_student ON collections (student_id);
+
+CREATE TABLE IF NOT EXISTS documents (
+  id            SERIAL PRIMARY KEY,
+  collection_id INTEGER NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+  student_id    TEXT NOT NULL,
+  filename      TEXT NOT NULL,
+  status        TEXT NOT NULL DEFAULT 'pending',
+  error         TEXT,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT valid_document_status CHECK (status IN ('pending','uploading','ready','failed'))
+);
+CREATE INDEX IF NOT EXISTS idx_documents_collection ON documents (collection_id);
+CREATE INDEX IF NOT EXISTS idx_documents_student    ON documents (student_id);
+
+CREATE TABLE IF NOT EXISTS programmes (
+  id            SERIAL PRIMARY KEY,
+  student_id    TEXT NOT NULL,
+  collection_id INTEGER NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+  name          TEXT NOT NULL,
+  status        TEXT NOT NULL DEFAULT 'proposed',
+  plan_version  INTEGER NOT NULL DEFAULT 1,
+  plan          JSONB NOT NULL DEFAULT '{}'::jsonb,
+  approved_at   TIMESTAMPTZ,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT valid_programme_status CHECK (status IN ('proposed','approved'))
+);
+CREATE INDEX IF NOT EXISTS idx_programmes_student    ON programmes (student_id);
+CREATE INDEX IF NOT EXISTS idx_programmes_collection ON programmes (collection_id);

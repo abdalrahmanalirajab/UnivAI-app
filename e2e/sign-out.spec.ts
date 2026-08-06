@@ -76,10 +76,8 @@ async function verifyEmail(email: string) {
  * fixed constant). The rest of the journey — sign-up, session, sign-out,
  * navigation, guards — is exercised through the real stack.
  *
- * The programmes/collections tables are not part of the standalone schema;
- * they are created here from the versioned contract in
- * docs/proposed-ddl-collections-documents-programmes.md, the same pattern as
- * e2e/personalized-raise-hand.spec.ts.
+ * collections/documents/programmes come from standalone/schema.sql, which the
+ * standalone runner applies before the suite starts.
  */
 async function seedPreparedSchedule(page: Page, email: string) {
   const pool = new Pool({
@@ -88,36 +86,6 @@ async function seedPreparedSchedule(page: Page, email: string) {
       "postgresql://univai:univai@127.0.0.1:5434/univai_app_standalone",
   });
   try {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS collections (
-        id         SERIAL PRIMARY KEY,
-        student_id TEXT NOT NULL,
-        name       TEXT NOT NULL,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
-      CREATE TABLE IF NOT EXISTS documents (
-        id            SERIAL PRIMARY KEY,
-        collection_id INTEGER NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
-        student_id    TEXT NOT NULL,
-        filename      TEXT NOT NULL,
-        status        TEXT NOT NULL DEFAULT 'pending',
-        error         TEXT,
-        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
-      CREATE TABLE IF NOT EXISTS programmes (
-        id            SERIAL PRIMARY KEY,
-        student_id    TEXT NOT NULL,
-        collection_id INTEGER NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
-        name          TEXT NOT NULL,
-        status        TEXT NOT NULL DEFAULT 'proposed',
-        plan_version  INTEGER NOT NULL DEFAULT 1,
-        plan          JSONB NOT NULL DEFAULT '{}'::jsonb,
-        approved_at   TIMESTAMPTZ,
-        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
-    `);
     const learner = await pool.query<{ studentId: string }>(
       'SELECT "studentId" FROM "user" WHERE email = $1',
       [email]

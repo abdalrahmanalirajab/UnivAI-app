@@ -1,6 +1,10 @@
-# Proposed DDL — collections, documents, programmes
+# DDL — collections, documents, programmes
 
 Style follows `infra/schema.sql` from the parent monorepo.
+
+**Status: shipped.** This DDL is applied by `infra/migrations/004_app_library.sql`
+(version 4, `app_library`, in `core_schema_migrations`) in the parent monorepo,
+and mirrored in this repo's `standalone/schema.sql`. Change all three together.
 
 ```sql
 -- Collections group documents uploaded by a student.

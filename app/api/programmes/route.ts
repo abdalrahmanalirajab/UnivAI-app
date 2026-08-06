@@ -45,6 +45,56 @@ function normalizeFilename(value: string): string {
   return path.basename(value).trim().toLocaleLowerCase();
 }
 
+// Filing words a filename carries that a textbook's prose never does, plus the
+// ordinal suffixes left behind once digits are stripped ("3rd" -> "rd").
+const FILENAME_NOISE = new Set([
+  "lec", "lecture", "lectures", "chapter", "chapters", "ch", "part", "pt",
+  "section", "unit", "week", "day", "vol", "volume", "edition", "ed",
+  "notes", "note", "slides", "slide", "book", "textbook", "draft", "final",
+  "copy", "new", "old", "updated", "revised", "scan", "scanned", "pdf",
+  "st", "nd", "rd", "th",
+]);
+
+/**
+ * Subject areas to retrieve evidence for — the Agent's contract for a seed
+ * query.
+ *
+ * It must be answerable FROM the book, not a question ABOUT the book: the
+ * Agent keeps a passage as evidence only if the passage carries at least a
+ * third of the query's content terms (tools/registry.DEFAULT_MIN_TERM_COVERAGE).
+ * Asking for "Core topics, concepts, prerequisites, and learning sequence in
+ * MySQL_Lec2.pdf" spends seven of its eight terms on vocabulary no textbook
+ * uses, so a real passage on MySQL transactions covers 1/8 of it and every
+ * seed is refused with "Retrieved passages do not actually cover this
+ * question".
+ *
+ * So seed with the subject the filename names and nothing else: "MySQL_Lec2.pdf"
+ * asks about "MySQL". Broad is correct here — we are asking what the book
+ * covers, and hybrid search plus reranking picks the representative passages.
+ */
+function seedQueryFor(filename: string): string | null {
+  const stem = path.basename(filename).replace(/\.[^.]+$/, "");
+  const words = stem
+    .split(/[^\p{L}\p{N}]+/u)
+    // Digits number the file, not the subject ("Lec2", "week1", "3rd"), and
+    // every extra term raises the coverage bar the passages have to clear.
+    // Stripped rather than dropped, so "Python3" still asks about Python.
+    .map((word) => word.replace(/\p{N}+/gu, ""))
+    .filter((word) => word.length > 1 && !FILENAME_NOISE.has(word.toLocaleLowerCase()));
+  // A filename that is all numbering ("Lec2.pdf") names no subject. Sending
+  // the stem raw would only earn a refusal, so let the caller fall back.
+  return words.length > 0 ? words.join(" ") : null;
+}
+
+function buildSeedQueries(documents: Document[]): string[] {
+  const seeds = documents.slice(0, 8).map((document) => seedQueryFor(document.filename));
+  const usable = [...new Set(seeds.filter((seed): seed is string => seed !== null))];
+  // Every filename was pure numbering. The Agent falls back to the programme
+  // objective when it receives no seeds, which is the better guess than a
+  // query we already know cannot be grounded.
+  return usable;
+}
+
 function appPlan(agentPlan: AgentPlan, documents: Document[]): ProgrammePlanV1 {
   const topics = agentPlan.semesters.flatMap((semester) => semester.topics);
   const courses = topics.map((topic) => ({
@@ -146,9 +196,7 @@ export async function POST(request: NextRequest) {
   }
 
   const title = `${ownership.collection.name} Curriculum`;
-  const seedQueries = readyDocuments.slice(0, 8).map((document) =>
-    `Core topics, concepts, prerequisites, and learning sequence in ${document.filename}`
-  );
+  const seedQueries = buildSeedQueries(readyDocuments);
   const result = await runPython(
     "services/rag-tools/rag_plan.py",
     [title, String(collectionId), gate.studentId, ...seedQueries],
