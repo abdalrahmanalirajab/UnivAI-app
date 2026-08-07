@@ -105,6 +105,9 @@ export default function LectureRoom({ lectureId }: Props) {
   // The mic starts MUTED: a student should never be broadcast without asking for it,
   // and an open mic on join would let a cough interrupt the lecture immediately.
   const [muted, setMuted] = useState(true);
+  // No microphone was captured (permission denied, or no input device). The
+  // lecture still plays; only raising a hand to ask is unavailable.
+  const [micBlocked, setMicBlocked] = useState(false);
   const [agentState, setAgentState] = useState<AgentState>("connecting");
   const [slide, setSlide] = useState(1);
   const [week, setWeek] = useState<number | null>(null);
@@ -205,15 +208,24 @@ export default function LectureRoom({ lectureId }: Props) {
 
       await room.connect(data.url, data.token);
 
-      const track = await createLocalAudioTrack({
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-      });
-      micRef.current = track;
-      setMic(track);
-      await track.mute();            // published, but silent until the student unmutes
-      await room.localParticipant.publishTrack(track);
+      // A microphone is what lets a student ASK; it is not what lets them
+      // attend. Denying the permission prompt, or having no input device at
+      // all, used to throw here and drop the learner on "Could not join" —
+      // locked out of a lecture they only needed to watch and listen to. Failing
+      // to capture is therefore a downgrade to listen-only, never a failed join.
+      try {
+        const track = await createLocalAudioTrack({
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        });
+        micRef.current = track;
+        setMic(track);
+        await track.mute();          // published, but silent until the student unmutes
+        await room.localParticipant.publishTrack(track);
+      } catch {
+        setMicBlocked(true);
+      }
 
       setConnected(true);
       setAgentState("lecturing");
@@ -542,7 +554,7 @@ export default function LectureRoom({ lectureId }: Props) {
                   color="secondary"
                   startIcon={<PanToolAltIcon />}
                   onClick={raiseHand}
-                  disabled={!connected || hand !== "idle"}
+                  disabled={!connected || micBlocked || hand !== "idle"}
                 >
                   {hand === "raised"
                     ? "Hand raised…"
@@ -557,7 +569,7 @@ export default function LectureRoom({ lectureId }: Props) {
                   color={muted ? "error" : "primary"}
                   startIcon={muted ? <MicOffIcon /> : <MicIcon />}
                   onClick={toggleMute}
-                  disabled={!connected || (muted && hand !== "acked")}
+                  disabled={!connected || micBlocked || (muted && hand !== "acked")}
                 >
                   {muted ? "Unmute microphone" : "Mute microphone"}
                 </Button>
@@ -574,13 +586,15 @@ export default function LectureRoom({ lectureId }: Props) {
               </Grid>
             </Grid>
             <Typography variant="body2" color="text.secondary">
-              {hand === "acked"
-                ? "The lecturer asked for you — unmute and ask your question."
-                : hand === "raised"
-                  ? "Hand raised. The lecturer will finish the sentence and ask you."
-                  : muted
-                    ? "Raise your hand to ask a question — the unmute button unlocks when the lecturer calls on you."
-                    : "Ask your question — when you stop talking you can review what we heard."}
+              {micBlocked
+                ? "Listening only — no microphone is available, so you can watch and hear the lecture but not ask aloud. Allow microphone access and rejoin to raise your hand."
+                : hand === "acked"
+                  ? "The lecturer asked for you — unmute and ask your question."
+                  : hand === "raised"
+                    ? "Hand raised. The lecturer will finish the sentence and ask you."
+                    : muted
+                      ? "Raise your hand to ask a question — the unmute button unlocks when the lecturer calls on you."
+                      : "Ask your question — when you stop talking you can review what we heard."}
             </Typography>
           </Stack>
         </CardContent>
