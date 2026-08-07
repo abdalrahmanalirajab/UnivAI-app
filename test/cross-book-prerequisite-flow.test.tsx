@@ -15,11 +15,13 @@ import {
 import { SEVEN_WEEK_PLAN_V1 } from "@/test/fixtures/programme-plans-v1";
 import type { Programme } from "@/lib/programmes";
 
-const { mockQueryOne, mockApproveProgramme, mockGate } = vi.hoisted(() => ({
-  mockQueryOne: vi.fn(),
-  mockApproveProgramme: vi.fn(),
-  mockGate: vi.fn(),
-}));
+const { mockQueryOne, mockApproveProgramme, mockGate, mockStartApprovedCourseBuild } =
+  vi.hoisted(() => ({
+    mockQueryOne: vi.fn(),
+    mockApproveProgramme: vi.fn(),
+    mockGate: vi.fn(),
+    mockStartApprovedCourseBuild: vi.fn().mockResolvedValue([]),
+  }));
 
 /* ------------------------------------------------------------------ */
 /*  Approval-block tests — every Phase 1 fixture against the rules     */
@@ -226,6 +228,11 @@ describe("tamper test — session-derived authorization wins", () => {
     vi.clearAllMocks();
     vi.doMock("@/lib/session", () => ({ requireUserApi: mockGate }));
     vi.doMock("@/lib/programmes", () => ({ approveProgramme: mockApproveProgramme }));
+    // Approval starts the real course build. These tests are about which
+    // identity the route trusts, so the build is stubbed out entirely.
+    vi.doMock("@/lib/generation", () => ({
+      startApprovedCourseBuild: mockStartApprovedCourseBuild,
+    }));
   });
 
   it("rejects tampered ownership: the session's studentId scopes the query, not the body's", async () => {

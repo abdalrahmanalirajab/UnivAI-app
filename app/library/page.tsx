@@ -179,6 +179,11 @@ export default function CollectionsPage() {
               </AlertTitle>
               {readiness.message}
             </Alert>
+          ) : readiness.awaitingApproval ? (
+            <Alert severity="info">
+              <AlertTitle>Course plan ready — approve to build it</AlertTitle>
+              {readiness.message}
+            </Alert>
           ) : readiness.ready ? (
             <Alert severity="success">
               <AlertTitle>Ready to build</AlertTitle>

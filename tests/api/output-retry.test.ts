@@ -56,7 +56,7 @@ describe("POST /api/outputs/[outputId]/retry", () => {
     expect(mockSpawnGeneration).toHaveBeenCalledWith(
       path.join("/repo", "uploads", STUDENT_ID, "ai-textbook.pdf"),
       42,
-      false,
+      "full",
     );
   });
 

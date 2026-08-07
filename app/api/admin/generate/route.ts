@@ -69,7 +69,11 @@ export async function POST(request: NextRequest) {
       book.id,
     ]
   );
-  spawnGeneration(path.join(REPO_ROOT, "uploads", sid, book.filename), book.id, mode === "quizzes");
+  spawnGeneration(
+    path.join(REPO_ROOT, "uploads", sid, book.filename),
+    book.id,
+    mode === "quizzes" ? "quizzes" : "full",
+  );
 
   return Response.json({ ok: true, size, mode });
 }

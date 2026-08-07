@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { createHash } from "crypto";
 import { promises as fs } from "fs";
 import path from "path";
 import { query, queryOne } from "@/lib/db";
@@ -8,13 +9,16 @@ import {
   addDocument,
   claimDocumentUpload,
   documentStorageKey,
+  findDocumentByContent,
   getDocument,
   getOrCreateCollection,
   getOwnedCollection,
+  setDocumentContentHash,
   updateDocumentStatus,
   type Document,
 } from "@/lib/collections";
 import { spawnGeneration } from "@/lib/generation";
+import { getProgrammeForCollection } from "@/lib/programmes";
 import { requireUserApi, requireVerifiedUserApi } from "@/lib/session";
 import { env } from "@/lib/env";
 import { isStandalone } from "@/lib/runtime";
@@ -61,6 +65,14 @@ function positiveFormId(value: FormDataEntryValue | null): number | null {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
+function sha256Hex(bytes: Buffer): string {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
+function readFormString(value: FormDataEntryValue | null): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
 function uploadPath(studentId: string, storageKey: string): string {
   return path.join(REPO_ROOT, "uploads", studentId, ...storageKey.split("/"));
 }
@@ -86,7 +98,34 @@ export async function GET() {
   });
 }
 
+/** Where a claimed document is parked, so the wrapper below can release it. */
+type UploadClaim = { current: { documentId: number; studentId: string } | null };
+
 export async function POST(request: NextRequest) {
+  // Claiming a document parks it in 'uploading', and only this request moves it
+  // on. Every *expected* failure below sets a terminal status, but an
+  // unexpected throw — a bad query, a helper that blows up — used to escape
+  // with the claim still held. Nothing expires an in-flight upload, so that
+  // book became permanently un-uploadable: every retry answered "This book is
+  // already being uploaded for this account." Fail the claim explicitly, then
+  // rethrow so the error still surfaces as a 500 and in the log.
+  const claim: UploadClaim = { current: null };
+  try {
+    return await runUpload(request, claim);
+  } catch (error) {
+    if (claim.current) {
+      await updateDocumentStatus(
+        claim.current.documentId,
+        claim.current.studentId,
+        "failed",
+        "The upload stopped unexpectedly. Try again.",
+      ).catch(() => {});
+    }
+    throw error;
+  }
+}
+
+async function runUpload(request: NextRequest, claim: UploadClaim) {
   // Authorization must run before multipart parsing or any upload side effect.
   const gate = await requireVerifiedUserApi();
   if (gate instanceof Response) return gate;
@@ -130,6 +169,21 @@ export async function POST(request: NextRequest) {
 
   let safeName = file?.name.replace(/[^\w.\-]+/g, "_") ?? "";
 
+  // The byte identity of this book, computed HERE from the bytes we actually
+  // received. The client sends its own hash so the picker can react before the
+  // upload finishes, but only this value is ever stored or matched against —
+  // a trusted client hash would let anyone name someone else's book and be
+  // handed it.
+  let contentSha256 = bytes ? sha256Hex(bytes) : null;
+  const clientSha256 = readFormString(form?.get("clientSha256") ?? null);
+  if (contentSha256 && clientSha256 && clientSha256 !== contentSha256) {
+    // Not fatal — a proxy may have re-encoded, or the file changed on disk
+    // between picking and sending. The server's answer simply wins.
+    console.warn(
+      `[upload] client hash disagreed with the received bytes for ${safeName}; using the server hash`,
+    );
+  }
+
   let document: Document;
   let collectionId: number;
 
@@ -165,6 +219,24 @@ export async function POST(request: NextRequest) {
       collectionId = collection.collection.id;
     }
 
+    // Same bytes, any filename: this learner already has this book. Renaming a
+    // PDF used to buy a whole second course built from identical material.
+    if (contentSha256) {
+      const twin = await findDocumentByContent(sid, contentSha256);
+      if (twin && twin.id !== requestedDocumentId) {
+        return Response.json(
+          {
+            error: `Same as "${twin.filename}" — you have already uploaded this book.`,
+            code: "DUPLICATE_BOOK",
+            documentId: twin.id,
+            collectionId: twin.collection_id,
+            duplicateOf: { documentId: twin.id, filename: twin.filename },
+          },
+          { status: 409 },
+        );
+      }
+    }
+
     const attached = await addDocument(collectionId, sid, safeName);
     if (!attached.ok) {
       return Response.json(
@@ -186,6 +258,29 @@ export async function POST(request: NextRequest) {
       `SELECT ${BOOK_COLUMNS} FROM books WHERE student_id = $1 AND filename = $2 ORDER BY id DESC LIMIT 1`,
       [sid, storageKey],
     );
+    // Nothing past the chapter plan may run until the learner has approved the
+    // curriculum built from that plan — not the first pass, and not a resume.
+    // Resuming is exactly how an unapproved course used to start building: the
+    // library offers the button, and clicking it went straight to the
+    // lectures.
+    if (book && ["awaiting_approval", "failed", "partial_failed", "partial", "generating"].includes(book.status)) {
+      const programme = await getProgrammeForCollection(collectionId, sid);
+      if (programme?.status !== "approved") {
+        return Response.json(
+          {
+            error: programme
+              ? "Approve your curriculum before the course is built."
+              : "Build and approve your curriculum before the course is built.",
+            code: "CURRICULUM_NOT_APPROVED",
+            documentId: document.id,
+            collectionId,
+            bookId: book.id,
+            programmeId: programme?.id ?? null,
+          },
+          { status: 409 },
+        );
+      }
+    }
     if (book && ["failed", "partial_failed", "partial", "generating"].includes(book.status)) {
       const resumed = await queryOne<Book>(
         `UPDATE books SET status = 'generating', generation_stage = 'resuming',
@@ -259,6 +354,7 @@ export async function POST(request: NextRequest) {
     );
   }
   document = claimed;
+  claim.current = { documentId: document.id, studentId: sid };
 
   const storageKey = documentStorageKey(collectionId, document.id, document.filename);
   const destination = uploadPath(sid, storageKey);
@@ -278,6 +374,13 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // A retry sends no file and re-reads the stored PDF, so this is the first
+  // point at which the bytes are certain to be in hand either way.
+  contentSha256 ??= bytes ? sha256Hex(bytes) : null;
+  if (contentSha256) {
+    await setDocumentContentHash(document.id, sid, contentSha256);
+  }
+
   const uploadedAt = await now();
   let book = requestedBookId
     ? await queryOne<Book>(
@@ -294,15 +397,19 @@ export async function POST(request: NextRequest) {
   if (book) {
     await query(
       `UPDATE books SET status = 'ingesting', error = NULL,
-          progress = 'Preparing your book…'
+          progress = 'Preparing your book…',
+          source_sha256 = COALESCE($3, source_sha256)
        WHERE id = $1 AND student_id = $2`,
-      [book.id, sid],
+      [book.id, sid, contentSha256],
     );
   } else {
+    // source_sha256 is set HERE, not left to the generator: it is what lets a
+    // later learner's build find this course and adopt it instead of paying
+    // for the same book to be written twice.
     const created = await queryOne<{ id: number }>(
-      `INSERT INTO books (student_id, filename, status, uploaded_at, progress)
-       VALUES ($1, $2, 'ingesting', $3, 'Preparing your book…') RETURNING id`,
-      [sid, storageKey, uploadedAt],
+      `INSERT INTO books (student_id, filename, status, uploaded_at, progress, source_sha256)
+       VALUES ($1, $2, 'ingesting', $3, 'Preparing your book…', $4) RETURNING id`,
+      [sid, storageKey, uploadedAt, contentSha256],
     );
     book = created
       ? await queryOne<Book>(`SELECT ${BOOK_COLUMNS} FROM books WHERE id = $1 AND student_id = $2`, [
@@ -387,7 +494,13 @@ export async function POST(request: NextRequest) {
     [safeName, bookId]
   );
   const readyDocument = await updateDocumentStatus(document.id, sid, "ready");
-  spawnGeneration(destination, bookId);
+  // Chapters only, and then stop: the learner approves a curriculum built from
+  // that plan, and approval is what spawns the lectures, quizzes, slides and
+  // voice. The exception is a book added to a collection already approved —
+  // there is nothing left to wait for, so it builds straight through.
+  const programme = await getProgrammeForCollection(collectionId, sid);
+  const approved = programme?.status === "approved";
+  spawnGeneration(destination, bookId, approved ? "full" : "plan");
 
   return Response.json({
     book: publicBook(await queryOne<Book>(`SELECT ${BOOK_COLUMNS} FROM books WHERE id = $1`, [bookId])),
@@ -396,6 +509,7 @@ export async function POST(request: NextRequest) {
     collectionId,
     bookId,
     ragConfigured: true,
+    awaitingApproval: !approved,
     message: payload.message,
   });
 }

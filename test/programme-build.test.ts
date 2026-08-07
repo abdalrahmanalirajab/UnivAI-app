@@ -256,6 +256,23 @@ describe("POST /api/programmes", () => {
     expect(mocks.runPython).toHaveBeenCalledTimes(1);
   });
 
+  it("builds from the chapter plan alone, before any lecture exists", async () => {
+    // The deadlock this guards: lectures are only written once the curriculum
+    // is approved, so requiring a published week here left the learner unable
+    // to build the curriculum that would have unblocked the lectures.
+    mocks.query.mockResolvedValue([{
+      filename: "collections/5/11/Lecturer_1.pdf",
+      status: "awaiting_approval",
+      error: null,
+      generation_ready_weeks: 0,
+    }]);
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(201);
+    expect(mocks.runPython).toHaveBeenCalledTimes(1);
+  });
+
   it("waits only until the first usable week has been published", async () => {
     mocks.query.mockResolvedValue([{
       filename: "collections/5/11/Lecturer_1.pdf",
