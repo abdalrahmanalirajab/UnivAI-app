@@ -301,7 +301,17 @@ describe("POST /api/lecture/[id]/token — personalized signed metadata", () => 
     const swapped = `${header}.${Buffer.from(JSON.stringify(decoded)).toString("base64url")}.${signature}`;
     await expect(VERIFIER.verify(swapped)).rejects.toThrow();
 
-    const corruptedSignature = `${header}.${payload}.${signature.replace(/.$/, signature.endsWith("a") ? "b" : "a")}`;
+    // Corrupt the signature BYTES, not a base64url character. A 32-byte
+    // signature is 43 base64url chars and the last one carries only 4
+    // significant bits — the other 2 are padding — so swapping it between
+    // characters that share those 4 bits ("a" and "b" among them) decodes to
+    // the identical signature. Flipping the last character therefore left the
+    // token genuinely valid for 6.3% of tokens, and this test failed roughly
+    // one run in sixteen.
+    const signatureBytes = Buffer.from(signature, "base64url");
+    signatureBytes[0] ^= 0xff;
+    const corruptedSignature = `${header}.${payload}.${signatureBytes.toString("base64url")}`;
+    expect(corruptedSignature).not.toBe(data.token);
     await expect(VERIFIER.verify(corruptedSignature)).rejects.toThrow();
   });
 
