@@ -108,6 +108,9 @@ describe("getSections — sections only after their lecture", () => {
         return Array.from({ length: 7 }, (_, index) => ({ week: index + 1 }));
       }
       if (text.includes("SELECT l.id, l.week")) return lectureRows(7);
+      // linkGeneratedArtifacts — attaches each week's generated files to its
+      // lecture row once ensureSchedule has created it.
+      if (text.includes("UPDATE lectures SET") && text.includes("artifact_key")) return [];
       throw new Error(`unexpected query: ${text}`);
     });
   });
@@ -167,6 +170,9 @@ describe("getSections — sections only after their lecture", () => {
         return Array.from({ length: 7 }, (_, index) => ({ week: index + 1 }));
       }
       if (text.includes("SELECT l.id, l.week")) return lectureRows(7);
+      // linkGeneratedArtifacts — attaches each week's generated files to its
+      // lecture row once ensureSchedule has created it.
+      if (text.includes("UPDATE lectures SET") && text.includes("artifact_key")) return [];
       throw new Error(`unexpected query: ${text}`);
     });
     const { getSections } = await import("@/lib/lectures");
@@ -346,6 +352,9 @@ describe("api routes — real backend behavior", () => {
       if (sql.includes("a.status")) return SESSION_ATTENDANCE_ROWS;
       if (sql.includes("SELECT status, error FROM books")) return [];
       if (sql.includes("MIN(starts_at)")) return [{ starts_at: STARTED_FIRST_START }];
+      // linkGeneratedArtifacts — attaches each week's generated files to its
+      // lecture row once ensureSchedule has created it.
+      if (sql.includes("UPDATE lectures SET") && sql.includes("artifact_key")) return [];
       throw new Error(`unexpected query: ${sql}`);
     });
   });
@@ -523,7 +532,11 @@ describe("api routes — real backend behavior", () => {
       expect(await res.json()).toEqual({ ok: true });
 
       const deletes = mockQuery.mock.calls.filter(([sql]) => String(sql).startsWith("DELETE"));
-      const updates = mockQuery.mock.calls.filter(([sql]) => String(sql).startsWith("UPDATE"));
+      // Only the reschedule's own writes: ensureSchedule also links each
+      // week's generated artifacts, which is an UPDATE that moves no lecture.
+      const updates = mockQuery.mock.calls.filter(
+        ([sql]) => String(sql).startsWith("UPDATE") && String(sql).includes("starts_at"),
+      );
       expect(deletes).toHaveLength(3); // attendance, grades, qa_log wiped
       expect(updates).toHaveLength(7); // every lecture moved to the fresh cadence
     } finally {

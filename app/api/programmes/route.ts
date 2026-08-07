@@ -254,14 +254,49 @@ function appPlan(
   };
 }
 
+/**
+ * The curriculum for one collection, or null when none has been built.
+ *
+ * The library needs this to say what its button actually does: "Build" only
+ * makes sense before one exists, and once it does, pressing it opens the
+ * workspace rather than rebuilding anything.
+ *
+ * Scoped by the session's studentId, never by anything the client sends.
+ */
+export async function GET(request: NextRequest) {
+  const gate = await requireUserApi();
+  if (gate instanceof Response) return gate;
+
+  const collectionId = Number(request.nextUrl.searchParams.get("collectionId"));
+  if (!Number.isInteger(collectionId) || collectionId <= 0) {
+    return Response.json({ error: "A valid collectionId is required." }, { status: 400 });
+  }
+
+  const ownership = await getOwnedCollection(collectionId, gate.studentId);
+  if (!ownership.owned) {
+    return Response.json(
+      { error: ownership.exists ? "You do not have access to this collection." : "Collection not found." },
+      { status: ownership.exists ? 403 : 404 },
+    );
+  }
+
+  const programme = await getProgrammeForCollection(collectionId, gate.studentId);
+  return Response.json({ programme: programme ?? null });
+}
+
 export async function POST(request: NextRequest) {
   const gate = await requireUserApi();
   if (gate instanceof Response) return gate;
 
   let collectionId: number;
+  // Set by the client only after the learner confirms replacing a curriculum
+  // they have already shaped. Never an authorization signal — it can only cost
+  // the caller their own unapproved edits.
+  let rebuildEdited = false;
   try {
     const body = await request.json();
     collectionId = Number(body.collectionId);
+    rebuildEdited = body.rebuildEdited === true;
   } catch {
     return Response.json({ error: "Invalid JSON body." }, { status: 400 });
   }
@@ -302,13 +337,32 @@ export async function POST(request: NextRequest) {
       { status: 409 },
     );
   }
+  // A plan past version 1 has been shaped by the learner — renamed, reordered,
+  // merged. Rebuilding throws that away, so it takes an explicit confirmation.
+  //
+  // The old guard for this compared course IDs against the ready documents,
+  // which held for renames and reorders (the IDs survive) but not for a merge:
+  // mergeCourses mints "merged_book-7_book-8", the comparison failed, and the
+  // route rebuilt over the learner's merge without a word. Asking "has this
+  // been edited?" covers every edit operation, including ones added later.
+  if (existing && existing.plan_version > 1 && !rebuildEdited) {
+    return Response.json(
+      {
+        error: "This curriculum has been edited. Rebuilding replaces those changes.",
+        code: "CURRICULUM_EDITED",
+        programme: existing,
+      },
+      { status: 409 },
+    );
+  }
+
   const canonicalCourseIds = new Set(readyDocuments.map((document) => `book-${document.id}`));
   const existingIsCanonical = Boolean(
     existing &&
     existing.plan.courses.length === canonicalCourseIds.size &&
     existing.plan.courses.every((course) => canonicalCourseIds.has(course.id))
   );
-  if (existingIsCanonical) return Response.json({ programme: existing });
+  if (existingIsCanonical && !rebuildEdited) return Response.json({ programme: existing });
 
   const storageKeys = readyDocuments.map((document) =>
     documentStorageKey(collectionId, document.id, document.filename)

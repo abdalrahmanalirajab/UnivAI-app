@@ -312,6 +312,43 @@ export async function approvedPlanVersion(sid: string): Promise<number | null> {
 }
 
 /** Seed one student's schedule from the approved plan: a lecture a week from tomorrow 10:00 virtual. */
+/**
+ * Point each lecture row at the generated files for its week.
+ *
+ * The generator registers every artifact as it writes it and then stamps the
+ * key onto the lecture row — but that row does not exist yet. Lecture rows are
+ * created HERE, on the first schedule read after approval, so the generator's
+ * UPDATE matched nothing and every lecture kept NULL keys. Nothing looked
+ * broken because readScript and the quiz sync both fall back to the
+ * conventional lectures/<sid>/week-N/ path, so the whole content_artifacts
+ * indirection was quietly dead.
+ *
+ * Matching on storage_ref is safe because an artifact key names its owner, so
+ * lectures/<sid>/... can only belong to this learner — two learners holding a
+ * byte-identical course still get one row each.
+ *
+ * Idempotent: COALESCE keeps a key that is already set.
+ */
+async function linkGeneratedArtifacts(sid: string): Promise<void> {
+  await query(
+    `UPDATE lectures SET
+       script_artifact_key = COALESCE(script_artifact_key, (
+         SELECT content_key FROM content_artifacts
+          WHERE storage_ref = 'lectures/' || $1 || '/week-' || week || '/script.json'
+          ORDER BY updated_at DESC LIMIT 1)),
+       slides_artifact_key = COALESCE(slides_artifact_key, (
+         SELECT content_key FROM content_artifacts
+          WHERE storage_ref = 'lectures/' || $1 || '/week-' || week || '/slides.md'
+          ORDER BY updated_at DESC LIMIT 1)),
+       quiz_artifact_key = COALESCE(quiz_artifact_key, (
+         SELECT content_key FROM content_artifacts
+          WHERE storage_ref = 'lectures/' || $1 || '/week-' || week || '/quiz.json'
+          ORDER BY updated_at DESC LIMIT 1))
+     WHERE student_id = $1`,
+    [sid],
+  );
+}
+
 export async function ensureSchedule(sid: string): Promise<ApprovedSchedulePlan | null> {
   const approved = await approvedSchedulePlan(sid);
   const rows = await query<{ week: number }>(
@@ -385,6 +422,7 @@ export async function ensureSchedule(sid: string): Promise<ApprovedSchedulePlan 
         } satisfies ScheduleBinding),
       );
     }
+    await linkGeneratedArtifacts(sid);
     return approved;
   }
 
@@ -414,6 +452,7 @@ export async function ensureSchedule(sid: string): Promise<ApprovedSchedulePlan 
       weekCount: approved.weekCount,
     } satisfies ScheduleBinding),
   );
+  await linkGeneratedArtifacts(sid);
   return approved;
 }
 
