@@ -81,5 +81,6 @@ npx next dev -p 3100      # or: make app  (from the parent repo)
 | `settings.ts` | the key/value admin settings table |
 | `env.ts`, `time.ts` | env access, time formatting |
 
-Slidev decks are served static from `public/slides/week-N/`
-(built by `scripts/build-slides.mjs`).
+The lecture room embeds a real Slidev deck. Its canonical slide content comes
+from PostgreSQL; generation compiles only a disposable `.cache/slidev/<uuid>/`
+render and the authenticated presentation API serves it.

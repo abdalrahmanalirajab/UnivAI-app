@@ -80,6 +80,7 @@ function lectureRows(weeks: number) {
     const week = index + 1;
     return {
       id: week,
+      public_id: `11111111-1111-4111-8${String(week).padStart(3, "0")}-111111111111`,
       week,
       title: `Week ${week}`,
       starts_at: new Date(startsAt),
@@ -87,6 +88,14 @@ function lectureRows(weeks: number) {
       completed_at: null,
     };
   });
+}
+
+function storedSectionRows() {
+  return SECTION_PACKS_V1.map((pack) => ({
+    section_pack_id: pack.sections[0].id,
+    week: pack.week,
+    pack_payload: { title: pack.sections[0].title, total_minutes: 45 },
+  }));
 }
 
 /* ------------------------------------------------------------------ */
@@ -104,27 +113,29 @@ describe("getSections — sections only after their lecture", () => {
       if (text.includes("SELECT id, plan_version, plan FROM programmes")) {
         return [{ id: 1, plan_version: 1, plan: APPROVED_PLAN }];
       }
+      if (text.includes("FROM section_packs")) return storedSectionRows();
       if (text.includes("SELECT week FROM lectures")) {
         return Array.from({ length: 7 }, (_, index) => ({ week: index + 1 }));
       }
-      if (text.includes("SELECT l.id, l.week")) return lectureRows(7);
+      if (text.includes("SELECT la.script_payload")) return [];
+      if (text.includes("SELECT l.id, l.public_id")) return lectureRows(7);
       // linkGeneratedArtifacts — attaches each week's generated files to its
       // lecture row once ensureSchedule has created it.
-      if (text.includes("UPDATE lectures SET") && text.includes("artifact_key")) return [];
+      if (text.includes("WITH latest AS")) return [];
       throw new Error(`unexpected query: ${text}`);
     });
   });
 
-  it("schedules one practical section every week and preserves generated packs", async () => {
+  it("schedules only grounded generated packs", async () => {
     const { getSections } = await import("@/lib/lectures");
     const sections = await getSections("S-2026-000001");
 
-    expect(sections).toHaveLength(7);
-    expect(sections.map((s) => s.week)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(sections).toHaveLength(2);
+    expect(sections.map((s) => s.week)).toEqual([1, 5]);
     expect(sections.find((s) => s.week === 1)?.title).toBe("Introduction to AI — Tutorial");
     expect(sections.find((s) => s.week === 5)?.title).toBe("Calculus I — Tutorial");
-    expect(sections.find((s) => s.week === 2)?.title).toBe("Practical — Week 2");
-    expect(sections.every((s) => s.durationMinutes >= 30 && s.durationMinutes <= 60)).toBe(true);
+    expect(sections.find((s) => s.week === 2)).toBeUndefined();
+    expect(sections.every((s) => s.durationMinutes >= 30 && s.durationMinutes <= 120)).toBe(true);
   });
 
   it("types sections distinctly from lectures via session_type", async () => {
@@ -160,26 +171,27 @@ describe("getSections — sections only after their lecture", () => {
     });
   });
 
-  it("uses the canonical 45-minute practical when detailed SectionPacks are absent", async () => {
+  it("does not invent a placeholder when generated SectionPacks are absent", async () => {
     mockQuery.mockImplementation(async (sql) => {
       const text = String(sql);
       if (text.includes("SELECT id, plan_version, plan FROM programmes")) {
         return [{ id: 1, plan_version: 1, plan: SEVEN_WEEK_PLAN_V1 }];
       }
+      if (text.includes("FROM section_packs")) return [];
       if (text.includes("SELECT week FROM lectures")) {
         return Array.from({ length: 7 }, (_, index) => ({ week: index + 1 }));
       }
-      if (text.includes("SELECT l.id, l.week")) return lectureRows(7);
+      if (text.includes("SELECT la.script_payload")) return [];
+      if (text.includes("SELECT l.id, l.public_id")) return lectureRows(7);
       // linkGeneratedArtifacts — attaches each week's generated files to its
       // lecture row once ensureSchedule has created it.
-      if (text.includes("UPDATE lectures SET") && text.includes("artifact_key")) return [];
+      if (text.includes("WITH latest AS")) return [];
       throw new Error(`unexpected query: ${text}`);
     });
     const { getSections } = await import("@/lib/lectures");
 
     const sections = await getSections("S-2026-000001");
-    expect(sections).toHaveLength(7);
-    expect(sections.every((section) => section.durationMinutes === 45)).toBe(true);
+    expect(sections).toHaveLength(0);
   });
 });
 
@@ -298,6 +310,7 @@ describe("schedule page — section placement and typing", () => {
 const WEEK_ROWS = Array.from({ length: 7 }, (_, i) => ({ week: i + 1 }));
 const SESSION_LECTURE_ROWS = WEEK_ROWS.map((row, index) => ({
   id: row.week,
+  public_id: `11111111-1111-4111-8${String(row.week).padStart(3, "0")}-111111111111`,
   week: row.week,
   title: `Week ${row.week}`,
   starts_at: new Date(WEEK_STARTS[index]),
@@ -306,6 +319,7 @@ const SESSION_LECTURE_ROWS = WEEK_ROWS.map((row, index) => ({
 }));
 const SESSION_ATTENDANCE_ROWS = WEEK_ROWS.map((row, index) => ({
   id: row.week,
+  public_id: `11111111-1111-4111-8${String(row.week).padStart(3, "0")}-111111111111`,
   week: row.week,
   title: `Week ${row.week}`,
   starts_at: new Date(WEEK_STARTS[index]),
@@ -347,14 +361,16 @@ describe("api routes — real backend behavior", () => {
       if (sql.includes("SELECT id, plan_version, plan FROM programmes")) {
         return [{ id: 1, plan_version: 1, plan: APPROVED_PLAN }];
       }
+      if (sql.includes("FROM section_packs")) return storedSectionRows();
       if (sql.includes("SELECT week FROM lectures")) return WEEK_ROWS;
+      if (sql.includes("SELECT la.script_payload")) return [];
       if (sql.includes("completed_at")) return SESSION_LECTURE_ROWS;
       if (sql.includes("a.status")) return SESSION_ATTENDANCE_ROWS;
       if (sql.includes("SELECT status, error FROM books")) return [];
       if (sql.includes("MIN(starts_at)")) return [{ starts_at: STARTED_FIRST_START }];
       // linkGeneratedArtifacts — attaches each week's generated files to its
       // lecture row once ensureSchedule has created it.
-      if (sql.includes("UPDATE lectures SET") && sql.includes("artifact_key")) return [];
+      if (sql.includes("WITH latest AS")) return [];
       throw new Error(`unexpected query: ${sql}`);
     });
   });
@@ -377,7 +393,7 @@ describe("api routes — real backend behavior", () => {
 
     const a = await first.json();
     const b = await second.json();
-    expect(a.lectures).toHaveLength(14);
+    expect(a.lectures).toHaveLength(9);
     expect(a).toEqual(b);
     expect(a.planVersion).toBe(1);
     expect(
@@ -391,7 +407,7 @@ describe("api routes — real backend behavior", () => {
       a.lectures
         .filter((record: { session_type: string }) => record.session_type === "section")
         .map((section: { week: number }) => section.week),
-    ).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    ).toEqual([1, 5]);
   });
 
   it("an approved plan with unusable data is rejected by the real corruption check", async () => {
@@ -420,10 +436,12 @@ describe("api routes — real backend behavior", () => {
       if (sql.includes("SELECT id, plan_version, plan FROM programmes")) {
         return [{ id: 1, plan_version: 1, plan: APPROVED_PLAN }];
       }
+      if (sql.includes("FROM section_packs")) return storedSectionRows().filter((row) => row.week <= 5);
       if (sql.includes("SELECT week FROM lectures")) return WEEK_ROWS;
       if (sql.includes("MIN(starts_at)")) {
         return [{ starts_at: new Date("2099-01-01T10:00:00.000Z") }];
       }
+      if (sql.includes("WITH latest AS")) return [];
       if (sql.startsWith("DELETE") || sql.startsWith("UPDATE")) return [];
       throw new Error(`unexpected query: ${sql}`);
     });
@@ -515,7 +533,9 @@ describe("api routes — real backend behavior", () => {
           return [{ starts_at: new Date("2099-01-01T10:00:00.000Z") }];
         if (sql.includes("SELECT id, plan_version, plan FROM programmes"))
           return [{ id: 1, plan_version: 1, plan: APPROVED_PLAN }];
+        if (sql.includes("FROM section_packs")) return storedSectionRows();
         if (sql.includes("SELECT week FROM lectures")) return WEEK_ROWS;
+        if (sql.includes("WITH latest AS")) return [];
         if (String(sql).startsWith("DELETE")) return [];
         if (String(sql).startsWith("UPDATE")) return [];
         throw new Error(`unexpected query: ${sql}`);

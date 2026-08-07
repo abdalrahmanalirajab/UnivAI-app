@@ -36,6 +36,11 @@ const state = vi.hoisted(() => ({
   mongo: {} as Record<string, Array<Record<string, unknown>>>,
 }));
 
+vi.mock("@/lib/env", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/env")>();
+  return { env: { ...actual.env, EXAM_CALLBACK_SECRET: "unit-test-callback-secret" } };
+});
+
 vi.mock("@/lib/db", () => {
   async function query(text: string, params: unknown[] = []): Promise<unknown[]> {
     state.queries.push({ text, params });
@@ -104,6 +109,7 @@ vi.mock("@/lib/db", () => {
       return state.grades.filter((row) => row.student_id === params[0]);
     }
     if (/SELECT title, filename FROM books/.test(text)) return [];
+    if (/SELECT semester_plan FROM books/.test(text)) return [];
     throw new Error(`unhandled SQL in fake db: ${text.slice(0, 100)}`);
   }
   return { query, queryOne: async (text: string, params: unknown[]) => (await query(text, params))[0] ?? null };
@@ -123,7 +129,6 @@ vi.mock("@/lib/session", () => ({
 }));
 
 vi.mock("@/lib/lectures", () => ({
-  LECTURES_DIR: "/tmp",
   getLectures: async () => [
     {
       week: 1,

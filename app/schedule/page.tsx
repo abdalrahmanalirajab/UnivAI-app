@@ -15,7 +15,6 @@ import DialogTitle from "@mui/material/DialogTitle";
 import Divider from "@mui/material/Divider";
 import Grid from "@mui/material/Grid";
 import List from "@mui/material/List";
-import ListItem from "@mui/material/ListItem";
 import ListItemButton from "@mui/material/ListItemButton";
 import ListItemText from "@mui/material/ListItemText";
 import Stack from "@mui/material/Stack";
@@ -32,7 +31,7 @@ import {
 type Lecture = {
   /** Set by the server; lectures whose payload predates session_type are still lectures. */
   session_type?: "lecture";
-  id: number;
+  id: string;
   week: number;
   title: string;
   startsAt: string;
@@ -314,7 +313,7 @@ export default function SchedulePage() {
                     isSection(record) && record.week === lecture.week
                 )
                 .map((section) => (
-                  <ListItem key={section.id}>
+                  <ListItemButton key={section.id} component={Link} href={`/section/${section.id}`}>
                     <ListItemText
                       primary={`Section — ${section.title}`}
                       secondary={`${formatDateTime(section.startsAt)} · ${section.durationMinutes} min · immediately after this lecture`}
@@ -327,7 +326,7 @@ export default function SchedulePage() {
                         <Chip size="small" variant="outlined" label={section.kind} />
                       </Grid>
                     </Grid>
-                  </ListItem>
+                  </ListItemButton>
                 ))}
             </Fragment>
           ))}

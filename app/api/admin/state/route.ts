@@ -30,9 +30,13 @@ export async function GET(request: NextRequest) {
 
   const [books, lectures, grades, qaLog] = await Promise.all([
     query("SELECT id, filename, title, pages, status, error, progress, uploaded_at FROM books WHERE student_id = $1 ORDER BY id DESC", [sid]),
-    query("SELECT id, week, title, starts_at, status FROM lectures WHERE student_id = $1 ORDER BY week ASC", [sid]),
+    query("SELECT public_id::text AS id, week, title, starts_at, status FROM lectures WHERE student_id = $1 ORDER BY week ASC", [sid]),
     query("SELECT id, kind, week, score, max_score, feedback, taken_at, flagged, report FROM grades WHERE student_id = $1 ORDER BY week ASC NULLS LAST, id ASC", [sid]),
-    query("SELECT id, lecture_id, question, answer, citations, model_used, asked_at FROM qa_log WHERE student_id = $1 ORDER BY id DESC LIMIT 50", [sid]),
+    query(`SELECT q.id, l.public_id::text AS lecture_id, q.question, q.answer,
+                  q.citations, q.model_used, q.asked_at
+             FROM qa_log q
+             JOIN lectures l ON l.id = q.lecture_id AND l.student_id = q.student_id
+            WHERE q.student_id = $1 ORDER BY q.id DESC LIMIT 50`, [sid]),
   ]);
 
   const attendance = await getAttendance(sid);

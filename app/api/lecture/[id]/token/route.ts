@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
  * Live session metadata v1 (signed into the LiveKit JWT).
  *
  * The voice worker (UnivAI-live) reads this to know which learner is speaking
- * and to speak their name in pre-rendered phrases ("Yes, Mohamed Hany?").
+ * and to address them by name during live interaction.
  * Everything here is bound to the authenticated learner and the lecture they
  * joined — the client contributes nothing. `spokenName` is the ONLY personal
  * field; email, phone and unrelated profile data never cross into Live.
@@ -30,7 +30,7 @@ export const TOKEN_TTL_SECONDS = 600;
 
 export type LiveSessionMetadataV1 = {
   v: typeof LIVE_METADATA_VERSION;
-  lectureId: number;
+  lectureId: string;
   week: number;
   sid: string;
   planVersion: number | null;
@@ -40,9 +40,10 @@ export type LiveSessionMetadataV1 = {
   spokenName: string | null;
 };
 
-export type LiveRoomMetadataV1 = {
+export type LiveRoomMetadataV2 = {
   schema_name: "univai.live.lecture-session";
-  schema_version: "1";
+  schema_version: "2";
+  artifact_id: string;
   programme_id: string;
   course_id: string;
   plan_version: number;
@@ -51,7 +52,6 @@ export type LiveRoomMetadataV1 = {
   learner_id: string;
   nonce: string;
   display_name: string | null;
-  segments: Array<{ order: number; slide: number; text: string }>;
 };
 
 function liveKitHttpUrl(url: string): string {
@@ -63,7 +63,7 @@ function liveKitHttpUrl(url: string): string {
 async function configureRoom(
   service: RoomServiceClient,
   room: string,
-  metadata: LiveRoomMetadataV1,
+  metadata: LiveRoomMetadataV2,
 ): Promise<void> {
   const serialized = JSON.stringify(metadata);
   const existing = await service.listRooms([room]);
@@ -114,7 +114,7 @@ export function safeSpokenName(raw: unknown): string | null {
 }
 
 export function buildLiveSessionMetadata(input: {
-  lectureId: number;
+  lectureId: string;
   week: number;
   sid: string;
   planVersion: number | null;
@@ -137,10 +137,14 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   const sid = gate.studentId;
 
   const { id } = await context.params;
-  const lectureId = Number(id);
+  const lectureId = id;
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(lectureId)) {
+    return Response.json({ error: "No such lecture." }, { status: 404 });
+  }
 
-  const lecture = await queryOne<{ id: number; week: number; title: string }>(
-    "SELECT id, week, title FROM lectures WHERE id = $1 AND student_id = $2",
+  const lecture = await queryOne<{ id: number; public_id: string; week: number; title: string }>(
+    `SELECT id, public_id::text AS public_id, week, title
+       FROM lectures WHERE public_id = $1::uuid AND student_id = $2`,
     [lectureId, sid]
   );
   if (!lecture) return Response.json({ error: "No such lecture." }, { status: 404 });
@@ -167,8 +171,8 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     );
   }
 
-  // Room name carries the owner so the voice worker loads THIS student's course
-  // (lectures/<sid>/) and queries RAG under their namespace. Parsed back with
+  // Room name carries the owner so the voice worker loads THIS student's DB
+  // artifact and queries RAG under their namespace. Parsed back with
   // /^lecture-(?<sid>.+)-week-(?<week>\d+)$/ in UnivAI-live/worker.py.
   const room = `lecture-${sid}-week-${lecture.week}`;
 
@@ -199,9 +203,10 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     planVersion: programme.plan_version,
     spokenName,
   });
-  const roomMetadata: LiveRoomMetadataV1 = {
+  const roomMetadata: LiveRoomMetadataV2 = {
     schema_name: "univai.live.lecture-session",
-    schema_version: "1",
+    schema_version: "2",
+    artifact_id: script.lectureId,
     programme_id: String(programme.id),
     course_id: script.lectureId,
     plan_version: programme.plan_version,
@@ -210,11 +215,6 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     learner_id: sid,
     nonce: metadata.nonce,
     display_name: spokenName,
-    segments: script.segments.map((segment, index) => ({
-      order: index + 1,
-      slide: segment.slide,
-      text: segment.text,
-    })),
   };
 
   try {
@@ -244,15 +244,15 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
 
   // Attendance is stamped only after the trusted room and token metadata are
   // ready; an infrastructure failure must not mark a learner present.
-  const record = await stampJoin(sid, lectureId);
+  const record = await stampJoin(sid, lecture.id);
 
   return Response.json({
     token: await token.toJwt(),
     url,
     room,
-    // The client builds this student's slide path: /slides/<sid>/week-N/.
+    // Used by the client for learner-scoped session display only.
     studentId: sid,
-    lecture: { id: lecture.id, week: lecture.week, title: lecture.title },
+    lecture: { id: lecture.public_id, week: lecture.week, title: lecture.title },
     attendance: record
       ? { status: record.status, lateMinutes: record.lateMinutes }
       : null,

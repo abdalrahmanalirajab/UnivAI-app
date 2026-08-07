@@ -15,6 +15,12 @@ export const VENV_PYTHON =
     ? path.join(REPO_ROOT, ".venv", "Scripts", "python.exe")
     : path.join(REPO_ROOT, ".venv", "bin", "python");
 
+/** Course generation imports the Agent's Qdrant-backed grounding pipeline. */
+export const AGENT_PYTHON =
+  process.platform === "win32"
+    ? path.join(REPO_ROOT, "UnivAI-Agent", ".venv", "Scripts", "python.exe")
+    : path.join(REPO_ROOT, "UnivAI-Agent", ".venv", "bin", "python");
+
 export type PythonResult = { ok: boolean; stdout: string; stderr: string };
 
 export function runPython(

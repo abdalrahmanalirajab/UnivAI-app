@@ -1,11 +1,8 @@
-import { promises as fs } from "fs";
-import path from "path";
 import { MongoClient, type Db } from "mongodb";
 import { env } from "./env";
 import { query, queryOne } from "./db";
 import { now, HOUR_MS, DAY_MS } from "./clock";
-import { getLectures, LECTURES_DIR } from "./lectures";
-import { DATA_ROOT } from "./paths";
+import { getLectures } from "./lectures";
 import { COURSE_SIZES, DEFAULT_SIZE, isCourseSize } from "./course-size";
 import { getSetting } from "./settings";
 import { isStandalone } from "./runtime";
@@ -474,7 +471,7 @@ export async function resetExamWorld(sid: string): Promise<void> {
 }
 
 /**
- * Copy each week's generated quiz questions (lectures/week-N/quiz.json) into
+ * Copy each week's generated quiz payload from Postgres into
  * the exam system's question bank, keyed by chapter id. The exam system draws
  * real questions from here instead of its placeholder generator.
  */
@@ -485,19 +482,14 @@ export async function syncQuestionBanks(link: ExamLink): Promise<void> {
   for (const chapter of link.chapters) {
     let parsed: { title?: string; questions?: unknown[] } | null = null;
     try {
-      const rows = await query<{ storage_ref: string }>(
-        `SELECT ca.storage_ref 
-         FROM lectures l 
-         JOIN content_artifacts ca ON l.quiz_artifact_key = ca.content_key 
-         WHERE l.student_id = $1 AND l.week = $2`,
+      const rows = await query<{ quiz_payload: { title?: string; questions?: unknown[] } }>(
+        `SELECT la.quiz_payload
+           FROM lectures l
+           JOIN lecture_artifacts la ON la.artifact_id = l.lecture_artifact_id
+          WHERE l.student_id = $1 AND l.week = $2`,
         [link.sid, chapter.week]
       );
-      let quizPath = path.join(LECTURES_DIR, link.sid, `week-${chapter.week}`, "quiz.json");
-      if (rows.length > 0 && rows[0].storage_ref) {
-        quizPath = path.resolve(DATA_ROOT, rows[0].storage_ref);
-      }
-      const raw = await fs.readFile(quizPath, "utf-8");
-      parsed = JSON.parse(raw);
+      parsed = rows[0]?.quiz_payload ?? null;
     } catch {
       continue; // no generated quiz for this week (yet) — the bank stays as-is
     }

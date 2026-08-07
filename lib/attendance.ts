@@ -14,7 +14,7 @@ export const ABSENT_AFTER_HOURS = 24;
 export type AttendanceStatus = "on_time" | "late" | "absent" | "upcoming";
 
 export type LectureAttendance = {
-  lectureId: number;
+  lectureId: string;
   week: number;
   title: string;
   startsAt: Date;
@@ -25,6 +25,7 @@ export type LectureAttendance = {
 
 type Row = {
   id: number;
+  public_id: string;
   week: number;
   title: string;
   starts_at: Date;
@@ -62,15 +63,19 @@ export async function stampJoin(sid: string, lectureId: number): Promise<Lecture
     [sid, lectureId, virtualNow, isLate ? "late" : "on_time", isLate ? minutesPastStart : 0]
   );
 
+  const rows = await query<{ public_id: string }>(
+    "SELECT public_id::text AS public_id FROM lectures WHERE id = $1 AND student_id = $2",
+    [lectureId, sid],
+  );
   const all = await getAttendance(sid);
-  return all.find((a) => a.lectureId === lectureId) ?? null;
+  return all.find((a) => a.lectureId === rows[0]?.public_id) ?? null;
 }
 
 /** Full attendance record for one student. 'absent'/'upcoming' are derived. */
 export async function getAttendance(sid: string): Promise<LectureAttendance[]> {
   const virtualNow = await now();
   const rows = await query<Row>(
-    `SELECT l.id, l.week, l.title, l.starts_at,
+    `SELECT l.id, l.public_id::text AS public_id, l.week, l.title, l.starts_at,
             a.joined_at, a.status, a.late_minutes
        FROM lectures l
        LEFT JOIN attendance a ON a.lecture_id = l.id AND a.student_id = $1
@@ -95,7 +100,7 @@ export async function getAttendance(sid: string): Promise<LectureAttendance[]> {
     }
 
     return {
-      lectureId: row.id,
+      lectureId: row.public_id,
       week: row.week,
       title: row.title,
       startsAt,

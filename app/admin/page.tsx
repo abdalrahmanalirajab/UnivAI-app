@@ -22,7 +22,7 @@ import TextField from "@mui/material/TextField";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Typography from "@mui/material/Typography";
-import { formatCountdown, formatDateTime, formatLateness, formatRelative } from "@/lib/time";
+import { formatCountdown, formatDateTime, formatLateness } from "@/lib/time";
 
 type CourseSize = "XS" | "S" | "M" | "L" | "XL";
 type SizeInfo = { slides: number; quizPaper: number; midPaper: number; blurb: string };
@@ -36,9 +36,9 @@ type AdminState = {
   needsStudent?: boolean;
   sid?: string;
   books: Array<Record<string, unknown>>;
-  lectures: Array<{ id: number; week: number; title: string; starts_at: string; status: string }>;
+  lectures: Array<{ id: string; week: number; title: string; starts_at: string; status: string }>;
   attendance: Array<{
-    lectureId: number;
+    lectureId: string;
     week: number;
     title: string;
     startsAt: string;
@@ -434,14 +434,14 @@ export default function AdminPage() {
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
                   Live from the build — this line updates every few seconds. Content-heavy
-                  weeks take longer on local models; the voice re-render comes last.
+                  weeks take longer on local models; narration is synthesized live.
                 </Typography>
               </Stack>
             ) : (
               <Typography variant="caption" color="text.secondary">
-                One button on purpose: lectures, slides, quizzes and the pre-recorded
-                voice are rebuilt together, so the quizzes always come from the
-                lectures the students actually get.
+                One button on purpose: lectures, slides, quizzes, and sections are
+                rebuilt together in the database, so every activity matches what
+                students are actually taught.
               </Typography>
             )}
             {state?.books.some((book) => book.status === "failed") && !building ? (

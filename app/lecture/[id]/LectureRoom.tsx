@@ -8,7 +8,6 @@ import {
   createLocalAudioTrack,
   type LocalAudioTrack,
   type RemoteTrack,
-  type RemoteTrackPublication,
 } from "livekit-client";
 import Alert from "@mui/material/Alert";
 import AlertTitle from "@mui/material/AlertTitle";
@@ -37,6 +36,7 @@ import SourcePanel from "@/app/components/SourcePanel";
 import type { OutputVersion } from "@/lib/feedback";
 import type { CitationV1 } from "@/test/fixtures/citation-v1";
 import { formatLateness } from "@/lib/time";
+import LectureSlides from "./LectureSlides";
 
 /**
  * The live lecture room.
@@ -96,7 +96,7 @@ const JOURNEY_HINT: Record<number, string> = {
   3: "Check the transcript below — edit it or send it as is.",
 };
 
-type Props = { lectureId: number };
+type Props = { lectureId: string };
 
 export default function LectureRoom({ lectureId }: Props) {
   const [room] = useState(() => new Room({ adaptiveStream: true }));
@@ -111,7 +111,7 @@ export default function LectureRoom({ lectureId }: Props) {
   const [agentState, setAgentState] = useState<AgentState>("connecting");
   const [slide, setSlide] = useState(1);
   const [week, setWeek] = useState<number | null>(null);
-  // This student's id — their slides live at /slides/<sid>/week-N/ (multi-tenant).
+  // The authenticated learner id returned by the token route.
   const [sid, setSid] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [attendance, setAttendance] = useState<{ status: string; lateMinutes: number } | null>(null);
@@ -134,11 +134,30 @@ export default function LectureRoom({ lectureId }: Props) {
   const [audioBlocked, setAudioBlocked] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const slidesRef = useRef<HTMLIFrameElement | null>(null);
+  const startupStartedAt = useRef(0);
+  const startupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const firstAudioReported = useRef(false);
+  const startupComplete = useRef(false);
   const micRef = useRef<LocalAudioTrack | null>(null);
   const [mic, setMic] = useState<LocalAudioTrack | null>(null);
 
+  const reply = useCallback(async (message: Record<string, unknown>) => {
+    await room.localParticipant.publishData(
+      new TextEncoder().encode(JSON.stringify(message)),
+      { reliable: true },
+    );
+    if (message.type === "question" || message.type === "cancel") setTranscript(null);
+  }, [room]);
+
   const connect = useCallback(async () => {
+    setError(null);
+    startupStartedAt.current = performance.now();
+    firstAudioReported.current = false;
+    startupComplete.current = false;
+    if (startupTimer.current) clearTimeout(startupTimer.current);
+    startupTimer.current = setTimeout(() => {
+      setError("The lecturer did not start audio within 8 seconds. Please try again.");
+    }, 800_000);
     try {
       const res = await fetch(`/api/lecture/${lectureId}/token`, { method: "POST" });
       const data = await res.json();
@@ -150,11 +169,14 @@ export default function LectureRoom({ lectureId }: Props) {
       setAttendance(data.attendance);
 
       room
-        .on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _pub: RemoteTrackPublication) => {
+        .on(RoomEvent.TrackSubscribed, (track: RemoteTrack) => {
           // The Lecturer's synthesized voice.
           if (track.kind === Track.Kind.Audio && audioRef.current) {
             track.attach(audioRef.current);
-            audioRef.current.play().catch(() => setAudioBlocked(true));
+            audioRef.current.play().catch(() => {
+              if (startupTimer.current) clearTimeout(startupTimer.current);
+              setAudioBlocked(true);
+            });
           }
         })
         .on(RoomEvent.AudioPlaybackStatusChanged, () => {
@@ -176,6 +198,10 @@ export default function LectureRoom({ lectureId }: Props) {
             if (message.type === "answer") setLastAnswer(message.payload);
             if (message.type === "transcript") setTranscript(message.text ?? null);
             if (message.type === "progress") {
+              if (message.stage === "problem" && !startupComplete.current) {
+                if (startupTimer.current) clearTimeout(startupTimer.current);
+                setError(message.detail || "The lecturer could not start. Please try again.");
+              }
               setSteps((previous) => {
                 const last = previous[previous.length - 1];
                 // The worker can resend a stage (retries, reconnects); showing
@@ -228,33 +254,21 @@ export default function LectureRoom({ lectureId }: Props) {
       }
 
       setConnected(true);
-      setAgentState("lecturing");
+      setAgentState("preparing");
       if (!room.canPlaybackAudio) setAudioBlocked(true);
     } catch (err) {
+      if (startupTimer.current) clearTimeout(startupTimer.current);
       setError(err instanceof Error ? err.message : "Could not join the lecture.");
     }
-  }, [lectureId, room]);
+  }, [lectureId, reply, room]);
 
   useEffect(() => {
     connect();
     return () => {
+      if (startupTimer.current) clearTimeout(startupTimer.current);
       room.disconnect();
     };
   }, [connect, room]);
-
-  // The Lecturer agent drives the deck: it sends {slide: n} as each segment
-  // begins. Setting the hash on the iframe's own location navigates it; changing
-  // the src attribute by hash alone often does not.
-  useEffect(() => {
-    const frame = slidesRef.current;
-    if (!frame?.contentWindow) return;
-    try {
-      frame.contentWindow.location.hash = `/${slide}`;
-    } catch {
-      // Different origin (it is not) — fall back to reloading the frame.
-      frame.src = `/slides/${sid}/week-${week}/index.html#/${slide}`;
-    }
-  }, [slide, week, sid]);
 
   useEffect(() => {
     if (!lastAnswer) {
@@ -289,14 +303,6 @@ export default function LectureRoom({ lectureId }: Props) {
       cancelled = true;
     };
   }, [lastAnswer, lectureId]);
-
-  async function reply(message: Record<string, unknown>) {
-    await room.localParticipant.publishData(
-      new TextEncoder().encode(JSON.stringify(message)),
-      { reliable: true }
-    );
-    if (message.type === "question" || message.type === "cancel") setTranscript(null);
-  }
 
   async function raiseHand() {
     setHand("raised");
@@ -405,15 +411,7 @@ export default function LectureRoom({ lectureId }: Props) {
       <Card variant="outlined">
         <CardContent>
           {week && sid ? (
-            <iframe
-              key={week}
-              ref={slidesRef}
-              src={`/slides/${sid}/week-${week}/index.html#/1`}
-              title={`Week ${week} slides`}
-              width="100%"
-              height="520"
-              frameBorder="0"
-            />
+            <LectureSlides lectureId={lectureId} slide={slide} />
           ) : (
             <CircularProgress />
           )}
@@ -666,7 +664,18 @@ export default function LectureRoom({ lectureId }: Props) {
       </Drawer>
 
       {/* The Lecturer's voice. autoPlay so the lecture starts by itself. */}
-      <audio ref={audioRef} autoPlay />
+      <audio
+        ref={audioRef}
+        autoPlay
+        onPlaying={() => {
+          if (firstAudioReported.current) return;
+          firstAudioReported.current = true;
+          startupComplete.current = true;
+          if (startupTimer.current) clearTimeout(startupTimer.current);
+          const clientElapsedMs = Math.round(performance.now() - startupStartedAt.current);
+          reply({ type: "startup_audio_playing", client_elapsed_ms: clientElapsedMs }).catch(() => undefined);
+        }}
+      />
     </Stack>
   );
 }

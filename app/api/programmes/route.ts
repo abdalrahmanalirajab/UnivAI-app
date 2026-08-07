@@ -67,7 +67,7 @@ function normalizeFilename(value: string): string {
  *
  * Before generation discovers the book's chapters, reserve the Agent's
  * three-month per-semester maximum. lib/lectures.ts replaces this placeholder with the
- * authoritative generated course length from lectures/<sid>/semester-plan.json and
+ * authoritative generated course length from books.semester_plan and
  * reconciles the unstarted schedule. Reserving the maximum ensures generation
  * never writes a week for which no lecture row exists.
  */

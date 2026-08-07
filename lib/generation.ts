@@ -2,7 +2,7 @@ import { spawn } from "child_process";
 import { mkdirSync, openSync } from "fs";
 import path from "path";
 import { query } from "./db";
-import { REPO_ROOT, VENV_PYTHON } from "./python";
+import { AGENT_PYTHON, REPO_ROOT } from "./python";
 import { isStandalone } from "./runtime";
 
 /**
@@ -14,8 +14,8 @@ import { isStandalone } from "./runtime";
  * "plan" discovers the book's chapters and stops, leaving the book in
  * awaiting_approval — that is all the curriculum needs, and it is the only
  * thing worth doing before a learner has approved what they are about to be
- * taught. "full" writes the lectures, quizzes, slides and voice. "quizzes"
- * rewrites only the question banks.
+ * taught. "full" stores lectures, quizzes, slides, and sections in Postgres.
+ * "quizzes" rewrites only the database question banks.
  */
 export type GenerationMode = "full" | "plan" | "quizzes";
 
@@ -40,7 +40,7 @@ export function spawnGeneration(
   if (mode === "quizzes") args.push("--quizzes-only");
   if (mode === "plan") args.push("--plan-only");
 
-  const child = spawn(VENV_PYTHON, args, {
+  const child = spawn(AGENT_PYTHON, args, {
     cwd: REPO_ROOT,
     windowsHide: true,
     detached: true,

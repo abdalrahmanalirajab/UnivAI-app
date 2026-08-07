@@ -1,6 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { LECTURES_ROOT } from "./paths";
+import { query } from "./db";
 
 export const SEMESTER_PLAN_SCHEMA = "univai.semester.week-plan";
 export const MAX_SEMESTER_WEEKS = 12;
@@ -182,9 +182,21 @@ export function parseSemesterPlanWeekCount(value: unknown): number {
 /** `null` means generation has not written its authoritative plan yet. */
 export async function readGeneratedSemesterPlan(
   sid: string,
-  lecturesRoot: string = LECTURES_ROOT,
+  legacyLecturesRoot?: string,
 ): Promise<GeneratedSemesterPlan | null> {
-  const planPath = path.join(lecturesRoot, sid, "semester-plan.json");
+  if (!legacyLecturesRoot) {
+    const rows = await query<{ semester_plan: unknown }>(
+      `SELECT semester_plan FROM books
+        WHERE student_id = $1 AND semester_plan IS NOT NULL
+        ORDER BY id DESC LIMIT 1`,
+      [sid],
+    );
+    return rows[0] ? parseGeneratedSemesterPlan(rows[0].semester_plan) : null;
+  }
+
+  // Explicitly supplied roots are retained only for standalone fixtures. The
+  // integrated app never falls back to learner-owned files.
+  const planPath = path.join(legacyLecturesRoot, sid, "semester-plan.json");
   try {
     const raw = await fs.readFile(planPath, "utf8");
     return parseGeneratedSemesterPlan(JSON.parse(raw) as unknown);
@@ -199,7 +211,7 @@ export async function readGeneratedSemesterPlan(
 
 export async function readGeneratedSemesterWeekCount(
   sid: string,
-  lecturesRoot: string = LECTURES_ROOT,
+  legacyLecturesRoot?: string,
 ): Promise<number | null> {
-  return (await readGeneratedSemesterPlan(sid, lecturesRoot))?.weekCount ?? null;
+  return (await readGeneratedSemesterPlan(sid, legacyLecturesRoot))?.weekCount ?? null;
 }

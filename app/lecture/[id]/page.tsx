@@ -11,5 +11,5 @@ export default async function LecturePage({
   if (isStandalone()) {
     return <StandaloneLectureRoom lectureId={Number(id)} />;
   }
-  return <LectureRoom lectureId={Number(id)} />;
+  return <LectureRoom lectureId={id} />;
 }

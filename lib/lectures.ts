@@ -1,8 +1,5 @@
-import { promises as fs } from "fs";
-import path from "path";
 import { query } from "./db";
 import { now, MINUTE_MS } from "./clock";
-import { DATA_ROOT, LECTURES_ROOT } from "./paths";
 import type { ProgrammePlanV1 } from "@/test/fixtures/programme-plan-v1";
 import { getSetting, setSetting } from "./settings";
 import {
@@ -11,15 +8,7 @@ import {
 } from "./semester-plan";
 import { LEGACY_LECTURE_MINUTES, scriptDurationMinutes } from "./lecture-duration";
 
-/**
- * Lecture content is PREMADE and committed under lectures/week-N/:
- *   slides.md    a Slidev deck (markdown only)
- *   script.json  the narration the Lecturer agent speaks, with page citations
- * Nothing here generates content.
- */
-
-export const REPO_ROOT = DATA_ROOT;
-export const LECTURES_DIR = LECTURES_ROOT;
+/** Database-owned generated lecture and section read models. */
 
 /** How long a lecture is "on" for. */
 export const LECTURE_WINDOW_MINUTES = LEGACY_LECTURE_MINUTES;
@@ -61,7 +50,10 @@ export type SectionPackV1 = {
 };
 
 export type Lecture = {
-  id: number;
+  /** Opaque, database-generated public identifier. */
+  id: string;
+  /** Internal FK; never serialized to a client. */
+  internalId: number;
   session_type: "lecture";
   week: number;
   title: string;
@@ -77,9 +69,8 @@ export type Lecture = {
 };
 
 /**
- * A scheduled practical section that follows its theoretical lecture. The
- * weekly session always exists; an approved SectionPack replaces its default
- * title, kind, and duration with generated details.
+ * A generated practical section that follows its theoretical lecture. No
+ * SectionPack means no schedule entry; placeholders are never synthesized.
  */
 export type Section = {
   id: string;
@@ -95,36 +86,37 @@ export type Section = {
 
 export const DEFAULT_SECTION_MINUTES = 45;
 export const MIN_SECTION_MINUTES = 30;
-export const MAX_SECTION_MINUTES = 60;
-
-/**
- * Per-student on-disk course layout: lectures/<studentId>/week-N/. Each learner
- * uploads their own book and gets their own generated slides, script and audio,
- * so the content is namespaced by studentId (matches UnivAI-Agent generation and
- * the UnivAI-live worker). studentId (S-YYYY-NNNNNN) is filesystem-safe.
- */
-export function lectureDir(sid: string, week: number): string {
-  return path.join(LECTURES_DIR, sid, `week-${week}`);
-}
+export const MAX_SECTION_MINUTES = 120;
 
 export async function readScript(sid: string, week: number): Promise<Script | null> {
-  try {
-    const rows = await query<{ storage_ref: string }>(
-      `SELECT ca.storage_ref 
-       FROM lectures l 
-       JOIN content_artifacts ca ON l.script_artifact_key = ca.content_key 
-       WHERE l.student_id = $1 AND l.week = $2`,
-      [sid, week]
-    );
-    let scriptPath = path.join(lectureDir(sid, week), "script.json");
-    if (rows.length > 0 && rows[0].storage_ref) {
-      scriptPath = path.resolve(REPO_ROOT, rows[0].storage_ref);
-    }
-    const raw = await fs.readFile(scriptPath, "utf-8");
-    return JSON.parse(raw) as Script;
-  } catch {
-    return null;
-  }
+  const rows = await query<{ script_payload: Script }>(
+    `SELECT la.script_payload
+       FROM lectures l
+       JOIN lecture_artifacts la ON la.artifact_id = l.lecture_artifact_id
+      WHERE l.student_id = $1 AND l.week = $2`,
+    [sid, week],
+  );
+  return rows[0]?.script_payload ?? null;
+}
+
+export type SlideDeck = {
+  /** Opaque database artifact UUID used only to address its Slidev cache. */
+  presentationId: string;
+  week: number;
+  title: string;
+  slides: Array<{ slide: number; heading: string; bullets: string[]; page: number }>;
+};
+
+export async function readSlides(sid: string, publicLectureId: string): Promise<SlideDeck | null> {
+  const rows = await query<{ presentation_id: string; slides_payload: Omit<SlideDeck, "presentationId"> }>(
+    `SELECT la.artifact_id::text AS presentation_id, la.slides_payload
+       FROM lectures l
+       JOIN lecture_artifacts la ON la.artifact_id = l.lecture_artifact_id
+      WHERE l.student_id = $1 AND l.public_id = $2::uuid`,
+    [sid, publicLectureId],
+  );
+  const row = rows[0];
+  return row ? { ...row.slides_payload, presentationId: row.presentation_id } : null;
 }
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
@@ -157,64 +149,6 @@ function scheduleBindingKey(sid: string): string {
   return `schedule:${sid}:approved-plan`;
 }
 
-function invalidSectionPacks(): never {
-  throw new ScheduleIntegrityError(
-    "INVALID_SECTION_PACKS",
-    "The approved plan has invalid section records.",
-  );
-}
-
-function parseSectionPacks(value: unknown, weekCount: number): SectionPackV1[] {
-  if (value === undefined) return [];
-  if (!Array.isArray(value)) invalidSectionPacks();
-
-  const seenWeeks = new Set<number>();
-  const seenIds = new Set<string>();
-  return value.map((candidate) => {
-    if (!candidate || typeof candidate !== "object") invalidSectionPacks();
-    const pack = candidate as Partial<SectionPackV1>;
-    if (
-      !Number.isInteger(pack.week) ||
-      !pack.week ||
-      pack.week < 1 ||
-      pack.week > weekCount ||
-      seenWeeks.has(pack.week) ||
-      !Array.isArray(pack.sections)
-    ) {
-      invalidSectionPacks();
-    }
-    const packWeek = pack.week as number;
-    seenWeeks.add(packWeek);
-    const sections = pack.sections.map((candidateSection) => {
-      const section = candidateSection as Partial<SectionPackV1["sections"][number]>;
-      if (
-        typeof section.id !== "string" ||
-        section.id.length === 0 ||
-        seenIds.has(section.id) ||
-        section.week !== packWeek ||
-        (section.kind !== "tutorial" && section.kind !== "lab") ||
-        typeof section.title !== "string" ||
-        section.title.trim().length === 0 ||
-        (section.duration_minutes !== undefined &&
-          (!Number.isInteger(section.duration_minutes) ||
-            section.duration_minutes < MIN_SECTION_MINUTES ||
-            section.duration_minutes > MAX_SECTION_MINUTES))
-      ) {
-        invalidSectionPacks();
-      }
-      seenIds.add(section.id);
-      return {
-        id: section.id,
-        week: packWeek,
-        kind: section.kind,
-        title: section.title,
-        duration_minutes: section.duration_minutes ?? DEFAULT_SECTION_MINUTES,
-      };
-    });
-    return { week: packWeek, sections };
-  });
-}
-
 async function approvedSchedulePlan(sid: string): Promise<ApprovedSchedulePlan | null> {
   let rows: Array<{ id: number; plan_version: number; plan: unknown }>;
   try {
@@ -231,7 +165,7 @@ async function approvedSchedulePlan(sid: string): Promise<ApprovedSchedulePlan |
   if (rows.length === 0) return null;
 
   const row = rows[0];
-  const plan = row.plan as Partial<ProgrammePlanV1> & { section_packs?: unknown };
+  const plan = row.plan as Partial<ProgrammePlanV1>;
   let generatedWeeks: number | null;
   try {
     generatedWeeks = await readGeneratedSemesterWeekCount(sid);
@@ -249,11 +183,51 @@ async function approvedSchedulePlan(sid: string): Promise<ApprovedSchedulePlan |
     );
   }
 
+  const storedPacks = await query<{
+    section_pack_id: string;
+    week: number;
+    pack_payload: { title?: unknown; total_minutes?: unknown };
+  }>(
+    `SELECT section_pack_id, week, pack_payload
+       FROM section_packs
+      WHERE tenant_id = $1 AND programme_id = $2
+        AND approved_plan_version = $3
+      ORDER BY week ASC`,
+    [sid, String(row.id), row.plan_version],
+  );
+  const sectionPacks = storedPacks.flatMap((stored): SectionPackV1[] => {
+    const title = stored.pack_payload?.title;
+    const minutes = stored.pack_payload?.total_minutes;
+    if (
+      typeof title !== "string" ||
+      !title.trim() ||
+      typeof minutes !== "number" ||
+      !Number.isInteger(minutes) ||
+      minutes < MIN_SECTION_MINUTES ||
+      minutes > MAX_SECTION_MINUTES
+    ) {
+      throw new ScheduleIntegrityError(
+        "INVALID_SECTION_PACKS",
+        `The stored section for week ${stored.week} is invalid.`,
+      );
+    }
+    return [{
+      week: stored.week,
+      sections: [{
+        id: stored.section_pack_id,
+        week: stored.week,
+        kind: "tutorial",
+        title,
+        duration_minutes: minutes,
+      }],
+    }];
+  });
+
   return {
     programmeId: row.id,
     planVersion: row.plan_version,
     weekCount: weeks,
-    sectionPacks: parseSectionPacks(plan.section_packs, weeks),
+    sectionPacks,
     generated: generatedWeeks !== null,
   };
 }
@@ -311,40 +285,26 @@ export async function approvedPlanVersion(sid: string): Promise<number | null> {
   return (await approvedSchedulePlan(sid))?.planVersion ?? null;
 }
 
-/** Seed one student's schedule from the approved plan: a lecture a week from tomorrow 10:00 virtual. */
 /**
- * Point each lecture row at the generated files for its week.
- *
- * The generator registers every artifact as it writes it and then stamps the
- * key onto the lecture row — but that row does not exist yet. Lecture rows are
- * created HERE, on the first schedule read after approval, so the generator's
- * UPDATE matched nothing and every lecture kept NULL keys. Nothing looked
- * broken because readScript and the quiz sync both fall back to the
- * conventional lectures/<sid>/week-N/ path, so the whole content_artifacts
- * indirection was quietly dead.
- *
- * Matching on storage_ref is safe because an artifact key names its owner, so
- * lectures/<sid>/... can only belong to this learner — two learners holding a
- * byte-identical course still get one row each.
- *
- * Idempotent: COALESCE keeps a key that is already set.
+ * Link newly seeded schedule rows to this learner's latest database artifacts.
+ * The generator can finish before the first schedule read creates lecture
+ * rows, so this idempotent update closes that ordering gap by week.
  */
 async function linkGeneratedArtifacts(sid: string): Promise<void> {
   await query(
-    `UPDATE lectures SET
-       script_artifact_key = COALESCE(script_artifact_key, (
-         SELECT content_key FROM content_artifacts
-          WHERE storage_ref = 'lectures/' || $1 || '/week-' || week || '/script.json'
-          ORDER BY updated_at DESC LIMIT 1)),
-       slides_artifact_key = COALESCE(slides_artifact_key, (
-         SELECT content_key FROM content_artifacts
-          WHERE storage_ref = 'lectures/' || $1 || '/week-' || week || '/slides.md'
-          ORDER BY updated_at DESC LIMIT 1)),
-       quiz_artifact_key = COALESCE(quiz_artifact_key, (
-         SELECT content_key FROM content_artifacts
-          WHERE storage_ref = 'lectures/' || $1 || '/week-' || week || '/quiz.json'
-          ORDER BY updated_at DESC LIMIT 1))
-     WHERE student_id = $1`,
+    `WITH latest AS (
+       SELECT DISTINCT ON (la.week)
+              la.week, la.artifact_id, la.book_id, la.title
+         FROM lecture_artifacts la
+        WHERE la.student_id = $1
+        ORDER BY la.week, la.book_id DESC
+     )
+     UPDATE lectures l SET
+       lecture_artifact_id = latest.artifact_id,
+       book_id = latest.book_id,
+       title = latest.title
+      FROM latest
+     WHERE l.student_id = $1 AND l.week = latest.week`,
     [sid],
   );
 }
@@ -564,13 +524,15 @@ export async function getLectures(sid: string): Promise<Lecture[]> {
 
   const rows = await query<{
     id: number;
+    public_id: string;
     week: number;
     title: string;
     starts_at: Date;
     joined_at: Date | null;
     completed_at: Date | null;
   }>(
-    `SELECT l.id, l.week, l.title, l.starts_at, a.joined_at, a.completed_at
+    `SELECT l.id, l.public_id::text AS public_id, l.week, l.title, l.starts_at,
+            a.joined_at, a.completed_at
        FROM lectures l
        LEFT JOIN attendance a ON a.lecture_id = l.id AND a.student_id = $1
       WHERE l.student_id = $1
@@ -606,7 +568,8 @@ export async function getLectures(sid: string): Promise<Lecture[]> {
     }
 
     return {
-      id: row.id,
+      id: row.public_id,
+      internalId: row.id,
       session_type: "lecture",
       week: row.week,
       title: row.title,
@@ -629,9 +592,8 @@ export const BLOCKED_MESSAGE: Record<NonNullable<BlockedReason>, string> = {
 };
 
 /**
- * The student's weekly practical sections. An approved SectionPack supplies
- * its exact title/kind/duration; until detailed content is generated, the
- * course rule still schedules one 45-minute practical directly after theory.
+ * Generated practical sections only. A grounding refusal produces no fake
+ * timetable entry.
  */
 export async function getSections(sid: string): Promise<Section[]> {
   const lectures = await getLectures(sid);
@@ -641,15 +603,7 @@ export async function getSections(sid: string): Promise<Section[]> {
   for (const lecture of lectures) {
     const pack = approved.sectionPacks.find((candidate) => candidate.week === lecture.week);
     const startsAt = new Date(lecture.endsAt.getTime());
-    const plannedSections = pack?.sections.length
-      ? pack.sections
-      : [{
-          id: `section-week-${lecture.week}`,
-          week: lecture.week,
-          kind: "tutorial" as const,
-          title: `Practical — ${lecture.title}`,
-          duration_minutes: DEFAULT_SECTION_MINUTES,
-        }];
+    const plannedSections = pack?.sections ?? [];
     for (const record of plannedSections) {
       const durationMinutes = record.duration_minutes ?? DEFAULT_SECTION_MINUTES;
       sections.push({
@@ -665,4 +619,73 @@ export async function getSections(sid: string): Promise<Section[]> {
     }
   }
   return sections;
+}
+
+export type StoredSectionPack = {
+  id: string;
+  week: number;
+  lectureInternalId: number;
+  lecturePublicId: string;
+  lectureCompleted: boolean;
+  programmeId: string;
+  programmeTitle: string;
+  planVersion: number;
+  payload: {
+    schema_name: "univai.section.pack";
+    schema_version: "1.0.0";
+    session_type: "section";
+    title: string;
+    lecture_title: string;
+    course_id: string;
+    topic_id: string;
+    total_minutes: number;
+    objectives: string[];
+    activities: Array<Record<string, unknown>>;
+    examples: Array<Record<string, unknown>>;
+    todos: Array<Record<string, unknown>>;
+    [key: string]: unknown;
+  };
+};
+
+export async function getSectionPack(sid: string, sectionId: string): Promise<StoredSectionPack | null> {
+  const rows = await query<{
+    section_pack_id: string;
+    week: number;
+    programme_id: string;
+    approved_plan_version: number;
+    pack_payload: StoredSectionPack["payload"];
+    lecture_internal_id: number;
+    lecture_public_id: string;
+    lecture_completed: boolean;
+    programme_title: string;
+  }>(
+    `SELECT sp.section_pack_id, sp.week, sp.programme_id,
+            sp.approved_plan_version, sp.pack_payload,
+            l.id AS lecture_internal_id, l.public_id::text AS lecture_public_id,
+            (a.completed_at IS NOT NULL) AS lecture_completed,
+            p.name AS programme_title
+       FROM section_packs sp
+       JOIN programmes p ON p.id::text = sp.programme_id
+        AND p.student_id = sp.tenant_id
+        AND p.status = 'approved'
+        AND p.plan_version = sp.approved_plan_version
+       JOIN lectures l ON l.student_id = sp.tenant_id AND l.week = sp.week
+       LEFT JOIN attendance a ON a.lecture_id = l.id AND a.student_id = sp.tenant_id
+      WHERE sp.tenant_id = $1 AND sp.section_pack_id = $2
+      LIMIT 1`,
+    [sid, sectionId],
+  );
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    id: row.section_pack_id,
+    week: row.week,
+    lectureInternalId: row.lecture_internal_id,
+    lecturePublicId: row.lecture_public_id,
+    lectureCompleted: row.lecture_completed,
+    programmeId: row.programme_id,
+    programmeTitle: row.programme_title,
+    planVersion: row.approved_plan_version,
+    payload: row.pack_payload,
+  };
 }

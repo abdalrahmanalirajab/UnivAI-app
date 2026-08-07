@@ -82,10 +82,11 @@ const SARA = {
   createdAt: "2026-07-01T00:00:00Z",
 };
 
-const LECTURE = { id: 1, week: 3, title: "Week 3" };
+const PUBLIC_LECTURE_ID = "11111111-1111-4111-8111-111111111111";
+const LECTURE = { id: 1, public_id: PUBLIC_LECTURE_ID, week: 3, title: "Week 3" };
 
 function post(
-  id = "1",
+  id = PUBLIC_LECTURE_ID,
   body: Record<string, unknown> = { name: "Eve Mallory", studentId: "S-ATTACKER-99" },
 ) {
   return POST(
@@ -102,7 +103,7 @@ async function mintAndVerify(
   body: Record<string, unknown> = { name: "Eve Mallory", studentId: "S-ATTACKER-99" },
 ) {
   mockGate.mockResolvedValue(gate);
-  const response = await post("1", body);
+  const response = await post(PUBLIC_LECTURE_ID, body);
   expect(response.status).toBe(200);
   const data = (await response.json()) as { token: string };
   const claims = await VERIFIER.verify(data.token);
@@ -149,14 +150,14 @@ describe("safeSpokenName", () => {
 describe("buildLiveSessionMetadata", () => {
   it("binds learner, lecture, plan version and a fresh nonce", () => {
     const a = buildLiveSessionMetadata({
-      lectureId: 1,
+      lectureId: PUBLIC_LECTURE_ID,
       week: 3,
       sid: MOHAMED.studentId,
       planVersion: 3,
       spokenName: "Mohamed Hany",
     });
     const b = buildLiveSessionMetadata({
-      lectureId: 1,
+      lectureId: PUBLIC_LECTURE_ID,
       week: 3,
       sid: MOHAMED.studentId,
       planVersion: 3,
@@ -165,7 +166,7 @@ describe("buildLiveSessionMetadata", () => {
 
     expect(a).toEqual({
       v: LIVE_METADATA_VERSION,
-      lectureId: 1,
+      lectureId: PUBLIC_LECTURE_ID,
       week: 3,
       sid: MOHAMED.studentId,
       planVersion: 3,
@@ -183,7 +184,7 @@ describe("POST /api/lecture/[id]/token — personalized signed metadata", () => 
     mockQueryOne.mockImplementation(async (sql: string) =>
       sql.includes("FROM programmes") ? { id: 7, plan_version: 3 } : LECTURE,
     );
-    mockGetLectures.mockResolvedValue([{ id: 1, joinable: true, blockedReason: null }]);
+    mockGetLectures.mockResolvedValue([{ id: PUBLIC_LECTURE_ID, joinable: true, blockedReason: null }]);
     mockReadScript.mockResolvedValue({
       lectureId: "course-ai-101",
       title: "Week 3",
@@ -206,7 +207,7 @@ describe("POST /api/lecture/[id]/token — personalized signed metadata", () => 
 
     expect(metadata).toEqual({
       v: LIVE_METADATA_VERSION,
-      lectureId: 1,
+      lectureId: PUBLIC_LECTURE_ID,
       week: 3,
       sid: MOHAMED.studentId,
       planVersion: 3,
@@ -226,7 +227,8 @@ describe("POST /api/lecture/[id]/token — personalized signed metadata", () => 
     const roomOptions = createRoomSpy.mock.calls[0][0];
     expect(JSON.parse(roomOptions.metadata ?? "{}")).toEqual({
       schema_name: "univai.live.lecture-session",
-      schema_version: "1",
+      schema_version: "2",
+      artifact_id: "course-ai-101",
       programme_id: "7",
       course_id: "course-ai-101",
       plan_version: 3,
@@ -235,8 +237,8 @@ describe("POST /api/lecture/[id]/token — personalized signed metadata", () => 
       learner_id: MOHAMED.studentId,
       nonce: metadata.nonce,
       display_name: "Mohamed Hany",
-      segments: [{ order: 1, slide: 1, text: "Grounded segment" }],
     });
+    expect(roomOptions.metadata).not.toContain("Grounded segment");
   });
 
   it("never puts email, phone, or other profile data in the token", async () => {
@@ -337,7 +339,7 @@ describe("POST /api/lecture/[id]/token — personalized signed metadata", () => 
   });
 
   it("rejects a lecture that is not joinable", async () => {
-    mockGetLectures.mockResolvedValue([{ id: 1, joinable: false, blockedReason: "completed" }]);
+    mockGetLectures.mockResolvedValue([{ id: PUBLIC_LECTURE_ID, joinable: false, blockedReason: "completed" }]);
     const response = await post();
     expect(response.status).toBe(403);
     expect(await response.json()).toMatchObject({ reason: "completed" });

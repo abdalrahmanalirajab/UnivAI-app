@@ -15,14 +15,19 @@ export async function POST(_request: NextRequest, context: { params: Promise<{ i
   const sid = gate.studentId;
 
   const { id } = await context.params;
-  const lectureId = Number(id);
+  if (!/^[0-9a-f-]{36}$/i.test(id)) {
+    return Response.json({ error: "No such lecture." }, { status: 404 });
+  }
   const finishedAt = await now();
 
   const updated = await query(
-    `UPDATE attendance SET completed_at = $1
-      WHERE lecture_id = $2 AND student_id = $3 AND completed_at IS NULL
-      RETURNING id`,
-    [finishedAt, lectureId, sid]
+    `UPDATE attendance a SET completed_at = $1
+      FROM lectures l
+      WHERE a.lecture_id = l.id AND l.public_id = $2::uuid
+        AND a.student_id = $3 AND l.student_id = $3
+        AND a.completed_at IS NULL
+      RETURNING a.id`,
+    [finishedAt, id, sid]
   );
 
   return Response.json({ completed: updated.length > 0, at: finishedAt.toISOString() });

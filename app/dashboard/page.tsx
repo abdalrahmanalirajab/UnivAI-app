@@ -21,7 +21,7 @@ import { FINAL_STATE_COLOR, FINAL_STATE_SUMMARY } from "@/lib/exam-status-view";
 import type { ExamServiceStatusV1 } from "@/lib/exams";
 
 type Attendance = {
-  lectureId: number;
+  lectureId: string;
   week: number;
   title: string;
   startsAt: string;

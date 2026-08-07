@@ -14,9 +14,9 @@ export async function GET(request: NextRequest) {
   const gate = await requirePreparedSourceApi();
   if (gate instanceof Response) return gate;
 
-  const lectureId = Number(request.nextUrl.searchParams.get("lectureId"));
-  if (!Number.isInteger(lectureId) || lectureId < 1) {
-    return Response.json({ error: "lectureId must be a positive integer." }, { status: 400 });
+  const lectureId = request.nextUrl.searchParams.get("lectureId") ?? "";
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(lectureId)) {
+    return Response.json({ error: "lectureId must be a UUID." }, { status: 400 });
   }
   const output = await getLatestLectureOutput(gate.studentId, lectureId);
   return output

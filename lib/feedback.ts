@@ -177,7 +177,7 @@ async function selectOutput(studentId: string, outputId: number): Promise<Output
 
 export async function getLatestLectureOutput(
   studentId: string,
-  lectureId: number,
+  lectureId: string,
 ): Promise<OutputVersion | null> {
   await ensureFeedbackSchema();
   const source = await queryOne<QaSourceRow>(
@@ -186,7 +186,7 @@ export async function getLatestLectureOutput(
        FROM qa_log q
        JOIN lectures l ON l.id = q.lecture_id AND l.student_id = q.student_id
        LEFT JOIN books b ON b.id = l.book_id AND b.student_id = q.student_id
-      WHERE q.student_id = $1 AND q.lecture_id = $2
+      WHERE q.student_id = $1 AND l.public_id = $2::uuid
       ORDER BY q.id DESC
       LIMIT 1`,
     [studentId, lectureId],

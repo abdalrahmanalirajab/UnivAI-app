@@ -12,9 +12,9 @@ export const dynamic = "force-dynamic";
  * attempt (sessions, results, integrity events) — then moves the 4-week
  * schedule to a fresh start: tomorrow 10:00 virtual time, then weekly.
  *
- * The generated course CONTENT is untouched: slides, scripts, quizzes and the
- * pre-rendered voice stay exactly as built. The exam world (chapters, question
- * banks, midterm) re-seeds itself on the next exam start.
+ * The generated course CONTENT is untouched: database slides, scripts,
+ * quizzes, and sections stay exactly as built. The exam world (chapters,
+ * question banks, midterm) re-seeds itself on the next exam start.
  */
 export async function POST(request: NextRequest) {
   const gate = await requireAdminApi();
