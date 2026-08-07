@@ -51,6 +51,8 @@ export type CurriculumReadiness = {
   usable: boolean;
   processing: boolean;
   failed: boolean;
+  /** Chapters are planned and nothing else is built until the learner approves. */
+  awaitingApproval: boolean;
   message: string;
 };
 
@@ -85,13 +87,14 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 function courseStatus(doc: Document): {
-  color: "success" | "error" | "warning" | "default";
+  color: "success" | "error" | "warning" | "info" | "default";
   label: string;
   detail: string | null;
   processing: boolean;
   usable: boolean;
   complete: boolean;
   failed: boolean;
+  awaitingApproval: boolean;
 } {
   if (doc.status === "failed") {
     return {
@@ -102,6 +105,7 @@ function courseStatus(doc: Document): {
       usable: false,
       complete: false,
       failed: true,
+      awaitingApproval: false,
     };
   }
   if (doc.status !== "ready") {
@@ -113,6 +117,7 @@ function courseStatus(doc: Document): {
       usable: false,
       complete: false,
       failed: false,
+      awaitingApproval: false,
     };
   }
   const usableWeeks = doc.generation_ready_weeks ?? 0;
@@ -125,6 +130,7 @@ function courseStatus(doc: Document): {
       usable: usableWeeks > 0,
       complete: false,
       failed: true,
+      awaitingApproval: false,
     };
   }
   if (["failed", "partial_failed"].includes(doc.generation_status ?? "")) {
@@ -136,6 +142,26 @@ function courseStatus(doc: Document): {
       usable: usableWeeks > 0,
       complete: false,
       failed: true,
+      awaitingApproval: false,
+    };
+  }
+  // Chapters are planned, nothing else has been built, and nothing will be
+  // until the learner approves the curriculum assembled from that plan.
+  if (doc.generation_status === "awaiting_approval") {
+    return {
+      color: "info",
+      label: "Waiting for your approval",
+      detail:
+        doc.generation_progress ??
+        "Build and approve your curriculum to start building the lectures.",
+      processing: false,
+      // The chapter plan IS what the curriculum is assembled from, so this book
+      // is ready to be built into one — "usable" gates the Build Curriculum
+      // button, not the lectures that do not exist yet.
+      usable: true,
+      complete: false,
+      failed: false,
+      awaitingApproval: true,
     };
   }
   if (doc.generation_status === "ready") {
@@ -147,6 +173,7 @@ function courseStatus(doc: Document): {
       usable: true,
       complete: true,
       failed: false,
+      awaitingApproval: false,
     };
   }
   if (doc.generation_status === "partial") {
@@ -158,6 +185,7 @@ function courseStatus(doc: Document): {
       usable: usableWeeks > 0,
       complete: false,
       failed: false,
+      awaitingApproval: false,
     };
   }
   // Older API fixtures only carried the document status. Keep those consumers
@@ -171,6 +199,7 @@ function courseStatus(doc: Document): {
       usable: true,
       complete: true,
       failed: false,
+      awaitingApproval: false,
     };
   }
   return {
@@ -185,6 +214,7 @@ function courseStatus(doc: Document): {
     usable: usableWeeks > 0,
     complete: false,
     failed: false,
+    awaitingApproval: false,
   };
 }
 
@@ -195,6 +225,7 @@ function curriculumReadiness(documents: Document[]): CurriculumReadiness {
       usable: false,
       processing: false,
       failed: false,
+      awaitingApproval: false,
       message: "Upload a PDF to begin.",
     };
   }
@@ -209,6 +240,7 @@ function curriculumReadiness(documents: Document[]): CurriculumReadiness {
       usable: false,
       processing: false,
       failed: true,
+      awaitingApproval: false,
       message: `${blockedFailure.filename}: ${status.detail ?? status.label}`,
     };
   }
@@ -221,7 +253,25 @@ function curriculumReadiness(documents: Document[]): CurriculumReadiness {
       usable,
       processing: true,
       failed: false,
+      awaitingApproval: false,
       message: `${unfinished.filename}: ${status.detail ?? status.label}`,
+    };
+  }
+  // Books whose chapters are planned but whose lectures wait on approval. This
+  // is checked before the generic "paused" case below, which would otherwise
+  // report a course that is working exactly as intended as unfinished work.
+  const awaiting = documents.filter((doc) => courseStatus(doc).awaitingApproval);
+  if (awaiting.length === documents.length) {
+    return {
+      ready: false,
+      usable: true,
+      processing: false,
+      failed: false,
+      awaitingApproval: true,
+      message:
+        awaiting.length === 1
+          ? "Your course plan is ready. Build the curriculum, then approve it to start building the lectures."
+          : `${awaiting.length} course plans are ready. Build the curriculum, then approve it to start building the lectures.`,
     };
   }
   const paused = documents.find((doc) => !courseStatus(doc).complete);
@@ -232,6 +282,7 @@ function curriculumReadiness(documents: Document[]): CurriculumReadiness {
       usable,
       processing: false,
       failed: status.failed,
+      awaitingApproval: status.awaitingApproval,
       message: `${paused.filename}: ${status.detail ?? status.label}`,
     };
   }
@@ -240,6 +291,7 @@ function curriculumReadiness(documents: Document[]): CurriculumReadiness {
     usable: true,
     processing: false,
     failed: false,
+    awaitingApproval: false,
     message: "Every book has finished generating. Your curriculum is ready to build.",
   };
 }

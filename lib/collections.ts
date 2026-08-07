@@ -206,6 +206,18 @@ export function documentStorageKey(
   return `collections/${collectionId}/${documentId}/${filename}`;
 }
 
+/**
+ * When an 'uploading' claim is old enough to be certainly abandoned.
+ *
+ * POST /api/upload releases its own claim on any error it survives, but a
+ * process that dies mid-upload (a restart, an OOM kill) cannot, and nothing
+ * else expires the claim — that book would stay un-uploadable forever. The
+ * window sits just past the ingest timeout the route itself allows (180
+ * minutes), so it can never cut short an upload that is still legitimately
+ * running: by then the route has already answered and set a terminal status.
+ */
+const STALE_UPLOAD_HOURS = 4;
+
 export async function addDocument(
   collectionId: number,
   studentId: string,
@@ -225,11 +237,20 @@ export async function addDocument(
        SELECT pg_advisory_xact_lock(
          hashtextextended($2::text || ':' || $1::integer::text || ':' || $3::text, 0)
        )
+     ), expired AS (
+       UPDATE documents SET status = 'failed',
+           error = 'The upload stopped before it finished.', updated_at = NOW()
+       FROM lock
+       WHERE documents.collection_id = $1 AND documents.student_id = $2
+         AND documents.filename = $3 AND documents.status = 'uploading'
+         AND documents.updated_at < CURRENT_TIMESTAMP - INTERVAL '${STALE_UPLOAD_HOURS} hours'
+       RETURNING documents.id
      ), existing AS (
        SELECT ${DOCUMENT_COLUMNS}
        FROM documents, lock
        WHERE collection_id = $1 AND student_id = $2 AND filename = $3
          AND status IN ('pending', 'uploading')
+         AND documents.id NOT IN (SELECT id FROM expired)
        ORDER BY created_at ASC, id ASC
        LIMIT 1
      ), inserted AS (
@@ -260,6 +281,38 @@ export async function addDocument(
     };
   }
   return { ok: true, document: doc };
+}
+
+/**
+ * A book this learner already uploaded, by its bytes rather than its name.
+ *
+ * The hash must be the server's own (see /api/upload) — matching on a
+ * client-supplied value would let a caller point at another learner's
+ * document. This query is scoped to one student for the same reason.
+ */
+export async function findDocumentByContent(
+  studentId: string,
+  contentSha256: string,
+): Promise<Document | null> {
+  return queryOne<Document>(
+    `SELECT ${DOCUMENT_COLUMNS} FROM documents
+      WHERE student_id = $1 AND content_sha256 = $2 AND status <> 'failed'
+      ORDER BY created_at ASC, id ASC LIMIT 1`,
+    [studentId, contentSha256],
+  );
+}
+
+/** Record the bytes a document turned out to hold, once they are on disk. */
+export async function setDocumentContentHash(
+  documentId: number,
+  studentId: string,
+  contentSha256: string,
+): Promise<void> {
+  await query(
+    `UPDATE documents SET content_sha256 = $1, updated_at = NOW()
+      WHERE id = $2 AND student_id = $3`,
+    [contentSha256, documentId, studentId],
+  );
 }
 
 export async function listDocuments(

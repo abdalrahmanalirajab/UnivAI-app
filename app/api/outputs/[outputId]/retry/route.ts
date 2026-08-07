@@ -29,7 +29,7 @@ export async function POST(
     spawnGeneration(
       path.join(REPO_ROOT, "uploads", gate.studentId, result.filename),
       result.output.book_id,
-      false,
+      "full",
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not start generation.";

@@ -139,6 +139,34 @@ function topicsForDocument(topics: AgentTopic[], document: Document, documentCou
   return matched.length > 0 || documentCount > 1 ? matched : topics;
 }
 
+/** How many topics a description names before it starts counting them. */
+const MAX_LISTED_TOPICS = 6;
+
+const LIST_FORMAT = new Intl.ListFormat("en", { style: "long", type: "conjunction" });
+
+/**
+ * One readable course description.
+ *
+ * Every topic the curriculum agent extracts carries its own full-sentence
+ * summary, and joining all of them end to end produced a ~120-word paragraph
+ * that restarted with "Covers… Explores… Introduces… Details… Teaches…" once
+ * per topic — accurate, but nobody reads it. A description is scanned, so this
+ * names the shape of the course and then what it covers. The per-topic
+ * summaries are untouched and still reach the client on the topics themselves.
+ */
+function courseOverview(structure: string, topicTitles: string[], summaries: string[]): string {
+  if (topicTitles.length === 0) {
+    // Nothing to list: one summary still beats a bare structure line.
+    return [structure, summaries[0]].filter(Boolean).join(" ");
+  }
+  const named = topicTitles.slice(0, MAX_LISTED_TOPICS);
+  const remaining = topicTitles.length - named.length;
+  const listed = LIST_FORMAT.format(
+    remaining > 0 ? [...named, `${remaining} more topic${remaining === 1 ? "" : "s"}`] : named,
+  );
+  return `${structure} Covers ${listed}.`;
+}
+
 function appPlan(
   agentPlan: AgentPlan,
   documents: Document[],
@@ -150,6 +178,7 @@ function appPlan(
     const totalHours = courseTopics.reduce((total, topic) => total + topic.total_hours, 0);
     const contactHours = courseTopics.reduce((total, topic) => total + topic.contact_hours, 0);
     const summaries = [...new Set(courseTopics.map((topic) => topic.summary.trim()).filter(Boolean))];
+    const topicTitles = [...new Set(courseTopics.map((topic) => topic.title.trim()).filter(Boolean))];
     const generatedDetail = documents.length === 1 && generatedPlan
       ? `${generatedPlan.chapterCount ?? "Detected"} chapter${generatedPlan.chapterCount === 1 ? "" : "s"} across ${generatedPlan.semesterCount} semester${generatedPlan.semesterCount === 1 ? "" : "s"}.`
       : "One uploaded book, one course.";
@@ -162,7 +191,7 @@ function appPlan(
         ? generatedPlan.weekCount * 0.75
         : Math.max(1, courseTopics.length),
       lab_hours: 0,
-      description: [generatedDetail, ...summaries].join(" "),
+      description: courseOverview(generatedDetail, topicTitles, summaries),
     };
   });
   const singleCoursePlan = documents.length === 1 ? generatedPlan : null;
@@ -298,7 +327,13 @@ export async function POST(request: NextRequest) {
   const unfinished = storageKeys.filter(
     (storageKey) => {
       const book = generatedByFilename.get(storageKey);
-      return !book || (book.status !== "ready" && (book.generation_ready_weeks ?? 0) < 1);
+      // What this curriculum is built from is the chapter plan, and a book
+      // waiting for approval already has one — that is the whole point of the
+      // plan-only pass. Requiring a generated lecture here would deadlock:
+      // lectures wait for approval, approval waits for the curriculum, and the
+      // curriculum waited for a lecture.
+      const planReady = book?.status === "ready" || book?.status === "awaiting_approval";
+      return !book || (!planReady && (book.generation_ready_weeks ?? 0) < 1);
     },
   );
   if (unfinished.length > 0) {

@@ -180,7 +180,16 @@ export default function ExamsPage() {
     if (exam.state === "submitted") return `Submitted — score ${exam.score} / ${exam.maxScore}.`;
     if (exam.state === "missed") return `Window closed ${formatRelative(exam.closesAt, now)}.`;
     if (exam.state === "open") return `Open now — closes in ${formatCountdown(closes)}.`;
-    return `Opens after the lecture, ${formatRelative(exam.opensAt, now)} (${formatDateTime(exam.opensAt)}). You get ${
+    // A quiz follows its own lecture; a midterm follows the LAST lecture of the
+    // month it covers (exam.week is that week). Saying "after the lecture" for
+    // a midterm titled "Weeks 1 to 4" names no lecture the learner can place.
+    const opensAfter =
+      exam.kind === "mid"
+        ? exam.week
+          ? `Opens after week ${exam.week}`
+          : "Opens after the last lecture it covers"
+        : "Opens after the lecture";
+    return `${opensAfter}, ${formatRelative(exam.opensAt, now)} (${formatDateTime(exam.opensAt)}). You get ${
       exam.kind === "mid" ? "3 days" : "24 hours"
     }.`;
   }
@@ -191,9 +200,9 @@ export default function ExamsPage() {
     <Stack spacing={3}>
       <Typography variant="h4">Exams</Typography>
       <Typography variant="body1" color="text.secondary">
-        A quiz opens when its lecture ends and stays open for 24 hours. The midterm opens
-        after week 4 and stays open for 3 days. Exams run in the exam system and your
-        results come back to the dashboard.
+        A quiz opens when its lecture ends and stays open for 24 hours. A midterm covers
+        each four-week month, opens after the last of those weeks, and stays open for 3
+        days. Exams run in the exam system and your results come back to the dashboard.
       </Typography>
 
       {openNow.length ? (

@@ -20,7 +20,10 @@ CREATE TABLE IF NOT EXISTS books (
   generation_stage TEXT,
   generation_total_weeks INTEGER NOT NULL DEFAULT 0,
   generation_ready_weeks INTEGER NOT NULL DEFAULT 0,
-  generation_audio_ready_weeks INTEGER NOT NULL DEFAULT 0
+  generation_audio_ready_weeks INTEGER NOT NULL DEFAULT 0,
+  -- Liveness beat of a running build; a stale one means the build was
+  -- abandoned and a new upload may take it over.
+  heartbeat_at TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS books_student_idx ON books(student_id);
 
@@ -235,10 +238,14 @@ CREATE TABLE IF NOT EXISTS documents (
   error         TEXT,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  -- Server-computed SHA-256 of the uploaded bytes; recognises a book the
+  -- learner already has. Never a client-supplied value.
+  content_sha256 TEXT,
   CONSTRAINT valid_document_status CHECK (status IN ('pending','uploading','ready','failed'))
 );
 CREATE INDEX IF NOT EXISTS idx_documents_collection ON documents (collection_id);
 CREATE INDEX IF NOT EXISTS idx_documents_student    ON documents (student_id);
+CREATE INDEX IF NOT EXISTS documents_student_content_idx ON documents (student_id, content_sha256);
 
 CREATE TABLE IF NOT EXISTS programmes (
   id            SERIAL PRIMARY KEY,

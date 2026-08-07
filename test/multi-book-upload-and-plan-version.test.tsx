@@ -272,6 +272,31 @@ function createDbFake(): FakeDb {
       return db.documents.find((d) => d.id === params[0] && d.student_id === params[1]) ?? null;
     }
 
+    // findDocumentByContent — "same bytes, any filename" duplicate detection.
+    if (sql.includes("FROM documents") && sql.includes("content_sha256 = $2")) {
+      return (
+        db.documents.find(
+          (d) =>
+            d.student_id === params[0] &&
+            d.content_sha256 === params[1] &&
+            d.status !== "failed",
+        ) ?? null
+      );
+    }
+
+    // getProgrammeForCollection — the upload route reads this to refuse
+    // building a course whose curriculum has not been approved.
+    if (
+      sql.includes("FROM programmes") &&
+      sql.includes("WHERE collection_id = $1 AND student_id = $2")
+    ) {
+      return (
+        db.programmes.find(
+          (p) => p.collection_id === params[0] && p.student_id === params[1],
+        ) ?? null
+      );
+    }
+
     if (sql.includes("FROM programmes") && sql.includes("source_coverage")) {
       const row = db.programmes.find((p) => {
         if (p.student_id !== params[0] || p.status !== "approved" || p.collection_id !== params[1]) return false;
@@ -334,7 +359,15 @@ function createDbFake(): FakeDb {
         row.status = "ingesting";
         row.error = null;
         row.progress = "Preparing your book…";
+        if (params[2]) row.source_sha256 = params[2];
       }
+      return row ? [row] : [];
+    }
+
+    // setDocumentContentHash — the server-computed byte identity of the upload.
+    if (sql.includes("UPDATE documents SET content_sha256")) {
+      const row = db.documents.find((d) => d.id === params[1] && d.student_id === params[2]);
+      if (row) row.content_sha256 = params[0];
       return row ? [row] : [];
     }
 
@@ -365,6 +398,11 @@ function createDbFake(): FakeDb {
 
 function pdfFile(name: string): NodeFile {
   return new NodeFile([`%PDF-1.4\n${name} content`], name, { type: "application/pdf" });
+}
+
+/** The same bytes under a different filename — a renamed copy of one book. */
+function pdfFileWithBody(name: string, body: string): NodeFile {
+  return new NodeFile([`%PDF-1.4\n${body}`], name, { type: "application/pdf" });
 }
 
 function makeRequest(url: string, init?: ConstructorParameters<typeof NextRequest>[1]): NextRequest {
@@ -700,11 +738,72 @@ describe("Upload route — multi-book library is additive", () => {
     expect(db.books).toHaveLength(1);
     expect(db.books[0].id).toBe(failed.bookId);
 
+    // The book is indexed now, so replaying reaches the approval gate: only an
+    // approved curriculum may start building. Approve it, so this test keeps
+    // measuring what it is about — that a replay creates no duplicates.
+    seedApprovedProgrammeReferencing(db, failed.collectionId, failed.documentId);
+
     const replay = await POST(postForm(null, retryMetadata));
     expect(replay.status).toBe(200);
     expect(db.documents).toHaveLength(1);
     expect(db.books).toHaveLength(1);
     expect(mockRunPython).toHaveBeenCalledTimes(2);
+  });
+
+  it("names the book a renamed duplicate matches instead of building it twice", async () => {
+    const { POST } = await import("@/app/api/upload/route");
+    mockRunPython.mockResolvedValue({ stdout: '{"ok":true,"message":"indexed"}', stderr: "" });
+
+    const first = await POST(postForm(pdfFileWithBody("operating_systems.pdf", "identical bytes")));
+    expect(first.status).toBe(200);
+
+    // Same bytes, different name. Renaming a PDF used to buy a second course
+    // built from identical material — and a second RAG ingest to pay for it.
+    const renamed = await POST(postForm(pdfFileWithBody("os_notes_copy.pdf", "identical bytes")));
+
+    expect(renamed.status).toBe(409);
+    const body = (await renamed.json()) as { error: string; code: string };
+    expect(body.code).toBe("DUPLICATE_BOOK");
+    expect(body.error).toContain("operating_systems.pdf");
+    expect(db.documents).toHaveLength(1);
+    expect(db.books).toHaveLength(1);
+    expect(mockRunPython).toHaveBeenCalledTimes(1);
+  });
+
+  it("still accepts a different book from the same learner", async () => {
+    const { POST } = await import("@/app/api/upload/route");
+    mockRunPython.mockResolvedValue({ stdout: '{"ok":true,"message":"indexed"}', stderr: "" });
+
+    expect((await POST(postForm(pdfFile("algorithms.pdf")))).status).toBe(200);
+    expect((await POST(postForm(pdfFile("databases.pdf")))).status).toBe(200);
+    expect(db.documents).toHaveLength(2);
+    expect(db.books).toHaveLength(2);
+  });
+
+  it("refuses to build a course whose curriculum has not been approved", async () => {
+    const { POST } = await import("@/app/api/upload/route");
+    mockRunPython.mockResolvedValue({ stdout: '{"ok":true,"message":"indexed"}', stderr: "" });
+
+    const first = await POST(postForm(pdfFile("unapproved_course.pdf")));
+    expect(first.status).toBe(200);
+    const uploaded = (await first.json()) as {
+      documentId: number;
+      collectionId: number;
+      bookId: number;
+    };
+
+    // Chapters are planned; the learner has not agreed to the curriculum built
+    // from them. Writing lectures now is hours of work against a plan they may
+    // still reshape, so the build must not start — including via "Resume".
+    db.books[0].status = "awaiting_approval";
+    const blocked = await POST(postForm(null, {
+      documentId: String(uploaded.documentId),
+      collectionId: String(uploaded.collectionId),
+      bookId: String(uploaded.bookId),
+    }));
+
+    expect(blocked.status).toBe(409);
+    expect((await blocked.json()).code).toBe("CURRICULUM_NOT_APPROVED");
   });
 
   it("resumes failed course generation without re-indexing or replacing the book", async () => {
@@ -721,6 +820,8 @@ describe("Upload route — multi-book library is additive", () => {
     db.books[0].status = "partial_failed";
     db.books[0].generation_ready_weeks = 2;
     db.books[0].error = "audio timeout";
+    // Resuming a build requires the curriculum to have been approved.
+    seedApprovedProgrammeReferencing(db, uploaded.collectionId, uploaded.documentId);
 
     const resumed = await POST(postForm(null, {
       documentId: String(uploaded.documentId),

@@ -80,6 +80,28 @@ export default function MultiBookUploader({ collectionId, onDocumentsChange }: P
     }
   }
 
+  /**
+   * SHA-256 of the chosen file, computed here so the server can recognise a
+   * book it has seen before.
+   *
+   * This is a HINT, never a credential. The server re-hashes the bytes it
+   * actually received and uses its own answer for anything that grants access
+   * — otherwise a client could name someone else's hash and be handed their
+   * book. crypto.subtle needs a secure context, so this is null on plain HTTP
+   * from a non-localhost origin; the server hashes regardless.
+   */
+  async function sha256Hex(file: File): Promise<string | null> {
+    if (!globalThis.crypto?.subtle) return null;
+    try {
+      const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+      return [...new Uint8Array(digest)]
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
+    } catch {
+      return null;
+    }
+  }
+
   async function runUpload(entry: UploadEntry) {
     setEntries((prev) =>
       prev.map((e) =>
@@ -88,6 +110,8 @@ export default function MultiBookUploader({ collectionId, onDocumentsChange }: P
     );
     const body = new FormData();
     body.append("file", entry.file);
+    const clientSha256 = await sha256Hex(entry.file);
+    if (clientSha256) body.append("clientSha256", clientSha256);
     if (entry.documentId) body.append("documentId", String(entry.documentId));
     if (entry.bookId) body.append("bookId", String(entry.bookId));
     if (entry.collectionId ?? collectionId) {

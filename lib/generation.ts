@@ -1,6 +1,7 @@
 import { spawn } from "child_process";
 import { mkdirSync, openSync } from "fs";
 import path from "path";
+import { query } from "./db";
 import { REPO_ROOT, VENV_PYTHON } from "./python";
 import { isStandalone } from "./runtime";
 
@@ -9,7 +10,20 @@ import { isStandalone } from "./runtime";
  * cave) detached, so it outlives the HTTP request that asked for it. Progress
  * is reported through books.progress; output lands in logs/lecture-gen.log.
  */
-export function spawnGeneration(pdfPath: string, bookId: number, quizzesOnly = false): void {
+/**
+ * "plan" discovers the book's chapters and stops, leaving the book in
+ * awaiting_approval — that is all the curriculum needs, and it is the only
+ * thing worth doing before a learner has approved what they are about to be
+ * taught. "full" writes the lectures, quizzes, slides and voice. "quizzes"
+ * rewrites only the question banks.
+ */
+export type GenerationMode = "full" | "plan" | "quizzes";
+
+export function spawnGeneration(
+  pdfPath: string,
+  bookId: number,
+  mode: GenerationMode = "full",
+): void {
   if (isStandalone()) {
     console.info(
       `[standalone] generation fixture selected for book ${bookId}; Python, Slidev, and voice were skipped`
@@ -23,7 +37,8 @@ export function spawnGeneration(pdfPath: string, bookId: number, quizzesOnly = f
     pdfPath,
     String(bookId),
   ];
-  if (quizzesOnly) args.push("--quizzes-only");
+  if (mode === "quizzes") args.push("--quizzes-only");
+  if (mode === "plan") args.push("--plan-only");
 
   const child = spawn(VENV_PYTHON, args, {
     cwd: REPO_ROOT,
@@ -35,4 +50,43 @@ export function spawnGeneration(pdfPath: string, bookId: number, quizzesOnly = f
     env: { ...process.env, PYTHONIOENCODING: "utf-8" },
   });
   child.unref();
+}
+
+/**
+ * Build the courses a learner has just approved.
+ *
+ * Until approval each book holds nothing but its chapter plan
+ * (awaiting_approval), because the curriculum they approve is assembled from
+ * that plan and reshaping it afterwards would discard every lecture written
+ * against the old one. Approval is therefore what starts the real work.
+ *
+ * Returns the books it started, so the caller can report how many.
+ */
+export async function startApprovedCourseBuild(
+  collectionId: number,
+  studentId: string,
+): Promise<number[]> {
+  const books = await query<{ id: number; filename: string }>(
+    `SELECT id, filename FROM books
+      WHERE student_id = $1
+        AND filename LIKE 'collections/' || $2::text || '/%'
+        AND status IN ('awaiting_approval', 'failed', 'partial_failed', 'partial')`,
+    [studentId, collectionId],
+  );
+
+  for (const book of books) {
+    await query(
+      `UPDATE books SET status = 'generating', generation_stage = 'resuming',
+          error = NULL, progress = 'Building your approved course…',
+          heartbeat_at = CURRENT_TIMESTAMP
+        WHERE id = $1 AND student_id = $2`,
+      [book.id, studentId],
+    );
+    spawnGeneration(
+      path.join(REPO_ROOT, "uploads", studentId, ...book.filename.split("/")),
+      book.id,
+      "full",
+    );
+  }
+  return books.map((book) => book.id);
 }

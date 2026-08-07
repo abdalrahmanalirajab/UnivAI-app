@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { requireUserApi } from "@/lib/session";
 import { approveProgramme } from "@/lib/programmes";
+import { startApprovedCourseBuild } from "@/lib/generation";
 
 export const dynamic = "force-dynamic";
 
@@ -56,6 +57,14 @@ export async function POST(
     );
   }
 
+  // Approval is what starts the real build: until now each book held only its
+  // chapter plan. Idempotent — re-approving the same version finds every book
+  // already generating and starts nothing.
+  const started = await startApprovedCourseBuild(
+    result.programme.collection_id,
+    gate.studentId,
+  );
+
   // Names the exact approved version alongside the full programme so callers
   // can verify which version was approved and refresh against the newest
   // state. Re-approving the same version returns this identical response
@@ -63,5 +72,6 @@ export async function POST(
   return Response.json({
     programme: result.programme,
     approvedVersion: result.programme.plan_version,
+    coursesStarted: started.length,
   });
 }
