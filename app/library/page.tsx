@@ -7,6 +7,11 @@ import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
 import CircularProgress from "@mui/material/CircularProgress";
+import Dialog from "@mui/material/Dialog";
+import DialogActions from "@mui/material/DialogActions";
+import DialogContent from "@mui/material/DialogContent";
+import DialogContentText from "@mui/material/DialogContentText";
+import DialogTitle from "@mui/material/DialogTitle";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
@@ -29,6 +34,11 @@ export default function CollectionsPage() {
   const [reloadKey, setReloadKey] = useState(0);
   const [building, setBuilding] = useState(false);
   const [readiness, setReadiness] = useState<CurriculumReadiness | null>(null);
+  // The curriculum this collection already has, so the button can say what it
+  // will actually do. null = none built yet; undefined = not looked up yet.
+  const [programmeId, setProgrammeId] = useState<number | null | undefined>(undefined);
+  // Set when the server refuses to rebuild over edits until we confirm.
+  const [rebuildPrompt, setRebuildPrompt] = useState(false);
 
   const active = collections?.[0] ?? null;
 
@@ -51,6 +61,26 @@ export default function CollectionsPage() {
   useEffect(() => {
     loadCollections();
   }, [loadCollections]);
+
+  useEffect(() => {
+    if (!active) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/programmes?collectionId=${active.id}`, {
+          cache: "no-store",
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled) setProgrammeId(data.programme?.id ?? null);
+      } catch {
+        // A failed lookup only costs the button its better label.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [active, reloadKey]);
 
   async function createCollection() {
     if (!name.trim()) return;
@@ -75,7 +105,7 @@ export default function CollectionsPage() {
     }
   }
 
-  async function buildCurriculum() {
+  async function buildCurriculum(rebuildEdited = false) {
     if (!active) return;
     setBuilding(true);
     setError(null);
@@ -83,12 +113,19 @@ export default function CollectionsPage() {
       const res = await fetch("/api/programmes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ collectionId: active.id }),
+        body: JSON.stringify({ collectionId: active.id, rebuildEdited }),
       });
       const data = await res.json();
+      // The learner has shaped this curriculum and rebuilding would discard
+      // that. Ask before spending their edits, not after.
+      if (res.status === 409 && data.code === "CURRICULUM_EDITED") {
+        setRebuildPrompt(true);
+        return;
+      }
       if (!res.ok || !data.programme?.id) {
         throw new Error(data.error ?? "Failed to build the curriculum.");
       }
+      setProgrammeId(data.programme.id);
       router.push(`/curriculum/${data.programme.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to build the curriculum.");
@@ -146,12 +183,20 @@ export default function CollectionsPage() {
             Collection: {active?.name}
           </Typography>
 
+          {/* One button, but not one action: with no curriculum yet this
+              builds one, and once there is one it opens the workspace — the
+              server returns the existing plan rather than rebuilding. Saying
+              "Build Curriculum" in both states described only the first. */}
           <Button
             variant="contained"
-            onClick={buildCurriculum}
+            onClick={() => buildCurriculum()}
             disabled={building || readiness?.usable !== true}
           >
-            {building ? "Building Curriculum…" : "Build Curriculum"}
+            {building
+              ? "Building Curriculum…"
+              : programmeId
+                ? "Open Curriculum"
+                : "Build Curriculum"}
           </Button>
           {building ? (
             <Alert severity="info" icon={<CircularProgress size={20} />}>
@@ -210,6 +255,29 @@ export default function CollectionsPage() {
           />
         </Stack>
       )}
+
+      <Dialog open={rebuildPrompt} onClose={() => setRebuildPrompt(false)}>
+        <DialogTitle>Rebuild this curriculum?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            You have edited this curriculum — renamed, reordered or merged its
+            courses. Rebuilding it from your books replaces those changes, and
+            they cannot be recovered.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRebuildPrompt(false)}>Keep my curriculum</Button>
+          <Button
+            color="error"
+            onClick={() => {
+              setRebuildPrompt(false);
+              buildCurriculum(true);
+            }}
+          >
+            Rebuild and replace
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Stack>
   );
 }

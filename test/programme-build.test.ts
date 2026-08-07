@@ -38,11 +38,22 @@ vi.mock("@/lib/programmes", () => ({
 
 import { POST } from "@/app/api/programmes/route";
 
-const request = () => new NextRequest("http://localhost/api/programmes", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ collectionId: 5 }),
-});
+const request = (body: Record<string, unknown> = {}) =>
+  new NextRequest("http://localhost/api/programmes", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ collectionId: 5, ...body }),
+  });
+
+/** A curriculum the learner has shaped — merging renames the course id. */
+const mergedProgramme = {
+  id: 9,
+  status: "proposed" as const,
+  plan_version: 2,
+  plan: {
+    courses: [{ id: "merged_book-11_book-12", title: "Merged", credits: 4 }],
+  },
+};
 
 describe("POST /api/programmes", () => {
   beforeEach(() => {
@@ -253,6 +264,38 @@ describe("POST /api/programmes", () => {
     const response = await POST(request());
 
     expect(response.status).toBe(201);
+    expect(mocks.runPython).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses to rebuild over an edited curriculum without confirmation", async () => {
+    // Merging courses mints a new course id, so the old "do the ids still match
+    // the ready documents?" guard failed and the route rebuilt straight over
+    // the learner's merge. Nothing warned them and the edit was unrecoverable.
+    mocks.getProgrammeForCollection.mockResolvedValue(mergedProgramme);
+
+    const response = await POST(request());
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.code).toBe("CURRICULUM_EDITED");
+    expect(body.programme.id).toBe(9);
+    expect(mocks.runPython).not.toHaveBeenCalled();
+  });
+
+  it("rebuilds an edited curriculum once the learner confirms", async () => {
+    mocks.getProgrammeForCollection.mockResolvedValue(mergedProgramme);
+    mocks.updateProgrammePlan.mockResolvedValue({
+      ok: true,
+      programme: { ...mergedProgramme, plan_version: 3 },
+    });
+
+    // Rebuilding an existing programme is a new VERSION of it, so this answers
+    // 200 with the updated plan; 201 is reserved for a first build.
+    const response = await POST(request({ rebuildEdited: true }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.programme.plan_version).toBe(3);
     expect(mocks.runPython).toHaveBeenCalledTimes(1);
   });
 
