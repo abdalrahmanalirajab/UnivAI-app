@@ -67,6 +67,10 @@ export const env = {
   BETTER_AUTH_URL: read("BETTER_AUTH_URL", "http://localhost:3100"),
   // The single account auto-promoted to super_admin on signup.
   SUPER_ADMIN_EMAIL: read("SUPER_ADMIN_EMAIL").trim().toLowerCase(),
+  // Google sign-in. Both empty => the provider is not registered at all and the
+  // UI hides the button, so the app runs unchanged without Google credentials.
+  GOOGLE_CLIENT_ID: read("GOOGLE_CLIENT_ID"),
+  GOOGLE_CLIENT_SECRET: read("GOOGLE_CLIENT_SECRET"),
   // Empty RESEND_API_KEY => reset/verify links are logged to the console instead
   // of emailed (dev fallback); see lib/email.ts.
   RESEND_API_KEY: read("RESEND_API_KEY"),

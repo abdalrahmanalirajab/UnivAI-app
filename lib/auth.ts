@@ -59,10 +59,41 @@ export const auth = betterAuth({
     },
   },
 
+  // Google sign-in, registered only when credentials exist so the app still
+  // boots (and the E2E stack still runs) without them.
+  ...(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
+    ? {
+        socialProviders: {
+          google: {
+            clientId: env.GOOGLE_CLIENT_ID,
+            clientSecret: env.GOOGLE_CLIENT_SECRET,
+          },
+        },
+      }
+    : {}),
+
+  account: {
+    accountLinking: {
+      // A learner who registered with email and password and later presses
+      // "Continue with Google" is the same person: Google asserts the address
+      // and has verified it, so the provider is linked to the existing account
+      // instead of failing on the duplicate email. Only providers listed here
+      // are trusted to make that claim.
+      enabled: true,
+      trustedProviders: ["google"],
+    },
+  },
+
   user: {
     additionalFields: {
       // Collected at registration, shown/edited on the profile — NOT verified.
-      phone: { type: "string", required: true, input: true },
+      //
+      // Not `required` at the schema level: Google supplies no phone number, and
+      // a required additional field makes social sign-up impossible. The email
+      // sign-up path still demands it — the register form validates it and
+      // guardHook rejects a /sign-up/email without one — while a Google sign-up
+      // starts with an empty phone the learner fills in on /profile.
+      phone: { type: "string", required: false, input: true },
       // The RAG / LiveKit namespace key. Server-generated; client can't set it.
       studentId: { type: "string", required: false, input: false },
     },
@@ -107,6 +138,10 @@ export const auth = betterAuth({
             data: {
               ...user,
               studentId,
+              // user.phone is NOT NULL in the schema and Google sends no phone
+              // number, so a social sign-up would otherwise fail on insert.
+              // Empty means "not given yet"; /profile is where it gets filled.
+              phone: (user as { phone?: string }).phone ?? "",
               ...(isOwner ? { role: "super_admin" } : {}),
             },
           };

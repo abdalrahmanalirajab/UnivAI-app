@@ -97,7 +97,7 @@ function ProfileForm({ user }: { user: SessionUser }) {
         helperText={nameError}
       />
       <TextField
-        label="Phone"
+        label="Phone (optional)"
         name="phone"
         fullWidth
         margin="normal"

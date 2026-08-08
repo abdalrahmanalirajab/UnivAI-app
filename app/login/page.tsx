@@ -13,6 +13,7 @@ import Link from "next/link";
 import { validateEmail } from "@/lib/validators";
 import { authClient } from "@/lib/auth-client";
 import { copyFor, type AuthError } from "@/lib/errorMap";
+import GoogleSignInButton from "@/app/components/GoogleSignInButton";
 
 function LoginForm() {
   const [email, setEmail] = useState("");
@@ -27,6 +28,13 @@ function LoginForm() {
   const redirectParam = searchParams.get("redirect");
 
   const canSubmit = validateEmail(email) === null && password.length > 0 && !submitting;
+
+  // Where both sign-in routes land. Google returns here through its callback,
+  // so an interrupted /schedule visit resumes at /schedule either way.
+  const safeRedirectTarget =
+    redirectParam?.startsWith("/") && !redirectParam.startsWith("//")
+      ? redirectParam
+      : "/start";
 
   const handleSubmit = async () => {
     setSubmitting(true);
@@ -45,11 +53,7 @@ function LoginForm() {
       return;
     }
 
-    const safeRedirect =
-      redirectParam?.startsWith("/") && !redirectParam.startsWith("//")
-        ? redirectParam
-        : "/start";
-    router.push(safeRedirect);
+    router.push(safeRedirectTarget);
     router.refresh();
   };
 
@@ -97,6 +101,10 @@ function LoginForm() {
       <Button component={Link} href="/forgot-password" fullWidth>
         Forgot password?
       </Button>
+      <GoogleSignInButton
+        callbackURL={safeRedirectTarget}
+        onError={(message) => setTopLevelError(message || null)}
+      />
     </AuthCard>
   );
 }

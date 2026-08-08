@@ -9,7 +9,14 @@ export function validateEmail(email: string): string | null {
   return null;
 }
 
+/**
+ * Optional. A learner may register without a phone number — Google sign-in
+ * supplies none, so requiring it on one route and not the other would only
+ * describe how the account was created. A number that IS given still has to be
+ * a plausible E.164 one.
+ */
 export function validatePhone(phone: string): string | null {
+  if (phone.trim() === "") return null;
   if (!/^\+\d{8,15}$/.test(phone)) return "Enter a valid phone number (e.g. +201234567890).";
   return null;
 }
