@@ -22,9 +22,14 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
   }
   const section = await getSectionPack(gate.studentId, id);
   if (!section) return Response.json({ error: "No such section." }, { status: 404 });
-  if (!section.lectureCompleted) {
+  // Open on the clock, like the week's quiz: a section is practice for a
+  // lecture that has been delivered, not a reward for staying to the last line.
+  if (!section.lectureEnded) {
     return Response.json(
-      { error: "Finish the linked lecture before attending its section." },
+      {
+        error: "This section opens when its lecture ends.",
+        opensAt: section.lectureEndsAt.toISOString(),
+      },
       { status: 403 },
     );
   }

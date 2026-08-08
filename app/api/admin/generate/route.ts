@@ -72,7 +72,11 @@ export async function POST(request: NextRequest) {
   spawnGeneration(
     path.join(REPO_ROOT, "uploads", sid, book.filename),
     book.id,
-    mode === "quizzes" ? "quizzes" : "full",
+    // "rebuild", never "full": an admin asking to regenerate wants this book
+    // written again. Course reuse would find the identical course this one was
+    // adopted from and hand back the same content, so the button would appear
+    // to work and change nothing.
+    mode === "quizzes" ? "quizzes" : "rebuild",
   );
 
   return Response.json({ ok: true, size, mode });

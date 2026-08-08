@@ -16,8 +16,14 @@ import { isStandalone } from "./runtime";
  * thing worth doing before a learner has approved what they are about to be
  * taught. "full" stores lectures, quizzes, slides, and sections in Postgres.
  * "quizzes" rewrites only the database question banks.
+ *
+ * "rebuild" is "full" with course reuse switched off. A learner reaching this
+ * book for the first time should adopt an identical course rather than pay to
+ * write it twice, but an admin pressing "Regenerate course" is asking for new
+ * content on purpose — silently handing back a copy of the donor would make
+ * the button a no-op.
  */
-export type GenerationMode = "full" | "plan" | "quizzes";
+export type GenerationMode = "full" | "plan" | "quizzes" | "rebuild";
 
 export function spawnGeneration(
   pdfPath: string,
@@ -39,6 +45,7 @@ export function spawnGeneration(
   ];
   if (mode === "quizzes") args.push("--quizzes-only");
   if (mode === "plan") args.push("--plan-only");
+  if (mode === "rebuild") args.push("--no-reuse");
 
   const child = spawn(AGENT_PYTHON, args, {
     cwd: REPO_ROOT,
