@@ -34,7 +34,9 @@ test("learner inspects a source, sends feedback, and retries on mobile by keyboa
     });
   });
 
-  await page.goto("/lecture/4211");
+  // Lectures are addressed by their database-generated public UUID, never the
+  // sequential row id. standalone/seed.sql pins this one for the fixture week.
+  await page.goto("/lecture/11111111-1111-4111-8111-000000004211");
   await expect(page.getByText("Standalone lecture simulation", { exact: false })).toBeVisible();
   await expect(page.getByText("lecturing", { exact: true })).toBeVisible();
 
