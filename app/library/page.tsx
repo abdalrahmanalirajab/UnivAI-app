@@ -39,6 +39,7 @@ export default function CollectionsPage() {
   const [programmeId, setProgrammeId] = useState<number | null | undefined>(undefined);
   // Set when the server refuses to rebuild over edits until we confirm.
   const [rebuildPrompt, setRebuildPrompt] = useState(false);
+  const [continueMode, setContinueMode] = useState<"curriculum" | "schedule" | null>(null);
 
   const active = collections?.[0] ?? null;
 
@@ -61,6 +62,11 @@ export default function CollectionsPage() {
   useEffect(() => {
     loadCollections();
   }, [loadCollections]);
+
+  useEffect(() => {
+    const mode = new URLSearchParams(window.location.search).get("continue");
+    setContinueMode(mode === "curriculum" || mode === "schedule" ? mode : null);
+  }, []);
 
   useEffect(() => {
     if (!active) return;
@@ -105,7 +111,7 @@ export default function CollectionsPage() {
     }
   }
 
-  async function buildCurriculum(rebuildEdited = false) {
+  const buildCurriculum = useCallback(async (rebuildEdited = false) => {
     if (!active) return;
     setBuilding(true);
     setError(null);
@@ -132,7 +138,22 @@ export default function CollectionsPage() {
     } finally {
       setBuilding(false);
     }
-  }
+  }, [active, router]);
+
+  useEffect(() => {
+    if (!continueMode || !active || !readiness?.usable || programmeId === undefined || building) {
+      return;
+    }
+    if (continueMode === "schedule") {
+      if (!readiness.awaitingApproval) router.replace("/schedule");
+      return;
+    }
+    if (programmeId) {
+      router.replace(`/curriculum/${programmeId}`);
+    } else {
+      void buildCurriculum();
+    }
+  }, [active, buildCurriculum, building, continueMode, programmeId, readiness, router]);
 
   if (!collections) {
     return <CircularProgress />;

@@ -26,6 +26,7 @@ type UploadEntry = {
 type Props = {
   collectionId?: number;
   onDocumentsChange: () => void;
+  onAllUploadsComplete?: () => void | Promise<void>;
 };
 
 const STATUS_COLOR: Record<UploadStatus, "default" | "warning" | "success" | "error" | "info"> = {
@@ -56,7 +57,11 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export default function MultiBookUploader({ collectionId, onDocumentsChange }: Props) {
+export default function MultiBookUploader({
+  collectionId,
+  onDocumentsChange,
+  onAllUploadsComplete,
+}: Props) {
   const [entries, setEntries] = useState<UploadEntry[]>([]);
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -64,7 +69,9 @@ export default function MultiBookUploader({ collectionId, onDocumentsChange }: P
   const queueRef = useRef<UploadEntry[]>([]);
   const queuedIdsRef = useRef(new Set<number>());
   const activeIdsRef = useRef(new Set<number>());
+  const controllersRef = useRef(new Map<number, AbortController>());
   const activeRef = useRef(0);
+  const batchFailedRef = useRef(false);
 
   function pump() {
     while (activeRef.current < MAX_CONCURRENT && queueRef.current.length > 0) {
@@ -72,11 +79,22 @@ export default function MultiBookUploader({ collectionId, onDocumentsChange }: P
       queuedIdsRef.current.delete(entry.id);
       activeIdsRef.current.add(entry.id);
       activeRef.current += 1;
-      void runUpload(entry).finally(() => {
-        activeRef.current -= 1;
-        activeIdsRef.current.delete(entry.id);
-        pump();
-      });
+      void runUpload(entry)
+        .then((succeeded) => {
+          if (!succeeded) batchFailedRef.current = true;
+        })
+        .finally(() => {
+          activeRef.current -= 1;
+          activeIdsRef.current.delete(entry.id);
+          pump();
+          if (
+            activeRef.current === 0 &&
+            queueRef.current.length === 0 &&
+            !batchFailedRef.current
+          ) {
+            void onAllUploadsComplete?.();
+          }
+        });
     }
   }
 
@@ -102,7 +120,7 @@ export default function MultiBookUploader({ collectionId, onDocumentsChange }: P
     }
   }
 
-  async function runUpload(entry: UploadEntry) {
+  async function runUpload(entry: UploadEntry): Promise<boolean> {
     setEntries((prev) =>
       prev.map((e) =>
         e.id === entry.id ? { ...e, status: "uploading" as const, error: undefined } : e,
@@ -118,15 +136,22 @@ export default function MultiBookUploader({ collectionId, onDocumentsChange }: P
       body.append("collectionId", String(entry.collectionId ?? collectionId));
     }
     let res: Response;
+    const controller = new AbortController();
+    controllersRef.current.set(entry.id, controller);
     try {
-      res = await fetch("/api/upload", { method: "POST", body });
+      res = await fetch("/api/upload", { method: "POST", body, signal: controller.signal });
     } catch {
+      controllersRef.current.delete(entry.id);
+      if (controller.signal.aborted) {
+        setEntries((prev) => prev.filter((candidate) => candidate.id !== entry.id));
+        return false;
+      }
       setEntries((prev) =>
         prev.map((e) =>
           e.id === entry.id ? { ...e, status: "offline" as const, error: undefined } : e,
         ),
       );
-      return;
+      return false;
     }
     try {
       const data = await res.json().catch(() => null);
@@ -150,6 +175,7 @@ export default function MultiBookUploader({ collectionId, onDocumentsChange }: P
         ),
       );
       onDocumentsChange();
+      return true;
     } catch (err) {
       setEntries((prev) =>
         prev.map((e) =>
@@ -166,7 +192,9 @@ export default function MultiBookUploader({ collectionId, onDocumentsChange }: P
         ),
       );
       if (entry.documentId) onDocumentsChange();
+      return false;
     }
+    controllersRef.current.delete(entry.id);
   }
 
   function enqueue(files: FileList | File[] | null) {
@@ -187,6 +215,9 @@ export default function MultiBookUploader({ collectionId, onDocumentsChange }: P
         !activeIdsRef.current.has(entry.id),
     );
     if (selected.length === 0) return;
+    if (activeRef.current === 0 && queueRef.current.length === 0) {
+      batchFailedRef.current = false;
+    }
     queueRef.current.push(...selected);
     selected.forEach((entry) => queuedIdsRef.current.add(entry.id));
     pump();
@@ -195,6 +226,11 @@ export default function MultiBookUploader({ collectionId, onDocumentsChange }: P
   function removeSelected(entry: UploadEntry) {
     if (entry.status !== "pending" || queuedIdsRef.current.has(entry.id)) return;
     setEntries((prev) => prev.filter((candidate) => candidate.id !== entry.id));
+  }
+
+  function cancelUpload(entry: UploadEntry) {
+    if (entry.status !== "uploading") return;
+    controllersRef.current.get(entry.id)?.abort();
   }
 
   function clearSelected() {
@@ -213,6 +249,9 @@ export default function MultiBookUploader({ collectionId, onDocumentsChange }: P
         e.id === entry.id ? { ...e, status: "pending" as const, error: undefined } : e,
       ),
     );
+    if (activeRef.current === 0 && queueRef.current.length === 0) {
+      batchFailedRef.current = false;
+    }
     queueRef.current.push(entry);
     queuedIdsRef.current.add(entry.id);
     pump();
@@ -307,15 +346,18 @@ export default function MultiBookUploader({ collectionId, onDocumentsChange }: P
                     <Button size="small" onClick={() => removeSelected(entry)}>
                       Remove
                     </Button>
-                  ) : (
+                  ) : entry.status === "uploading" ? (
+                    <Button size="small" color="error" onClick={() => cancelUpload(entry)}>
+                      Cancel upload
+                    </Button>
+                  ) : entry.status === "failed" || entry.status === "offline" ? (
                     <Button
                       size="small"
-                      disabled={entry.status !== "failed" && entry.status !== "offline"}
                       onClick={() => retry(entry)}
                     >
                       Retry
                     </Button>
-                  )}
+                  ) : null}
                 </Stack>
               ))}
             </Stack>

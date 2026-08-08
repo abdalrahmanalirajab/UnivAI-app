@@ -13,6 +13,7 @@ import {
   getDocument,
   getOrCreateCollection,
   getOwnedCollection,
+  removeDocumentAndBook,
   setDocumentContentHash,
   updateDocumentStatus,
   type Document,
@@ -465,7 +466,13 @@ async function runUpload(request: NextRequest, claim: UploadClaim) {
     "services/rag-tools/rag_ingest.py",
     [destination, sid, String(collectionId)],
     180 * 60_000,
+    request.signal,
   );
+  if (request.signal.aborted) {
+    await removeDocumentAndBook(document.id, sid, storageKey).catch(() => undefined);
+    await fs.rm(path.dirname(destination), { recursive: true, force: true }).catch(() => undefined);
+    return Response.json({ error: "Upload cancelled." }, { status: 499 });
+  }
   const payload = parseJsonLine<{ ok: boolean; message?: string; error?: string }>(result.stdout);
 
   if (!payload?.ok) {

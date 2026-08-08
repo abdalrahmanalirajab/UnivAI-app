@@ -10,6 +10,7 @@
     "standalone:reset": "tsx scripts/standalone.ts reset",
     "standalone:down": "tsx scripts/standalone.ts down",
     "seed:integration": "tsx scripts/integration-seed.ts",
+    "seed:transcript-demo": "tsx scripts/seed-transcript-demo.ts",
     "smoke:standalone": "tsx scripts/standalone.ts smoke",
     "test": "npm run test:standalone && npm run test:ui",
     "test:standalone": "tsx --test tests/*.test.ts",
@@ -37,7 +38,8 @@
     "next": "16.2.12",
     "pg": "^8.22.0",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "sharp": "0.35.3"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.0",

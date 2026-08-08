@@ -247,7 +247,7 @@ test.describe("Demo Contract — multi-book curriculum e2e", () => {
     await expect(page.getByText(/v1/)).toBeVisible();
     await expect(page.getByText("Introduction to AI").first()).toBeVisible();
     await expect(page.getByText("Calculus I").first()).toBeVisible();
-    await expect(page.getByText("Request Approval")).toBeVisible();
+    await expect(page.getByText("Approve")).toBeVisible();
 
     // Step 5 — Edit a course (rename) via PUT
     await page.getByRole("button", { name: /Rename Introduction to AI/ }).click();
@@ -261,7 +261,7 @@ test.describe("Demo Contract — multi-book curriculum e2e", () => {
     await expect(page.getByText(/v2/)).toBeVisible();
 
     // Step 6 — Approve the new version
-    await page.getByRole("button", { name: "Request Approval" }).click();
+    await page.getByRole("button", { name: "Approve" }).click();
     const confirmDialog = page.getByRole("dialog");
     await expect(confirmDialog).toBeVisible();
     await expect(confirmDialog.getByText("Approve this curriculum?")).toBeVisible();
@@ -310,9 +310,9 @@ test.describe("Demo Contract — multi-book curriculum e2e", () => {
     await page.getByRole("button", { name: "Build Curriculum" }).click();
     await page.waitForURL("**/curriculum/1");
     await expect(page.getByText("Curriculum Workspace")).toBeVisible();
-    await expect(page.getByText("Request Approval")).toBeVisible();
+    await expect(page.getByText("Approve")).toBeVisible();
 
-    await page.getByRole("button", { name: "Request Approval" }).click();
+    await page.getByRole("button", { name: "Approve" }).click();
     const confirmDialog = page.getByRole("dialog");
     await expect(confirmDialog).toBeVisible();
     await confirmDialog.getByRole("button", { name: "Yes, approve" }).click();

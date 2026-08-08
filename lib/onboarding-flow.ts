@@ -6,7 +6,7 @@ export type OnboardingState = {
 export type StudentNavItem = {
   href: string;
   label: string;
-  icon: "upload" | "schedule" | "library" | "dashboard" | "exams";
+  icon: "upload" | "schedule" | "library" | "dashboard" | "exams" | "transcript";
 };
 
 export const ONBOARDING_STEPS = [
@@ -36,7 +36,10 @@ export function getStudentNavItems(state: OnboardingState): StudentNavItem[] {
     { href: "/library", label: "Library", icon: "library" },
     { href: "/dashboard", label: "Dashboard", icon: "dashboard" },
     ...(state.emailVerified
-      ? [{ href: "/exams", label: "Exams", icon: "exams" } as const]
+      ? [
+          { href: "/exams", label: "Exams", icon: "exams" } as const,
+          { href: "/transcript", label: "Transcript", icon: "transcript" } as const,
+        ]
       : []),
   ];
 }

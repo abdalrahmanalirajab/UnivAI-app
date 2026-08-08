@@ -28,6 +28,7 @@ describe("onboarding flow", () => {
       "Library",
       "Dashboard",
       "Exams",
+      "Transcript",
     ]);
   });
 

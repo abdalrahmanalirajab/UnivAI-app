@@ -140,6 +140,8 @@ vi.mock("@/lib/lectures", () => ({
 
 vi.mock("@/lib/settings", () => ({ getSetting: async () => "XS" }));
 
+vi.mock("@/lib/transcripts", () => ({ upsertCourseTranscript: async () => null }));
+
 vi.mock("mongodb", () => {
   function collection(name: string) {
     return {
@@ -428,27 +430,26 @@ describe("final exam journey — callbacks (acceptance criterion 3)", () => {
   });
 });
 
-describe("final exam journey — no early result (acceptance criterion 4)", () => {
+describe("final exam journey — immediate clean result (acceptance criterion 4)", () => {
   afterEach(() => {
     cleanup();
     resetState();
   });
 
-  it("keeps a submitted final result-less until a verified graded callback", async () => {
+  it("publishes a clean auto-graded result immediately while review stays hidden", async () => {
     state.service.phase = "eligible";
     const launch = await postStart();
     expect(launch.status).toBe(200);
 
-    // The service's provisional verdicts (auto-graded with a mark, then
-    // pending_review with a mark) must never surface a result.
+    // A clean auto-graded result is final for the learner and appears at once.
     const autoGraded = webhook({ grading_status: "auto_graded", mark: 7 });
     await postCallback(autoGraded, sign(JSON.stringify(autoGraded)));
     let exams = await getExams();
     expect(exams.status).toBe(200);
     let body = await exams.json();
-    expect(body.final.state).toBe("submitted");
-    expect(body.final.result).toBeNull();
-    expect(state.grades).toHaveLength(0);
+    expect(body.final.state).toBe("graded");
+    expect(body.final.result).toEqual({ mark: 7, max_score: 10, passed: false });
+    expect(state.grades).toHaveLength(1);
 
     const pendingWithMark = webhook({ grading_status: "pending_review", mark: 7 });
     await postCallback(pendingWithMark, sign(JSON.stringify(pendingWithMark)));
@@ -456,9 +457,9 @@ describe("final exam journey — no early result (acceptance criterion 4)", () =
     body = await exams.json();
     expect(body.final.state).toBe("awaiting-grade");
     expect(body.final.result).toBeNull();
-    expect(state.grades).toHaveLength(0);
+    expect(state.grades).toHaveLength(1);
 
-    // Only the verified "graded" event releases the result.
+    // A later manual grade replaces the same exam result without duplication.
     await postCallback(GRADED, sign(JSON.stringify(GRADED)));
     exams = await getExams();
     body = await exams.json();

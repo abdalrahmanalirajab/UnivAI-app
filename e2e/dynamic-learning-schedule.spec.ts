@@ -337,7 +337,7 @@ async function approveSevenWeekPlan(page: import("@playwright/test").Page) {
   await expect(page.getByText("Curriculum Workspace")).toBeVisible();
   await expect(page.getByText(/v1/)).toBeVisible();
 
-  await page.getByRole("button", { name: "Request Approval" }).click();
+  await page.getByRole("button", { name: "Approve" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Yes, approve" }).click();
   await expect(page.getByRole("button", { name: "Approved", disabled: true })).toBeVisible();
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
@@ -174,7 +175,6 @@ export default function ExamsPage() {
   /** One plain sentence about the window, measured on the virtual clock. */
   function windowLine(exam: Exam): string {
     if (!now) return "";
-    const opens = new Date(exam.opensAt).getTime() - now.getTime();
     const closes = new Date(exam.closesAt).getTime() - now.getTime();
 
     if (exam.state === "submitted") return `Submitted — score ${exam.score} / ${exam.maxScore}.`;
@@ -195,6 +195,12 @@ export default function ExamsPage() {
   }
 
   const openNow = exams.filter((exam) => exam.state === "open");
+  const quizOpenTimes = exams
+    .filter((exam) => exam.kind === "quiz")
+    .map((exam) => new Date(exam.opensAt).getTime());
+  const finalAvailable = Boolean(
+    now && quizOpenTimes.length > 0 && now.getTime() >= Math.max(...quizOpenTimes),
+  );
 
   return (
     <Stack spacing={3}>
@@ -202,7 +208,8 @@ export default function ExamsPage() {
       <Typography variant="body1" color="text.secondary">
         A quiz opens when its lecture ends and stays open for 24 hours. A midterm covers
         each four-week month, opens after the last of those weeks, and stays open for 3
-        days. Exams run in the exam system and your results come back to the dashboard.
+        days. The final appears after the last lecture ends; quiz scores do not gate it.
+        Exams run in the exam system and your results come back to the dashboard.
       </Typography>
 
       {openNow.length ? (
@@ -263,22 +270,16 @@ export default function ExamsPage() {
         </List>
       </Card>
 
-      <Card variant="outlined">
-        <CardContent>
-          <Stack spacing={2}>
-            <Typography variant="h6">Final exam</Typography>
-            {final === null ? (
-              <Stack spacing={1}>
-                <Typography variant="body1">No final is currently available.</Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Starting it asks the exam system whether it is available for you — its answer
-                  decides what happens next.
-                </Typography>
+      {finalAvailable || final !== null ? (
+        <Card variant="outlined">
+          <CardContent>
+            <Stack spacing={2}>
+              <Typography variant="h6">Final exam</Typography>
+              {final === null ? (
                 <Button variant="contained" size="small" disabled={starting} onClick={startFinal}>
                   Start final exam
                 </Button>
-              </Stack>
-            ) : (
+              ) : (
               <Stack spacing={1}>
                 <Grid container spacing={1}>
                   <Grid>
@@ -310,13 +311,18 @@ export default function ExamsPage() {
                   </Alert>
                 ) : null}
                 {final.state === "graded" ? (
-                  <Alert severity={final.result?.passed ? "success" : "error"}>
-                    {final.result
-                      ? `Result ${final.result.mark} / ${final.result.max_score} — ${
-                          final.result.passed ? "passed" : "not passed"
-                        }.`
-                      : "Graded."}
-                  </Alert>
+                  <Stack spacing={1}>
+                    <Alert severity={final.result?.passed ? "success" : "error"}>
+                      {final.result
+                        ? `Result ${final.result.mark} / ${final.result.max_score} — ${
+                            final.result.passed ? "passed" : "not passed"
+                          }.`
+                        : "Graded."}
+                    </Alert>
+                    <Button component={Link} href="/transcript" variant="contained">
+                      View final course grade and GPA
+                    </Button>
+                  </Stack>
                 ) : null}
                 {final.state === "flagged" ? (
                   <Alert severity="error">This attempt was flagged for review.</Alert>
@@ -325,10 +331,11 @@ export default function ExamsPage() {
                   <Typography variant="body1">No final is currently available.</Typography>
                 ) : null}
               </Stack>
-            )}
-          </Stack>
-        </CardContent>
-      </Card>
+              )}
+            </Stack>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {exams.some((exam) => exam.state === "submitted") ? (
         <Stack spacing={2}>

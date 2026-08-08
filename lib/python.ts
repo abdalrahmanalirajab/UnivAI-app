@@ -26,7 +26,8 @@ export type PythonResult = { ok: boolean; stdout: string; stderr: string };
 export function runPython(
   scriptRelPath: string,
   args: string[],
-  timeoutMs = 10 * 60_000
+  timeoutMs = 10 * 60_000,
+  signal?: AbortSignal,
 ): Promise<PythonResult> {
   return new Promise((resolve) => {
     const child = spawn(VENV_PYTHON, [path.join(REPO_ROOT, scriptRelPath), ...args], {
@@ -36,18 +37,23 @@ export function runPython(
 
     let stdout = "";
     let stderr = "";
-    const timer = setTimeout(() => child.kill(), timeoutMs);
+    const stop = () => child.kill();
+    const timer = setTimeout(stop, timeoutMs);
+    signal?.addEventListener("abort", stop, { once: true });
 
     child.stdout.on("data", (data) => (stdout += String(data)));
     child.stderr.on("data", (data) => (stderr += String(data)));
     child.on("error", (err) => {
       clearTimeout(timer);
+      signal?.removeEventListener("abort", stop);
       resolve({ ok: false, stdout, stderr: stderr + String(err) });
     });
     child.on("close", (code) => {
       clearTimeout(timer);
+      signal?.removeEventListener("abort", stop);
       resolve({ ok: code === 0, stdout, stderr });
     });
+    if (signal?.aborted) stop();
   });
 }
 

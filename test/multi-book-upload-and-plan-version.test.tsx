@@ -49,7 +49,10 @@ vi.mock("@/lib/python", () => ({
   },
   REPO_ROOT: "/tmp/opencode/univai-test-uploads",
 }));
-vi.mock("@/lib/generation", () => ({ spawnGeneration: mockSpawnGeneration }));
+vi.mock("@/lib/generation", () => ({
+  spawnGeneration: mockSpawnGeneration,
+  cancelGenerationForSource: vi.fn().mockResolvedValue(undefined),
+}));
 vi.mock("@/lib/runtime", () => ({ isStandalone: () => false }));
 vi.mock("@/lib/env", () => ({ env: { RAG_MCP_URL: "http://rag.test.local" } }));
 
@@ -491,6 +494,7 @@ describe("MultiBookUploader — independent upload statuses", () => {
     await user.click(screen.getByRole("button", { name: "Start upload" }));
 
     await waitFor(() => {
+      expect(globalThis.fetch).toHaveBeenCalledTimes(3);
       expect(screen.getByText("a.pdf")).toBeTruthy();
       expect(screen.getByText("c.pdf")).toBeTruthy();
     });
@@ -501,6 +505,18 @@ describe("MultiBookUploader — independent upload statuses", () => {
     expect(uploadChips.length).toBeGreaterThanOrEqual(2);
     expect(failedChips.length).toBe(1);
     expect(onDocumentsChange).toHaveBeenCalledTimes(2);
+  });
+
+  it("requires confirmation and lets a selected file be removed before upload", async () => {
+    const user = userEvent.setup();
+    render(<MultiBookUploader collectionId={1} onDocumentsChange={() => {}} />);
+    const input = document.querySelector('input[type="file"]') as HTMLElement;
+    await user.upload(input, new File(["content"], "remove-me.pdf", { type: "application/pdf" }));
+
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Remove" }));
+    expect(screen.queryByText("remove-me.pdf")).toBeNull();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 });
 
@@ -943,6 +959,29 @@ describe("Documents route — safe removal", () => {
     const remaining = db.documents.map((d) => ({ id: d.id, filename: d.filename, status: d.status }));
     expect(remaining).toContainEqual({ id: 10, filename: "a.pdf", status: "ready" });
     expect(remaining).toContainEqual({ id: 12, filename: "c.pdf", status: "ready" });
+    expect(db.books).toHaveLength(0);
+  });
+
+  it("removes an unapproved source even while its course generation is active", async () => {
+    const { DELETE } = await import("@/app/api/collections/[collectionId]/documents/route");
+
+    seedCollection(db, 1, SID, "My Library");
+    seedDocument(db, 11, 1, SID, "active.pdf", "ready");
+    db.books.push({
+      id: 21,
+      student_id: SID,
+      filename: "collections/1/11/active.pdf",
+      status: "generating",
+      generation_pid: 12345,
+    });
+
+    const res = await DELETE(
+      makeRequest("http://localhost/api/collections/1/documents?documentId=11"),
+      { params: Promise.resolve({ collectionId: "1" }) },
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ removed: true });
+    expect(db.documents).toHaveLength(0);
     expect(db.books).toHaveLength(0);
   });
 

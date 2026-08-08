@@ -148,6 +148,11 @@ export default function DashboardPage() {
             <Button component={Link} href="/exams" variant="outlined" size="small">
               Open exams page
             </Button>
+            {final?.state === "graded" ? (
+              <Button component={Link} href="/transcript" variant="contained" size="small">
+                View transcript and GPA
+              </Button>
+            ) : null}
           </Stack>
         </CardContent>
       </Card>

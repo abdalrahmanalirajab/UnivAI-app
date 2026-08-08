@@ -177,7 +177,7 @@ test("validChainABC: both edges render with their citations and the approval com
   await expect(evidenceDialog).not.toBeVisible();
 
   // Exact version match (v3) → nothing blocks the approve action.
-  const approveButton = page.getByRole("button", { name: "Request Approval" });
+  const approveButton = page.getByRole("button", { name: "Approve" });
   await expect(approveButton).toBeEnabled();
 
   // The approval is an explicit human action through the confirm dialog.
@@ -197,7 +197,7 @@ test("mobile: the same approval flow fits the small viewport without horizontal 
   await page.goto("/curriculum/1");
   await expect(page.getByText("Curriculum Workspace")).toBeVisible();
 
-  const approveButton = page.getByRole("button", { name: "Request Approval" });
+  const approveButton = page.getByRole("button", { name: "Approve" });
   await expect(approveButton).toBeEnabled();
   await approveButton.click();
   await page.getByRole("dialog").getByRole("button", { name: "Yes, approve" }).click();
@@ -231,7 +231,7 @@ test("cycleFixture: the approve action is blocked with the cycle reason shown", 
   await expect(page.getByText("Approval blocked").first()).toBeVisible();
 
   // …and the approve control is disabled with the page-level explanation.
-  const approveButton = page.getByRole("button", { name: "Request Approval" });
+  const approveButton = page.getByRole("button", { name: "Approve" });
   await expect(approveButton).toBeDisabled();
   await expect(
     page.getByText(
@@ -262,14 +262,14 @@ test("a superseded approval attempt is rejected with the fresh version and recov
   await page.goto("/curriculum/1");
   await expect(page.getByText("Curriculum Workspace")).toBeVisible();
   await expect(page.getByText(/v2/)).toBeVisible();
-  await expect(page.getByRole("button", { name: "Request Approval" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Approve" })).toBeEnabled();
 
   // Backend advances to version 3 after the page fetched version 2; the
   // versioned contract moves with it.
   backendState.latestVersion = 3;
   backendState.learningPath = validChainABC;
 
-  await page.getByRole("button", { name: "Request Approval" }).click();
+  await page.getByRole("button", { name: "Approve" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Yes, approve" }).click();
 
   // The 409 must surface, never a silent approval: the issue alert names the
@@ -283,7 +283,7 @@ test("a superseded approval attempt is rejected with the fresh version and recov
 
   // Recovery on the fresh version: the contract was re-fetched for v3, so the
   // control is enabled again and the approval completes against the backend.
-  const approveButton = page.getByRole("button", { name: "Request Approval" });
+  const approveButton = page.getByRole("button", { name: "Approve" });
   await expect(approveButton).toBeEnabled();
   await approveButton.click();
   await page.getByRole("dialog").getByRole("button", { name: "Yes, approve" }).click();

@@ -27,6 +27,25 @@ export const QUIZ_WINDOW_MS = 24 * HOUR_MS;
 export const MID_WINDOW_MS = 3 * DAY_MS;
 export const EXAM_SYSTEM_URL = env.EXAM_SYSTEM_URL;
 
+export function finalExamAvailabilityAt(
+  virtualNow: Date,
+  lectureEndsAt: Date[],
+): { available: boolean; opensAt: Date | null } {
+  const opensAt = lectureEndsAt.reduce<Date | null>(
+    (latest, endsAt) => (!latest || endsAt > latest ? endsAt : latest),
+    null,
+  );
+  return { available: Boolean(opensAt && virtualNow >= opensAt), opensAt };
+}
+
+/** The final opens when the semester's last lecture has ended, regardless of attendance. */
+export async function getFinalExamAvailability(
+  sid: string,
+): Promise<{ available: boolean; opensAt: Date | null }> {
+  const [virtualNow, lectures] = await Promise.all([now(), getLectures(sid)]);
+  return finalExamAvailabilityAt(virtualNow, lectures.map((lecture) => lecture.endsAt));
+}
+
 const globalForMongo = globalThis as unknown as { univaiMongo?: MongoClient };
 
 async function mongo(): Promise<Db> {
@@ -128,10 +147,8 @@ export type ExamServiceStatusV1 = {
   /** The Exam service's own reason — set for "locked" and "unavailable". */
   reason: string | null;
   /**
-   * The service's verified result — present ONLY for "graded", i.e. the
-   * service has confirmed the grade as final. An auto-graded or pending-review
-   * verdict is never carried here, so the app can never show an unconfirmed
-   * grade. Fields map to the service's result block (mark, passing_mark, passed).
+   * The service's clean scored result. Auto-graded and manually graded finals
+   * are shown immediately; pending-review and invalidated attempts stay hidden.
    */
   result: {
     mark: number;
@@ -199,9 +216,8 @@ export function toFinalExamStatus(view: FinalExamAttemptView): ExamServiceStatus
     return { ...base, state: "awaiting-grade", reason: null, result: null };
   }
 
-  // Only the service's final "graded" verdict releases the result; an
-  // auto-graded mark is not verified yet and is never shown.
-  if (grading === "graded" && view.result) {
+  // A clean score is ready immediately, whether automatic or manually graded.
+  if ((grading === "auto_graded" || grading === "graded") && view.result) {
     const { mark, passed } = view.result;
     const maxScore = view.progress?.total;
     return {
@@ -215,7 +231,7 @@ export function toFinalExamStatus(view: FinalExamAttemptView): ExamServiceStatus
     };
   }
 
-  // taken with no verified verdict (auto-graded, or no result reported yet).
+  // Taken with no scored verdict reported yet.
   return { ...base, state: "submitted", reason: null, result: null };
 }
 
@@ -329,9 +345,8 @@ export type ResultWebhook = {
  * Project a final exam's result callback onto ExamServiceStatusV1, the display
  * contract. The webhook arrives after submission, so the lifecycle is a
  * post-submit verdict driven only by the service's own fields: flagged (its
- * integrity verdict), awaiting-grade (pending_review), graded (its confirmed
- * final, carrying the result), or submitted (auto-graded — reported but not
- * confirmed final, so no result). The proctoring detail in `report` is never
+ * integrity verdict), awaiting-grade (pending_review), graded (a clean automatic
+ * or manual result), or submitted (no scored verdict). The proctoring detail is never
  * carried into the projection.
  */
 export function webhookToFinalExamStatus(payload: ResultWebhook): ExamServiceStatusV1 {
@@ -350,7 +365,7 @@ export function webhookToFinalExamStatus(payload: ResultWebhook): ExamServiceSta
   }
 
   if (
-    payload.grading_status === "graded" &&
+    (payload.grading_status === "auto_graded" || payload.grading_status === "graded") &&
     payload.mark !== null &&
     payload.mark !== undefined &&
     payload.total_questions !== null &&
@@ -366,8 +381,8 @@ export function webhookToFinalExamStatus(payload: ResultWebhook): ExamServiceSta
     };
   }
 
-  // graded but the service omitted the mark — never fabricate one.
-  if (payload.grading_status === "graded") {
+  // Scored verdict but the service omitted the mark — never fabricate one.
+  if (payload.grading_status === "auto_graded" || payload.grading_status === "graded") {
     return { ...base, state: "graded", reason: null, result: null };
   }
 

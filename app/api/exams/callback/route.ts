@@ -12,6 +12,7 @@ import {
   webhookToFinalExamStatus,
   type ResultWebhook,
 } from "@/lib/exams";
+import { upsertCourseTranscript } from "@/lib/transcripts";
 
 export const dynamic = "force-dynamic";
 
@@ -29,8 +30,7 @@ export const dynamic = "force-dynamic";
  * would fail verification. The secret comes from environment configuration
  * only; without it the route fails closed and rejects every callback.
  *
- * A grade is only ever recorded as final once this callback explicitly says
- * so (grading_status "graded" for finals); nothing else marks a grade final.
+ * A clean auto-graded or manually graded final is recorded immediately.
  */
 export async function POST(request: NextRequest) {
   // Read the raw body FIRST — the signature covers the exact delivered bytes.
@@ -89,10 +89,16 @@ export async function POST(request: NextRequest) {
       : "Below the pass mark.";
 
   const isFinal = payload.type === "final";
-  // The service's explicit confirmation of a final grade. A final with any
-  // other verdict (pending_review, ...) is never written as a grade — only the
-  // "graded" callback marks it final.
-  const finalGradeConfirmed = isFinal && payload.grading_status === "graded";
+  // Review/invalidated callbacks never create the course's final grade.
+  const finalGradeConfirmed =
+    isFinal &&
+    !flagged &&
+    (payload.grading_status === "auto_graded" || payload.grading_status === "graded") &&
+    payload.mark !== null &&
+    payload.mark !== undefined &&
+    payload.total_questions !== null &&
+    payload.total_questions !== undefined &&
+    payload.total_questions > 0;
 
   if (!isFinal || finalGradeConfirmed) {
     await query(
@@ -126,6 +132,9 @@ export async function POST(request: NextRequest) {
   // stale start-time snapshot.
   if (isFinal) {
     await saveFinalExamStatus(sid, webhookToFinalExamStatus(payload));
+    if (finalGradeConfirmed) {
+      await upsertCourseTranscript(sid, takenAt, payload.title);
+    }
   }
 
   await recordExamCallback(payload.exam_id, fingerprint);

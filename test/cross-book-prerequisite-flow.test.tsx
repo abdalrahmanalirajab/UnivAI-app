@@ -387,11 +387,11 @@ describe("refresh/restore — rebuilt from a fresh fetch, not client memory", ()
       programmeFetchResponse(programmePayload(2, "proposed")),
     );
     const first = mountCurriculumPage();
-    await waitFor(() => expect(screen.getByRole("button", { name: "Request Approval" })).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Approve" })).toBeTruthy());
     expect(screen.getByText("v2")).toBeTruthy();
 
     // Start an approval, leave it in flight (dialog open, nothing submitted).
-    fireEvent.click(screen.getByRole("button", { name: "Request Approval" }));
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
     expect(screen.getByRole("dialog")).toBeTruthy();
 
     // "Refresh": the page unmounts and a fresh fetch returns the server's
@@ -408,7 +408,7 @@ describe("refresh/restore — rebuilt from a fresh fetch, not client memory", ()
     expect(screen.queryByRole("dialog")).toBeNull();
     // Not stuck in a broken intermediate state: the approval control is
     // present and enabled for the fresh version.
-    expect(screen.getByRole("button", { name: "Request Approval" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Approve" })).toBeTruthy();
     second.unmount();
   });
 
@@ -420,7 +420,7 @@ describe("refresh/restore — rebuilt from a fresh fetch, not client memory", ()
       programmeFetchResponse(programmePayload(2, "proposed")),
     );
     const first = mountCurriculumPage();
-    await waitFor(() => expect(screen.getByRole("button", { name: "Request Approval" })).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Approve" })).toBeTruthy());
     first.unmount();
 
     // The backend now serves the approved state; a fresh mount (refresh)
@@ -432,7 +432,7 @@ describe("refresh/restore — rebuilt from a fresh fetch, not client memory", ()
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Approved" })).toHaveProperty("disabled", true),
     );
-    expect(screen.queryByRole("button", { name: "Request Approval" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
     second.unmount();
   });
 });
@@ -444,7 +444,7 @@ describe("refresh/restore — rebuilt from a fresh fetch, not client memory", ()
 /* ------------------------------------------------------------------ */
 
 describe("page-level approval block", () => {
-  it("a cycle served from the learning-path endpoint disables Request Approval with the reason shown", async () => {
+  it("a cycle served from the learning-path endpoint disables Approve with the reason shown", async () => {
     const fetchMock = vi.fn();
     globalThis.fetch = fetchMock;
 
@@ -455,7 +455,7 @@ describe("page-level approval block", () => {
     const mounted = mountCurriculumPage();
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: "Request Approval" }),
+        screen.getByRole("button", { name: "Approve" }),
       ).toHaveProperty("disabled", true),
     );
 
@@ -481,7 +481,7 @@ describe("page-level approval block", () => {
     const mounted = mountCurriculumPage();
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: "Request Approval" }),
+        screen.getByRole("button", { name: "Approve" }),
       ).toHaveProperty("disabled", false),
     );
     expect(screen.queryByText("Approval blocked")).toBeNull();

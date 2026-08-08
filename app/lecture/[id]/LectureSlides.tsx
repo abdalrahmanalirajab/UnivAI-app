@@ -36,6 +36,7 @@ export default function LectureSlides({ lectureId, slide }: { lectureId: string;
 
   if (error) return <Alert severity="error">{error}</Alert>;
   if (!deck) return <CircularProgress />;
+
   return (
     <iframe
       ref={frameRef}

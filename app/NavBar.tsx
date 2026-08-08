@@ -33,6 +33,7 @@ import LogoutOutlined from "@mui/icons-material/LogoutOutlined";
 import MenuOutlined from "@mui/icons-material/MenuOutlined";
 import MenuBookOutlined from "@mui/icons-material/MenuBookOutlined";
 import QuizOutlined from "@mui/icons-material/QuizOutlined";
+import WorkspacePremiumOutlined from "@mui/icons-material/WorkspacePremiumOutlined";
 import SettingsOutlined from "@mui/icons-material/SettingsOutlined";
 import UploadFileOutlined from "@mui/icons-material/UploadFileOutlined";
 import ThemeModeMenu from "./ThemeModeMenu";
@@ -60,6 +61,7 @@ const STUDENT_ICONS = {
   library: FolderCopyOutlined,
   dashboard: DashboardOutlined,
   exams: QuizOutlined,
+  transcript: WorkspacePremiumOutlined,
 } as const;
 
 export default function NavBar() {

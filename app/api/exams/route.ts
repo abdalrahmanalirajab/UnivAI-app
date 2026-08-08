@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   EXAM_SYSTEM_URL,
   ensureExamWorld,
+  getFinalExamAvailability,
   getExamStatuses,
   getFinalExamStatus,
   saveFinalExamStatus,
@@ -45,8 +46,8 @@ export async function GET() {
 /**
  * Start an exam: body { kind: "quiz", week: 2 }, { kind: "mid", week: 4 }, or
  * { kind: "final" }. Quiz and mid go through the app's windowed flow; the
- * final is started by the Exam service, which owns eligibility and the
- * attempt lifecycle. Returns the URL to take it.
+ * final is time-gated here after the last lecture, then started by the Exam
+ * service, which owns the attempt lifecycle. Returns the URL to take it.
  */
 export async function POST(request: NextRequest) {
   const gate = await requireLearningActionApi();
@@ -97,6 +98,17 @@ export async function POST(request: NextRequest) {
  */
 async function startFinalExam(gate: SessionUser): Promise<Response> {
   try {
+    const availability = await getFinalExamAvailability(gate.studentId);
+    if (!availability.available) {
+      return Response.json(
+        {
+          error: availability.opensAt
+            ? `The final exam opens after the last lecture, at ${availability.opensAt.toISOString()}.`
+            : "The final exam is not scheduled yet.",
+        },
+        { status: 409 },
+      );
+    }
     const link = await ensureExamWorld(gate.studentId, gate.name);
 
     const res = await fetch(`${EXAM_SYSTEM_URL}/api/exams/final/start`, {

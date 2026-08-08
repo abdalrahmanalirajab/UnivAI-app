@@ -9,12 +9,12 @@ import {
   getDocument,
   getOwnedCollection,
   hasApprovedPlanReferencingDocument,
-  hasInFlightCourseGeneration,
   listDocuments,
   removeDocument,
   removeDocumentAndBook,
   validateFilename,
 } from "@/lib/collections";
+import { cancelGenerationForSource } from "@/lib/generation";
 
 export const dynamic = "force-dynamic";
 
@@ -176,14 +176,8 @@ export async function DELETE(
     );
   }
 
-  const generationInFlight = await hasInFlightCourseGeneration(gate.studentId);
-  if (generationInFlight) {
-    return Response.json(
-      { error: "A course is still being generated. Wait for it to finish before removing sources." },
-      { status: 409 },
-    );
-  }
-
+  const storageKey = documentStorageKey(collectionId, documentId, doc.filename);
+  await cancelGenerationForSource(gate.studentId, storageKey);
   const docDir = path.join(
     REPO_ROOT,
     "uploads",
@@ -193,20 +187,18 @@ export async function DELETE(
     String(documentId),
   );
 
-  try {
-    await fs.rm(docDir, { recursive: true, force: true });
-  } catch {
-    return Response.json({ error: "Could not remove the stored source." }, { status: 500 });
-  }
-
   const removed = await removeDocumentAndBook(
     documentId,
     gate.studentId,
-    documentStorageKey(collectionId, documentId, doc.filename),
+    storageKey,
   );
   if (!removed.ok) {
     return Response.json({ error: removed.error }, { status: 404 });
   }
+
+  // The database cancellation is authoritative. Clean the local copy after
+  // detaching the running process; a missing file is already a successful state.
+  await fs.rm(docDir, { recursive: true, force: true }).catch(() => undefined);
 
   return Response.json({ removed: true });
 }

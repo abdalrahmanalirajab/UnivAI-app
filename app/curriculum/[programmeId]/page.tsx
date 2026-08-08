@@ -97,6 +97,7 @@ export default function CurriculumPage({ params }: Props) {
       const updated = data.programme as Programme;
       setProgramme(updated);
       setApproved(true);
+      window.location.assign("/library?continue=schedule");
     } catch (err) {
       setApproveError(err instanceof Error ? err.message : "Failed to approve programme.");
     } finally {
@@ -153,7 +154,7 @@ export default function CurriculumPage({ params }: Props) {
             onClick={() => setConfirmOpen(true)}
             disabled={approving || approvalBlocks.length > 0}
           >
-            {approving ? "Approving…" : "Request Approval"}
+            {approving ? "Approving…" : "Approve"}
           </Button>
         ) : (
           <Button variant="outlined" disabled>

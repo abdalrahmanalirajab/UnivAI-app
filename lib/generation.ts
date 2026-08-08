@@ -1,7 +1,7 @@
 import { spawn } from "child_process";
 import { mkdirSync, openSync } from "fs";
 import path from "path";
-import { query } from "./db";
+import { query, queryOne } from "./db";
 import { AGENT_PYTHON, REPO_ROOT } from "./python";
 import { isStandalone } from "./runtime";
 
@@ -29,12 +29,12 @@ export function spawnGeneration(
   pdfPath: string,
   bookId: number,
   mode: GenerationMode = "full",
-): void {
+): number | null {
   if (isStandalone()) {
     console.info(
       `[standalone] generation fixture selected for book ${bookId}; Python, Slidev, and voice were skipped`
     );
-    return;
+    return null;
   }
   mkdirSync(path.join(REPO_ROOT, "logs"), { recursive: true });
   const log = openSync(path.join(REPO_ROOT, "logs", "lecture-gen.log"), "a");
@@ -56,7 +56,40 @@ export function spawnGeneration(
     // the console codepage kills the whole run with UnicodeEncodeError.
     env: { ...process.env, PYTHONIOENCODING: "utf-8" },
   });
+  const pid = child.pid ?? null;
+  if (pid) {
+    void query("UPDATE books SET generation_pid = $1 WHERE id = $2", [pid, bookId]);
+    child.once("close", () => {
+      void query(
+        "UPDATE books SET generation_pid = NULL WHERE id = $1 AND generation_pid = $2",
+        [bookId, pid],
+      ).catch(() => undefined);
+    });
+  }
   child.unref();
+  return pid;
+}
+
+/** Stop only the process attached to this learner-owned source, if still alive. */
+export async function cancelGenerationForSource(
+  studentId: string,
+  storageKey: string,
+): Promise<void> {
+  const book = await queryOne<{ id: number; generation_pid: number | null }>(
+    `SELECT id, generation_pid FROM books WHERE student_id = $1 AND filename = $2`,
+    [studentId, storageKey],
+  );
+  const pid = book?.generation_pid;
+  if (!pid || !Number.isInteger(pid) || pid < 1) return;
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+  }
+  await query(
+    "UPDATE books SET generation_pid = NULL WHERE id = $1 AND student_id = $2",
+    [book.id, studentId],
+  );
 }
 
 /**
