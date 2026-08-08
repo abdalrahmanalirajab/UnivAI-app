@@ -15,6 +15,7 @@ import {
   validatePhone,
   validatePassword,
   validateConfirmPassword,
+  normalizePhone,
 } from "@/lib/validators";
 import { authClient } from "@/lib/auth-client";
 import { copyFor, type AuthError } from "@/lib/errorMap";
@@ -62,7 +63,9 @@ export default function RegisterPage() {
       name,
       email,
       password,
-      phone,
+      // "" would be stored as an empty string beside the NULLs that mean the
+      // same thing; send the absence itself.
+      phone: normalizePhone(phone),
       callbackURL: "/start",
     });
 

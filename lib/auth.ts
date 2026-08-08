@@ -8,6 +8,7 @@ import { ac, roles } from "./auth-ac";
 import { recordAudit } from "./auth-audit";
 import { sendBanNotification } from "./auth-notify";
 import { guardHook } from "./auth-guards";
+import { normalizePhone } from "./validators";
 
 /**
  * Better Auth — the whole auth backend. See docs/auth-plan.md (Phase 1) and
@@ -138,10 +139,10 @@ export const auth = betterAuth({
             data: {
               ...user,
               studentId,
-              // user.phone is NOT NULL in the schema and Google sends no phone
-              // number, so a social sign-up would otherwise fail on insert.
-              // Empty means "not given yet"; /profile is where it gets filled.
-              phone: (user as { phone?: string }).phone ?? "",
+              // NULL means "not given". Google sends no phone number, and the
+              // register form no longer insists on one, so a blank arrives here
+              // as "" and is normalised — one absent value, one representation.
+              phone: normalizePhone((user as { phone?: string | null }).phone),
               ...(isOwner ? { role: "super_admin" } : {}),
             },
           };

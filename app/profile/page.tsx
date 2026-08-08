@@ -8,7 +8,7 @@ import TextField from "@mui/material/TextField";
 import Divider from "@mui/material/Divider";
 import Button from "@mui/material/Button";
 import { FormError, FormSuccess } from "@/app/components/FormAlerts";
-import { validateName, validatePhone, validatePassword } from "@/lib/validators";
+import { validateName, validatePhone, validatePassword, normalizePhone } from "@/lib/validators";
 import PasswordField from "@/app/components/PasswordField";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import Checkbox from "@mui/material/Checkbox";
@@ -69,7 +69,7 @@ function ProfileForm({ user }: { user: SessionUser }) {
   const handleSave = async () => {
     setSaveError(null);
     setSaveSuccess(false);
-    const { error } = await authClient.updateUser({ name, phone });
+    const { error } = await authClient.updateUser({ name, phone: normalizePhone(phone) });
     if (error) {
       setSaveError(error.message ?? "Could not save changes.");
     } else {
