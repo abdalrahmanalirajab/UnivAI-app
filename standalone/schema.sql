@@ -23,7 +23,10 @@ CREATE TABLE IF NOT EXISTS books (
   generation_audio_ready_weeks INTEGER NOT NULL DEFAULT 0,
   -- Liveness beat of a running build; a stale one means the build was
   -- abandoned and a new upload may take it over.
-  heartbeat_at TIMESTAMPTZ
+  heartbeat_at TIMESTAMPTZ,
+  -- Generated learning content is database-owned (infra/migrations/010).
+  semester_plan JSONB,
+  generation_manifest JSONB
 );
 CREATE INDEX IF NOT EXISTS books_student_idx ON books(student_id);
 
@@ -32,7 +35,7 @@ CREATE TABLE IF NOT EXISTS course_generation_milestones (
   book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
   student_id TEXT NOT NULL,
   week INTEGER NOT NULL CHECK (week >= 0),
-  stage TEXT NOT NULL CHECK (stage IN ('plan', 'lecture', 'quiz', 'slides', 'audio')),
+  stage TEXT NOT NULL CHECK (stage IN ('plan', 'lecture', 'quiz', 'slides', 'section', 'audio')),
   status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'ready', 'failed', 'deferred')),
   attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
   progress TEXT,
@@ -65,8 +68,13 @@ CREATE TABLE IF NOT EXISTS content_artifacts (
   UNIQUE (original_sha256, pipeline_fingerprint)
 );
 
+-- Public lecture identifiers are database-generated UUIDs, never the sequential
+-- primary key (infra/migrations/010).
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 CREATE TABLE IF NOT EXISTS lectures (
   id SERIAL PRIMARY KEY,
+  public_id UUID NOT NULL DEFAULT gen_random_uuid(),
   book_id INTEGER REFERENCES books(id) ON DELETE CASCADE,
   week INTEGER NOT NULL,
   title TEXT NOT NULL,
@@ -79,6 +87,54 @@ CREATE TABLE IF NOT EXISTS lectures (
   quiz_artifact_key   TEXT REFERENCES content_artifacts(content_key) ON DELETE SET NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS lectures_student_week_key ON lectures(student_id, week);
+CREATE UNIQUE INDEX IF NOT EXISTS lectures_public_id_key ON lectures(public_id);
+
+-- The generated course itself: one row per taught week, addressed by an opaque
+-- UUID. The App reads slides, narration and quizzes from here; nothing reads
+-- learner content from disk any more.
+CREATE TABLE IF NOT EXISTS lecture_artifacts (
+  artifact_id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  book_id          INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+  student_id       TEXT NOT NULL,
+  week             INTEGER NOT NULL CHECK (week > 0),
+  title            TEXT NOT NULL,
+  lecture_payload  JSONB NOT NULL,
+  script_payload   JSONB NOT NULL,
+  slides_payload   JSONB NOT NULL,
+  quiz_payload     JSONB,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (book_id, week)
+);
+CREATE INDEX IF NOT EXISTS lecture_artifacts_student_week_idx
+  ON lecture_artifacts (student_id, week, updated_at DESC);
+
+ALTER TABLE lectures
+  ADD COLUMN IF NOT EXISTS lecture_artifact_id UUID
+    REFERENCES lecture_artifacts(artifact_id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS lectures_lecture_artifact_idx
+  ON lectures (lecture_artifact_id);
+
+-- Grounded practicals, addressed by the exact approved plan version.
+CREATE TABLE IF NOT EXISTS section_packs (
+  section_pack_id       TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  schema_version        TEXT NOT NULL CHECK (schema_version = 'section-pack-v1'),
+  tenant_id             TEXT NOT NULL,
+  programme_id          TEXT NOT NULL,
+  course_id             TEXT NOT NULL,
+  week                  INTEGER NOT NULL CHECK (week > 0),
+  lecture_id            TEXT NOT NULL,
+  approved_plan_id      TEXT NOT NULL,
+  approved_plan_version INTEGER NOT NULL,
+  prompt_id             TEXT NOT NULL,
+  prompt_version        TEXT NOT NULL,
+  payload_hash          TEXT NOT NULL CHECK (payload_hash ~ '^[a-f0-9]{64}$'),
+  pack_payload          JSONB NOT NULL,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (tenant_id, approved_plan_id, approved_plan_version, week)
+);
+CREATE INDEX IF NOT EXISTS section_packs_programme_version_idx
+  ON section_packs (tenant_id, programme_id, approved_plan_version, week);
 
 CREATE TABLE IF NOT EXISTS attendance (
   id SERIAL PRIMARY KEY,
