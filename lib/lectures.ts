@@ -626,7 +626,17 @@ export type StoredSectionPack = {
   week: number;
   lectureInternalId: number;
   lecturePublicId: string;
-  lectureCompleted: boolean;
+  /**
+   * The lecture's scheduled end has passed, so its section is open.
+   *
+   * This deliberately does not ask whether the learner sat through to the end.
+   * Completion is only ever recorded when the Lecturer reaches the last line of
+   * the script with the learner present, so gating on it meant that leaving a
+   * lecture early forfeited that week's section permanently, with no way back.
+   * A section now opens on the clock, exactly like the week's quiz.
+   */
+  lectureEnded: boolean;
+  lectureEndsAt: Date;
   programmeId: string;
   programmeTitle: string;
   planVersion: number;
@@ -656,13 +666,15 @@ export async function getSectionPack(sid: string, sectionId: string): Promise<St
     pack_payload: StoredSectionPack["payload"];
     lecture_internal_id: number;
     lecture_public_id: string;
-    lecture_completed: boolean;
+    lecture_starts_at: Date;
+    lecture_script: { durationMinutes?: number } | null;
     programme_title: string;
   }>(
     `SELECT sp.section_pack_id, sp.week, sp.programme_id,
             sp.approved_plan_version, sp.pack_payload,
             l.id AS lecture_internal_id, l.public_id::text AS lecture_public_id,
-            (a.completed_at IS NOT NULL) AS lecture_completed,
+            l.starts_at AS lecture_starts_at,
+            la.script_payload AS lecture_script,
             p.name AS programme_title
        FROM section_packs sp
        JOIN programmes p ON p.id::text = sp.programme_id
@@ -670,19 +682,24 @@ export async function getSectionPack(sid: string, sectionId: string): Promise<St
         AND p.status = 'approved'
         AND p.plan_version = sp.approved_plan_version
        JOIN lectures l ON l.student_id = sp.tenant_id AND l.week = sp.week
-       LEFT JOIN attendance a ON a.lecture_id = l.id AND a.student_id = sp.tenant_id
+       LEFT JOIN lecture_artifacts la ON la.artifact_id = l.lecture_artifact_id
       WHERE sp.tenant_id = $1 AND sp.section_pack_id = $2
       LIMIT 1`,
     [sid, sectionId],
   );
   const row = rows[0];
   if (!row) return null;
+  const lectureEndsAt = new Date(
+    new Date(row.lecture_starts_at).getTime() +
+      scriptDurationMinutes(row.lecture_script) * MINUTE_MS,
+  );
   return {
     id: row.section_pack_id,
     week: row.week,
     lectureInternalId: row.lecture_internal_id,
     lecturePublicId: row.lecture_public_id,
-    lectureCompleted: row.lecture_completed,
+    lectureEnded: (await now()) >= lectureEndsAt,
+    lectureEndsAt,
     programmeId: row.programme_id,
     programmeTitle: row.programme_title,
     planVersion: row.approved_plan_version,

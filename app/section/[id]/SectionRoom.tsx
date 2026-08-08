@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Room, RoomEvent, Track, type RemoteTrack } from "livekit-client";
 import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
@@ -18,16 +18,37 @@ import Typography from "@mui/material/Typography";
 type SectionInfo = { id: string; week: number; title: string; totalMinutes: number; objectives: string[] };
 type SectionEvent = { type: string; payload?: Record<string, unknown> };
 
+/** One step of the section, kept for the rest of the visit once it arrives. */
+type SectionStep = {
+  key: string;
+  title: string;
+  body: string;
+  activityIndex: number;
+  answer: string | null;
+};
+
+function stepTitle(content: Record<string, unknown>): string {
+  return String(content.title ?? content.prompt ?? content.step ?? "Guided practice");
+}
+
+function stepBody(content: Record<string, unknown>): string {
+  return String(content.description ?? content.explanation ?? content.conclusion ?? "");
+}
+
 export default function SectionRoom({ sectionId }: { sectionId: string }) {
   const [room] = useState(() => new Room({ adaptiveStream: true }));
   const [section, setSection] = useState<SectionInfo | null>(null);
   const [event, setEvent] = useState<SectionEvent | null>(null);
-  const [content, setContent] = useState<Record<string, unknown> | null>(null);
+  // A section is a worked sequence: every step stays on the page under the one
+  // before it, so a learner can look back at what they already answered.
+  const [steps, setSteps] = useState<SectionStep[]>([]);
   const [todos, setTodos] = useState<Array<Record<string, unknown>>>([]);
+  const [acknowledged, setAcknowledged] = useState<number[]>([]);
   const [answer, setAnswer] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(false);
+  const latestStep = useRef<HTMLDivElement | null>(null);
 
   const send = useCallback((value: Record<string, unknown>) => {
     return room.localParticipant.publishData(
@@ -51,8 +72,25 @@ export default function SectionRoom({ sectionId }: { sectionId: string }) {
           const message = JSON.parse(new TextDecoder().decode(bytes)) as SectionEvent;
           if (message.type === "section_ready") setReady(true);
           else {
-            if (message.payload?.content && typeof message.payload.content === "object") {
-              setContent(message.payload.content as Record<string, unknown>);
+            const content = message.payload?.content;
+            if (content && typeof content === "object") {
+              const record = content as Record<string, unknown>;
+              const activityIndex = Number(message.payload?.activity_index ?? 0);
+              const key = `${activityIndex}:${stepTitle(record)}`;
+              setSteps((previous) =>
+                previous.some((step) => step.key === key)
+                  ? previous
+                  : [
+                      ...previous,
+                      {
+                        key,
+                        title: stepTitle(record),
+                        body: stepBody(record),
+                        activityIndex,
+                        answer: null,
+                      },
+                    ],
+              );
             }
             if (Array.isArray(message.payload?.todos)) {
               setTodos(message.payload.todos as Array<Record<string, unknown>>);
@@ -77,10 +115,19 @@ export default function SectionRoom({ sectionId }: { sectionId: string }) {
     };
   }, [room, sectionId]);
 
+  // Keep the newest step in view without stealing the page from a learner who
+  // has scrolled back to re-read an earlier one.
+  useEffect(() => {
+    latestStep.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [steps.length]);
+
   if (error) return <Alert severity="error">{error}</Alert>;
   if (!section) return <CircularProgress />;
   const payload = event?.payload ?? {};
   const completed = event?.type === "section_state" && payload.state === "completed";
+  const awaitingAnswer = event?.type === "section_state" && payload.state === "waiting";
+  const openActivity = Number(payload.activity_index ?? 0);
+
   return (
     <Stack spacing={3}>
       <Stack spacing={1}>
@@ -100,37 +147,96 @@ export default function SectionRoom({ sectionId }: { sectionId: string }) {
           </Button>
         </Stack>
       </Stack>
+
       <Card variant="outlined"><CardContent>
         <Typography variant="h6">Objectives</Typography>
         <List>{section.objectives.map((objective) => <ListItem key={objective}><ListItemText primary={objective} /></ListItem>)}</List>
       </CardContent></Card>
-      {completed ? <Alert severity="success">Section completed.</Alert> : null}
-      {content ? (
-        <Card variant="outlined"><CardContent><Stack spacing={2}>
-          <Typography variant="h6">{String(content.title ?? content.prompt ?? content.step ?? "Guided practice")}</Typography>
-          <Typography>{String(content.description ?? content.explanation ?? content.conclusion ?? "")}</Typography>
-          {event?.type === "section_state" && payload.state === "waiting" ? (
-            <><TextField multiline minRows={4} label="Your answer" value={answer} onChange={(change) => setAnswer(change.target.value)} />
-            <Button
-              variant="contained"
-              disabled={!answer.trim()}
-              onClick={() => send({
-                type: "section_submit",
-                submission_id: crypto.randomUUID(),
-                activity_index: Number(payload.activity_index ?? 0),
-                text: answer,
-              }).then(() => setAnswer(""))}
-            >
-              Submit answer
-            </Button></>
-          ) : null}
-        </Stack></CardContent></Card>
-      ) : null}
+
+      {steps.map((step, index) => {
+        const isLatest = index === steps.length - 1;
+        const takesAnswer = isLatest && awaitingAnswer && !completed;
+        return (
+          <Card key={step.key} variant="outlined" ref={isLatest ? latestStep : undefined}>
+            <CardContent><Stack spacing={2}>
+              <Typography variant="overline" color="text.secondary">Step {index + 1}</Typography>
+              <Typography variant="h6">{step.title}</Typography>
+              {step.body ? <Typography>{step.body}</Typography> : null}
+              {step.answer ? (
+                <Alert severity="success" variant="outlined">
+                  <Typography variant="subtitle2">Your answer</Typography>
+                  <Typography variant="body2">{step.answer}</Typography>
+                </Alert>
+              ) : null}
+              {takesAnswer ? (
+                <>
+                  <TextField
+                    multiline
+                    minRows={4}
+                    label="Your answer"
+                    value={answer}
+                    onChange={(change) => setAnswer(change.target.value)}
+                  />
+                  <Button
+                    variant="contained"
+                    disabled={!answer.trim()}
+                    onClick={() => {
+                      const submitted = answer;
+                      send({
+                        type: "section_submit",
+                        submission_id: crypto.randomUUID(),
+                        activity_index: openActivity,
+                        text: submitted,
+                      }).then(() => {
+                        // Keep the answer beside the step it belongs to.
+                        setSteps((previous) =>
+                          previous.map((item) =>
+                            item.key === step.key ? { ...item, answer: submitted } : item,
+                          ),
+                        );
+                        setAnswer("");
+                      });
+                    }}
+                  >
+                    Submit answer
+                  </Button>
+                </>
+              ) : null}
+            </Stack></CardContent>
+          </Card>
+        );
+      })}
+
       {todos.length ? <Card variant="outlined"><CardContent><Stack spacing={2}>
         <Typography variant="h6">Next actions</Typography>
-        {todos.map((todo, index) => <Button key={index} variant="outlined" disabled={completed} onClick={() => send({ type: "todo_ack", todo_index: index })}>{String(todo.text ?? `Task ${index + 1}`)}</Button>)}
-        <Button variant="contained" disabled={completed} onClick={() => send({ type: "section_complete" })}>Complete section</Button>
+        <Typography variant="body2" color="text.secondary">
+          Practice to do on your own. Mark each one once you have worked through it.
+        </Typography>
+        {todos.map((todo, index) => {
+          const done = acknowledged.includes(index);
+          return (
+            <Button
+              key={index}
+              variant={done ? "contained" : "outlined"}
+              color={done ? "success" : "primary"}
+              disabled={completed || done}
+              onClick={() => {
+                send({ type: "todo_ack", todo_index: index });
+                setAcknowledged((previous) =>
+                  previous.includes(index) ? previous : [...previous, index],
+                );
+              }}
+            >
+              {done ? "✓ " : ""}{String(todo.text ?? `Task ${index + 1}`)}
+            </Button>
+          );
+        })}
+        <Button variant="contained" disabled={completed} onClick={() => send({ type: "section_complete" })}>
+          Complete section
+        </Button>
       </Stack></CardContent></Card> : null}
+
+      {completed ? <Alert severity="success">Section completed.</Alert> : null}
     </Stack>
   );
 }
