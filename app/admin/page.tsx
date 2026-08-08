@@ -193,6 +193,16 @@ export default function AdminPage() {
   if (!state && !error) return <CircularProgress />;
 
   const summary = state?.attendanceSummary;
+  // The server refuses a restart once week 1 has begun, because attendance and
+  // results are a record of what happened. Work that out here too, so the
+  // button says so instead of failing after the click.
+  const firstLectureStart = state?.lectures?.length
+    ? Math.min(...state.lectures.map((lecture) => new Date(lecture.starts_at).getTime()))
+    : null;
+  const semesterStarted =
+    firstLectureStart !== null &&
+    !!state?.clock.now &&
+    new Date(state.clock.now).getTime() >= firstLectureStart;
 
   return (
     <Stack spacing={3}>
@@ -321,23 +331,34 @@ export default function AdminPage() {
           <Stack spacing={2}>
             <Typography variant="h6">Semester</Typography>
             <Typography variant="body2" color="text.secondary">
-              Start the course over without touching the generated content: wipes
-              attendance, grades, proctoring reports, the Q&amp;A log and every exam
-              attempt, then reschedules the four lectures to start tomorrow at 10:00
-              (virtual time).
+              Only before week 1 begins. Moves the four lectures to start tomorrow at
+              10:00 (virtual time) and clears anything already recorded — attendance,
+              grades, proctoring reports, the Q&amp;A log and every exam attempt. The
+              generated content is untouched.
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Once the first lecture has started, the semester can no longer be
+              restarted: attendance and results are a record of what happened and are
+              not rewritten.
             </Typography>
             <Grid container spacing={2}>
               <Grid>
                 <Button
                   variant="contained"
                   color="warning"
-                  disabled={busy || building || !selectedSid}
+                  disabled={busy || building || !selectedSid || semesterStarted}
                   onClick={restartSemester}
                 >
                   Restart semester
                 </Button>
               </Grid>
             </Grid>
+            {semesterStarted ? (
+              <Alert severity="info">
+                Week 1 has already started for this student, so their semester can no
+                longer be restarted.
+              </Alert>
+            ) : null}
           </Stack>
         </CardContent>
       </Card>
@@ -385,9 +406,8 @@ export default function AdminPage() {
           <Stack spacing={2}>
             <Typography variant="h6">Assessment size</Typography>
             <Typography variant="body2" color="text.secondary">
-              Choose how many questions each served quiz and midterm carries. Lecture
-              length is calculated from each week&apos;s source material and stays within
-              30–120 minutes. Regenerating rebuilds from the already-uploaded book.
+              Choose how many questions each served quiz and midterm carries.
+              Regenerating rebuilds from the already-uploaded book.
             </Typography>
 
             <ToggleButtonGroup
