@@ -59,13 +59,33 @@ export async function POST(request: NextRequest) {
     }
 
     case "jumpToNextLecture": {
+      // The clock is global, but "the next lecture" is not: every learner has
+      // their own timetable. Without a student this searched all of them and
+      // silently landed on whichever learner happened to be next, which is not
+      // the one the admin is looking at. Naming the student is required.
+      const sid = body?.sid as string | undefined;
+      if (!sid) {
+        return Response.json(
+          {
+            error:
+              "Select a student first — jumping lands on that learner's next lecture.",
+            code: "STUDENT_REQUIRED",
+          },
+          { status: 400 }
+        );
+      }
       const current = await now();
       const next = await queryOne<{ starts_at: Date }>(
-        "SELECT starts_at FROM lectures WHERE starts_at > $1 ORDER BY starts_at ASC LIMIT 1",
-        [current]
+        `SELECT starts_at FROM lectures
+          WHERE student_id = $1 AND starts_at > $2
+          ORDER BY starts_at ASC LIMIT 1`,
+        [sid, current]
       );
       if (!next)
-        return Response.json({ error: "no upcoming lecture" }, { status: 404 });
+        return Response.json(
+          { error: "This student has no upcoming lecture." },
+          { status: 404 }
+        );
       const virtualNow = await setNow(new Date(next.starts_at));
       return Response.json({ now: virtualNow.toISOString(), offsetMs: await getOffsetMs() });
     }

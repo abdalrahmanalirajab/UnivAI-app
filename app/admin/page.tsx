@@ -282,8 +282,10 @@ export default function AdminPage() {
               <Grid>
                 <Button
                   variant="outlined"
-                  disabled={busy}
-                  onClick={() => control({ action: "jumpToNextLecture" })}
+                  // Every learner has their own timetable, so this jump only
+                  // means something once one of them is selected.
+                  disabled={busy || !selectedSid}
+                  onClick={() => control({ action: "jumpToNextLecture", sid: selectedSid })}
                 >
                   Jump to next lecture start
                 </Button>
@@ -299,6 +301,12 @@ export default function AdminPage() {
                 </Button>
               </Grid>
             </Grid>
+
+            <Typography variant="body2" color="text.secondary">
+              {selectedSid
+                ? `Jumping moves the shared clock to ${selectedSid}'s next lecture. Every other learner's schedule moves with it.`
+                : "Select a student to jump to their next lecture — each learner has their own timetable."}
+            </Typography>
 
             <Divider />
 
