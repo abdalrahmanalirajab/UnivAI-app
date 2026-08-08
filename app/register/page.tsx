@@ -15,16 +15,21 @@ import {
   validatePhone,
   validatePassword,
   validateConfirmPassword,
+  normalizePhone,
 } from "@/lib/validators";
 import { authClient } from "@/lib/auth-client";
 import { copyFor, type AuthError } from "@/lib/errorMap";
+import GoogleSignInButton from "@/app/components/GoogleSignInButton";
 
 export default function RegisterPage() {
   const [name, setName] = useState("");
   const [nameError, setNameError] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [emailError, setEmailError] = useState<string | null>(null);
-  const [phone, setPhone] = useState("+20");
+  // Empty, not "+20": the field is optional now, and a dialling prefix on its
+  // own is not a valid number — it would block the form for anyone who simply
+  // left the phone blank.
+  const [phone, setPhone] = useState("");
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [password, setPassword] = useState("");
   const [passwordError, setPasswordError] = useState<string | null>(null);
@@ -58,7 +63,9 @@ export default function RegisterPage() {
       name,
       email,
       password,
-      phone,
+      // "" would be stored as an empty string beside the NULLs that mean the
+      // same thing; send the absence itself.
+      phone: normalizePhone(phone),
       callbackURL: "/start",
     });
 
@@ -111,10 +118,9 @@ export default function RegisterPage() {
         helperText={emailError}
       />
       <TextField
-        label="Phone"
+        label="Phone (optional)"
         name="phone"
         fullWidth
-        required
         margin="normal"
         value={phone}
         onChange={(e) => {
@@ -122,7 +128,7 @@ export default function RegisterPage() {
           setPhoneError(validatePhone(e.target.value));
         }}
         error={phoneError !== null}
-        helperText={phoneError}
+        helperText={phoneError ?? "You can add this later on your profile."}
       />
       <PasswordField
         label="Password"
@@ -164,6 +170,9 @@ export default function RegisterPage() {
       <Button variant="contained" fullWidth disabled={!canSubmit} onClick={handleSubmit}>
         Create account
       </Button>
+      <GoogleSignInButton
+        onError={(message) => setTopLevelError(message || null)}
+      />
     </AuthCard>
   );
 }

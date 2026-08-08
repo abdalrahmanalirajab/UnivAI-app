@@ -216,7 +216,8 @@ CREATE TABLE IF NOT EXISTS "user" (
   "banned" boolean,
   "banReason" text,
   "banExpires" timestamptz,
-  "phone" text NOT NULL,
+  -- NULL = not given; Google sign-in supplies no phone (infra/migrations/011).
+  "phone" text,
   "studentId" text
 );
 CREATE UNIQUE INDEX IF NOT EXISTS "user_studentId_key" ON "user"("studentId");

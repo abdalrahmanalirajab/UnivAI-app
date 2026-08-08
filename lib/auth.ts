@@ -8,6 +8,7 @@ import { ac, roles } from "./auth-ac";
 import { recordAudit } from "./auth-audit";
 import { sendBanNotification } from "./auth-notify";
 import { guardHook } from "./auth-guards";
+import { normalizePhone } from "./validators";
 
 /**
  * Better Auth — the whole auth backend. See docs/auth-plan.md (Phase 1) and
@@ -59,10 +60,41 @@ export const auth = betterAuth({
     },
   },
 
+  // Google sign-in, registered only when credentials exist so the app still
+  // boots (and the E2E stack still runs) without them.
+  ...(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
+    ? {
+        socialProviders: {
+          google: {
+            clientId: env.GOOGLE_CLIENT_ID,
+            clientSecret: env.GOOGLE_CLIENT_SECRET,
+          },
+        },
+      }
+    : {}),
+
+  account: {
+    accountLinking: {
+      // A learner who registered with email and password and later presses
+      // "Continue with Google" is the same person: Google asserts the address
+      // and has verified it, so the provider is linked to the existing account
+      // instead of failing on the duplicate email. Only providers listed here
+      // are trusted to make that claim.
+      enabled: true,
+      trustedProviders: ["google"],
+    },
+  },
+
   user: {
     additionalFields: {
       // Collected at registration, shown/edited on the profile — NOT verified.
-      phone: { type: "string", required: true, input: true },
+      //
+      // Not `required` at the schema level: Google supplies no phone number, and
+      // a required additional field makes social sign-up impossible. The email
+      // sign-up path still demands it — the register form validates it and
+      // guardHook rejects a /sign-up/email without one — while a Google sign-up
+      // starts with an empty phone the learner fills in on /profile.
+      phone: { type: "string", required: false, input: true },
       // The RAG / LiveKit namespace key. Server-generated; client can't set it.
       studentId: { type: "string", required: false, input: false },
     },
@@ -107,6 +139,10 @@ export const auth = betterAuth({
             data: {
               ...user,
               studentId,
+              // NULL means "not given". Google sends no phone number, and the
+              // register form no longer insists on one, so a blank arrives here
+              // as "" and is normalised — one absent value, one representation.
+              phone: normalizePhone((user as { phone?: string | null }).phone),
               ...(isOwner ? { role: "super_admin" } : {}),
             },
           };
