@@ -38,7 +38,7 @@ describe("useSignOut", () => {
   it("clears the session before replace-navigating", async () => {
     let resolveSignOut: () => void = () => {};
     mocks.auth.signOut.mockReturnValueOnce(
-      new Promise((resolve) => {
+      new Promise<void>((resolve) => {
         resolveSignOut = resolve;
       }).then(() => ({ data: { success: true }, error: null }))
     );

@@ -1,28 +1,77 @@
-import Avatar from "@mui/material/Avatar";
 import Box from "@mui/material/Box";
-import Card from "@mui/material/Card";
-import CardContent from "@mui/material/CardContent";
 import Chip from "@mui/material/Chip";
 import Container from "@mui/material/Container";
-import Grid from "@mui/material/Grid";
+import LinearProgress from "@mui/material/LinearProgress";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
-import FlagOutlined from "@mui/icons-material/FlagOutlined";
-import LightbulbOutlined from "@mui/icons-material/LightbulbOutlined";
-import TaskAltOutlined from "@mui/icons-material/TaskAltOutlined";
-import TrendingUpOutlined from "@mui/icons-material/TrendingUpOutlined";
-import content from "./content";
+import AutoStoriesOutlined from "@mui/icons-material/AutoStoriesOutlined";
+import CalendarMonthOutlined from "@mui/icons-material/CalendarMonthOutlined";
+import GraphicEqOutlined from "@mui/icons-material/GraphicEqOutlined";
+import WorkspacePremiumOutlined from "@mui/icons-material/WorkspacePremiumOutlined";
+import BentoFeatureGrid, { type BentoFeature } from "@/components/ui/bento-feature-grid";
 
-const ICONS = [
-  FlagOutlined,
-  LightbulbOutlined,
-  TaskAltOutlined,
-  TrendingUpOutlined,
+const ITEMS: BentoFeature[] = [
+  {
+    title: "Start from the source you trust",
+    body: "Choose a book, confirm the upload, and reuse an identical course when the same content was already prepared.",
+    label: "You stay in control",
+    icon: <AutoStoriesOutlined />,
+    wide: true,
+    visual: (
+      <Stack direction="row" spacing={1} className="bento-source-row">
+        <Chip label="Book selected" color="primary" />
+        <span aria-hidden="true">→</span>
+        <Chip label="Hash checked" variant="outlined" />
+        <span aria-hidden="true">→</span>
+        <Chip label="Course reused" color="success" />
+      </Stack>
+    ),
+  },
+  {
+    title: "A real semester",
+    body: "Lectures, sections, quizzes, a midpoint midterm, and the final appear at the right time.",
+    label: "Scheduled",
+    icon: <CalendarMonthOutlined />,
+    visual: (
+      <Stack spacing={1}>
+        <Typography variant="caption" color="text.secondary">
+          Semester timeline
+        </Typography>
+        <LinearProgress variant="determinate" value={48} aria-label="Example semester progress" />
+        <Typography variant="caption">Week 3 of 5 · midterm next</Typography>
+      </Stack>
+    ),
+  },
+  {
+    title: "Live, not prerecorded",
+    body: "The lecturer speaks with the current slide, hears your question, answers, and resumes from the same point.",
+    label: "Voice + slides",
+    icon: <GraphicEqOutlined />,
+    visual: (
+      <Stack direction="row" spacing={1} className="align-center">
+        <span className="voice-live-dot" aria-hidden="true" />
+        <Typography variant="body2">Listening for your question…</Typography>
+      </Stack>
+    ),
+  },
+  {
+    title: "Finish with proof",
+    body: "Scores update immediately. Coursework and the final produce a transcript, GPA, certificate, and a public verification link.",
+    label: "Verified outcome",
+    icon: <WorkspacePremiumOutlined />,
+    wide: true,
+    visual: (
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+        <Chip label="Coursework 60%" variant="outlined" />
+        <Chip label="Final 40%" variant="outlined" />
+        <Chip label="Grade A" color="success" />
+        <Chip label="Certificate valid" color="primary" />
+      </Stack>
+    ),
+  },
 ];
 
 export default function HowItWorks() {
-  const { howItWorks } = content;
-
   return (
     <Box
       component="section"
@@ -36,48 +85,17 @@ export default function HowItWorks() {
             <Chip
               color="primary"
               variant="outlined"
-              label={howItWorks.eyebrow}
+              label="The full learning loop"
               className="eyebrow-chip"
             />
             <Typography id="how-it-works-heading" variant="h2">
-              {howItWorks.heading}
+              One book in. A guided university journey out.
             </Typography>
-            <Typography
-              variant="body1"
-              color="text.secondary"
-              className="section-copy"
-            >
-              {howItWorks.body}
+            <Typography variant="body1" color="text.secondary" className="section-copy">
+              Every stage leads to the next one. The learner never has to guess where to go.
             </Typography>
           </Stack>
-
-          <Grid container spacing={2.5}>
-            {howItWorks.steps.map((step, index) => {
-              const Icon = ICONS[index];
-              return (
-                <Grid key={step.title} size={{ xs: 12, sm: 6, lg: 3 }}>
-                  <Card className="step-card">
-                    <CardContent>
-                      <Stack spacing={2.5}>
-                        <Stack direction="row" className="align-center">
-                          <Avatar className="step-number">{index + 1}</Avatar>
-                          <Icon color="primary" className="nav-actions" />
-                        </Stack>
-                        <Stack spacing={1}>
-                          <Typography variant="h5" component="h3">
-                            {step.title}
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            {step.body}
-                          </Typography>
-                        </Stack>
-                      </Stack>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              );
-            })}
-          </Grid>
+          <BentoFeatureGrid items={ITEMS} />
         </Stack>
       </Container>
     </Box>

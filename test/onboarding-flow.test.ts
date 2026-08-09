@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  getActiveOnboardingStep,
   getStartDestination,
   getStudentNavItems,
   type OnboardingState,
@@ -20,25 +19,22 @@ describe("onboarding flow", () => {
     ]);
   });
 
-  it("puts schedule first and removes upload after preparation", () => {
+  it("lands prepared learners on one focused Today page", () => {
     const ready = state({ emailVerified: true, hasPreparedSource: true });
-    expect(getStartDestination(ready)).toBe("/schedule");
+    expect(getStartDestination(ready)).toBe("/dashboard");
     expect(getStudentNavItems(ready).map((item) => item.label)).toEqual([
-      "Schedule",
-      "Library",
-      "Dashboard",
-      "Exams",
-      "Transcript",
+      "Today",
+      "Course",
+      "Books",
     ]);
   });
 
-  it("keeps exams hidden until email verification", () => {
+  it("keeps the same simple navigation while verification is pending", () => {
     const unverified = state({ hasPreparedSource: true });
     expect(getStudentNavItems(unverified).map((item) => item.label)).toEqual([
-      "Schedule",
-      "Library",
-      "Dashboard",
+      "Today",
+      "Course",
+      "Books",
     ]);
-    expect(getActiveOnboardingStep(unverified)).toBe(0);
   });
 });

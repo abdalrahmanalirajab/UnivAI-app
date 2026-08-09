@@ -286,6 +286,132 @@ const theme = createTheme({
         ".landing-main": {
           overflow: "hidden",
         },
+        "@keyframes heroFloat": {
+          "0%, 100%": {
+            transform: "translate3d(0, 0, 0) rotate(12deg)",
+          },
+          "50%": {
+            transform: "translate3d(0, -14px, 0) rotate(18deg)",
+          },
+        },
+        "@keyframes voicePulse": {
+          "0%, 100%": {
+            transform: "scale(0.86)",
+            opacity: 0.5,
+          },
+          "50%": {
+            transform: "scale(1)",
+            opacity: 1,
+          },
+        },
+        ".background-paths": {
+          position: "absolute",
+          zIndex: -2,
+          inset: 0,
+          color: "var(--univai-palette-primary-main)",
+          opacity: 0.58,
+          pointerEvents: "none",
+        },
+        ".background-paths svg": {
+          width: "100%",
+          height: "100%",
+        },
+        ".shape-hero-section": {
+          isolation: "isolate",
+          overflow: "hidden",
+          background:
+            "linear-gradient(145deg, color-mix(in srgb, var(--univai-palette-primary-main) 8%, var(--univai-palette-background-default)), var(--univai-palette-background-default) 54%, color-mix(in srgb, var(--univai-palette-secondary-main) 7%, var(--univai-palette-background-default)))",
+        },
+        ".shape-hero-section::before": {
+          display: "none",
+        },
+        ".shape-hero-container": {
+          position: "relative",
+          zIndex: 1,
+        },
+        ".hero-shape": {
+          position: "absolute",
+          zIndex: -1,
+          border: "1px solid color-mix(in srgb, var(--univai-palette-primary-main) 22%, transparent)",
+          background:
+            "linear-gradient(145deg, color-mix(in srgb, var(--univai-palette-primary-main) 14%, transparent), color-mix(in srgb, var(--univai-palette-secondary-main) 12%, transparent))",
+          boxShadow:
+            "inset 0 1px 0 color-mix(in srgb, white 30%, transparent), 0 24px 60px color-mix(in srgb, var(--univai-palette-primary-main) 12%, transparent)",
+          backdropFilter: "blur(6px)",
+          pointerEvents: "none",
+          animation: "heroFloat 9s ease-in-out infinite",
+        },
+        ".hero-shape-one": {
+          width: 180,
+          height: 180,
+          top: 72,
+          right: "5%",
+          borderRadius: "42% 58% 62% 38% / 54% 38% 62% 46%",
+        },
+        ".hero-shape-two": {
+          width: 120,
+          height: 120,
+          left: "42%",
+          bottom: 56,
+          borderRadius: "28px 60px 38px 68px",
+          animationDelay: "-4s",
+          animationDirection: "reverse",
+        },
+        ".hero-eyebrow": {
+          backgroundColor:
+            "color-mix(in srgb, var(--univai-palette-background-paper) 74%, transparent)",
+          backdropFilter: "blur(10px)",
+        },
+        ".hero-card-stage": {
+          position: "relative",
+          minHeight: 510,
+          perspective: 1200,
+        },
+        ".display-cards": {
+          position: "relative",
+          width: "100%",
+          height: 510,
+        },
+        ".display-card-layer": {
+          position: "absolute",
+          width: "min(92%, 500px)",
+          transformOrigin: "center",
+        },
+        ".display-card-layer-1": {
+          top: 58,
+          left: 0,
+        },
+        ".display-card-layer-2": {
+          top: 190,
+          right: 0,
+          zIndex: 2,
+        },
+        ".display-card-layer-3": {
+          top: 322,
+          left: "4%",
+          zIndex: 3,
+        },
+        ".display-card": {
+          padding: 22,
+          borderRadius: "22px !important",
+          border:
+            "1px solid color-mix(in srgb, var(--univai-palette-primary-main) 24%, var(--univai-palette-divider))",
+          backgroundColor:
+            "color-mix(in srgb, var(--univai-palette-background-paper) 88%, transparent) !important",
+          boxShadow: "0 24px 60px rgba(18, 28, 64, 0.16)",
+          backdropFilter: "blur(18px)",
+        },
+        ".display-card-copy": {
+          flex: 1,
+          minWidth: 0,
+        },
+        ".display-card-icon": {
+          width: 48,
+          height: 48,
+          color: "var(--univai-palette-primary-main) !important",
+          background:
+            "color-mix(in srgb, var(--univai-palette-primary-main) 11%, var(--univai-palette-background-paper)) !important",
+        },
         ".landing-section": {
           paddingBlock: 104,
           scrollMarginTop: 80,
@@ -408,6 +534,270 @@ const theme = createTheme({
         },
         ".feature-card": {
           height: "100%",
+        },
+        ".bento-card": {
+          height: "100%",
+          minHeight: 330,
+          overflow: "hidden",
+          background:
+            "linear-gradient(145deg, var(--univai-palette-background-paper), color-mix(in srgb, var(--univai-palette-primary-main) 4%, var(--univai-palette-background-paper)))",
+          transition: "transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease",
+          "&:hover": {
+            transform: "translateY(-3px)",
+            borderColor:
+              "color-mix(in srgb, var(--univai-palette-primary-main) 36%, var(--univai-palette-divider))",
+            boxShadow: "0 18px 46px rgba(17, 28, 64, 0.11)",
+          },
+        },
+        ".bento-card-wide": {
+          background:
+            "linear-gradient(135deg, color-mix(in srgb, var(--univai-palette-primary-main) 9%, var(--univai-palette-background-paper)), color-mix(in srgb, var(--univai-palette-secondary-main) 7%, var(--univai-palette-background-paper)))",
+        },
+        ".bento-card-content": {
+          minHeight: 280,
+        },
+        ".bento-icon": {
+          width: 46,
+          height: 46,
+          color: "var(--univai-palette-primary-main) !important",
+          background:
+            "color-mix(in srgb, var(--univai-palette-primary-main) 11%, var(--univai-palette-background-paper)) !important",
+        },
+        ".bento-visual": {
+          marginTop: "auto !important",
+          padding: 18,
+          borderRadius: 16,
+          border: "1px solid var(--univai-palette-divider)",
+          backgroundColor:
+            "color-mix(in srgb, var(--univai-palette-background-default) 72%, transparent)",
+        },
+        ".bento-source-row": {
+          alignItems: "center",
+          flexWrap: "wrap",
+        },
+        ".voice-live-dot": {
+          width: 14,
+          height: 14,
+          flex: "0 0 auto",
+          borderRadius: "50%",
+          backgroundColor: "var(--univai-palette-secondary-main)",
+          boxShadow:
+            "0 0 0 7px color-mix(in srgb, var(--univai-palette-secondary-main) 14%, transparent)",
+          animation: "voicePulse 1.3s ease-in-out infinite",
+        },
+        ".feature-carousel": {
+          overflow: "hidden",
+          border: "1px solid var(--univai-palette-divider)",
+          borderRadius: "28px !important",
+          backgroundColor: "var(--univai-palette-background-paper) !important",
+          boxShadow: "0 26px 68px rgba(17, 28, 64, 0.12)",
+        },
+        ".feature-carousel-copy": {
+          minHeight: 520,
+          padding: 42,
+          justifyContent: "center",
+        },
+        ".carousel-icon": {
+          width: 56,
+          height: 56,
+          color: "var(--univai-palette-primary-contrastText) !important",
+          background:
+            "linear-gradient(135deg, var(--univai-palette-primary-main), var(--univai-palette-secondary-main)) !important",
+        },
+        ".carousel-proof": {
+          width: "fit-content",
+        },
+        ".carousel-controls": {
+          flexWrap: "wrap",
+        },
+        ".carousel-dot": {
+          width: 10,
+          height: 10,
+          padding: 0,
+          border: 0,
+          borderRadius: 999,
+          cursor: "pointer",
+          backgroundColor: "var(--univai-palette-divider)",
+          transition: "width 180ms ease, background-color 180ms ease",
+        },
+        ".carousel-dot-active": {
+          width: 32,
+          backgroundColor: "var(--univai-palette-primary-main)",
+        },
+        ".feature-carousel-preview-grid": {
+          display: "flex",
+          minHeight: 520,
+          padding: 30,
+          background:
+            "linear-gradient(145deg, color-mix(in srgb, var(--univai-palette-primary-main) 11%, var(--univai-palette-background-default)), color-mix(in srgb, var(--univai-palette-secondary-main) 9%, var(--univai-palette-background-default)))",
+        },
+        ".feature-carousel-preview": {
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+        },
+        ".carousel-demo": {
+          width: "100%",
+          padding: 28,
+          borderRadius: 22,
+          border:
+            "1px solid color-mix(in srgb, var(--univai-palette-primary-main) 20%, var(--univai-palette-divider))",
+          backgroundColor:
+            "color-mix(in srgb, var(--univai-palette-background-paper) 90%, transparent)",
+          boxShadow: "0 22px 50px rgba(19, 28, 61, 0.14)",
+          backdropFilter: "blur(16px)",
+        },
+        ".carousel-demo-icon": {
+          color: "var(--univai-palette-primary-main) !important",
+          background:
+            "color-mix(in srgb, var(--univai-palette-primary-main) 11%, var(--univai-palette-background-paper)) !important",
+        },
+        ".carousel-demo-row": {
+          minHeight: 52,
+          paddingInline: 14,
+          borderRadius: 13,
+          border: "1px solid var(--univai-palette-divider)",
+        },
+        ".carousel-answer, .carousel-next-action": {
+          padding: 18,
+          border: "1px solid var(--univai-palette-divider)",
+          backgroundColor:
+            "color-mix(in srgb, var(--univai-palette-background-default) 72%, transparent) !important",
+        },
+        ".voice-orb": {
+          width: 64,
+          height: 64,
+          flex: "0 0 auto",
+          borderRadius: "50%",
+          background:
+            "radial-gradient(circle at 36% 34%, #FFFFFF 0 8%, var(--univai-palette-secondary-light) 10%, var(--univai-palette-primary-main) 68%, var(--univai-palette-primary-dark) 100%)",
+          boxShadow:
+            "0 0 0 10px color-mix(in srgb, var(--univai-palette-secondary-main) 12%, transparent), 0 16px 30px color-mix(in srgb, var(--univai-palette-primary-main) 25%, transparent)",
+          animation: "voicePulse 1.6s ease-in-out infinite",
+        },
+        ".voice-state-card": {
+          padding: 22,
+          border:
+            "1px solid color-mix(in srgb, var(--univai-palette-secondary-main) 32%, var(--univai-palette-divider))",
+          background:
+            "linear-gradient(135deg, color-mix(in srgb, var(--univai-palette-secondary-main) 7%, var(--univai-palette-background-paper)), var(--univai-palette-background-paper)) !important",
+        },
+        ".voice-state-icon": {
+          width: 48,
+          height: 48,
+          color: "var(--univai-palette-secondary-main) !important",
+          background:
+            "color-mix(in srgb, var(--univai-palette-secondary-main) 11%, var(--univai-palette-background-paper)) !important",
+        },
+        ".voice-state-icon-active": {
+          boxShadow:
+            "0 0 0 8px color-mix(in srgb, var(--univai-palette-secondary-main) 11%, transparent)",
+          animation: "voicePulse 1.35s ease-in-out infinite",
+        },
+        ".voice-state-label": {
+          width: "fit-content",
+        },
+        ".container-preview-section": {
+          paddingBottom: 48,
+        },
+        ".scroll-showcase": {
+          minHeight: 760,
+          marginTop: 20,
+          paddingTop: 54,
+          perspective: 1400,
+        },
+        ".scroll-showcase-stage": {
+          transformOrigin: "center top",
+          willChange: "transform",
+        },
+        ".scroll-showcase-frame": {
+          maxWidth: 1120,
+          marginInline: "auto",
+          overflow: "hidden",
+          border: "1px solid var(--univai-palette-divider)",
+          borderRadius: "28px !important",
+          backgroundColor: "var(--univai-palette-background-paper) !important",
+          boxShadow: "0 36px 90px rgba(14, 24, 58, 0.22)",
+        },
+        ".scroll-showcase-toolbar": {
+          height: 46,
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          paddingInline: 18,
+          borderBottom: "1px solid var(--univai-palette-divider)",
+          backgroundColor:
+            "color-mix(in srgb, var(--univai-palette-background-default) 84%, transparent)",
+        },
+        ".scroll-showcase-toolbar span": {
+          width: 10,
+          height: 10,
+          borderRadius: "50%",
+          backgroundColor: "var(--univai-palette-divider)",
+        },
+        ".today-preview": {
+          padding: 34,
+        },
+        ".today-preview-action": {
+          padding: 24,
+          border:
+            "1px solid color-mix(in srgb, var(--univai-palette-secondary-main) 36%, var(--univai-palette-divider))",
+          background:
+            "linear-gradient(135deg, color-mix(in srgb, var(--univai-palette-secondary-main) 7%, var(--univai-palette-background-paper)), var(--univai-palette-background-paper)) !important",
+        },
+        ".preview-status-chip": {
+          width: "fit-content",
+        },
+        ".today-preview-stat": {
+          height: "100%",
+          padding: 18,
+          border: "1px solid var(--univai-palette-divider)",
+        },
+        ".preview-stat-icon": {
+          width: 40,
+          height: 40,
+          color: "var(--univai-palette-primary-main) !important",
+          background:
+            "color-mix(in srgb, var(--univai-palette-primary-main) 10%, var(--univai-palette-background-paper)) !important",
+        },
+        ".dashboard-loading": {
+          minHeight: 320,
+          alignItems: "center",
+          justifyContent: "center",
+        },
+        ".today-focus-card": {
+          overflow: "hidden",
+          borderWidth: 1.5,
+          background:
+            "linear-gradient(135deg, color-mix(in srgb, var(--univai-palette-primary-main) 8%, var(--univai-palette-background-paper)), var(--univai-palette-background-paper))",
+          boxShadow: "0 18px 48px rgba(18, 28, 64, 0.10)",
+        },
+        ".today-focus-live": {
+          borderColor:
+            "color-mix(in srgb, var(--univai-palette-success-main) 48%, var(--univai-palette-divider))",
+        },
+        ".today-focus-assessment": {
+          borderColor:
+            "color-mix(in srgb, var(--univai-palette-warning-main) 48%, var(--univai-palette-divider))",
+        },
+        ".focus-chip": {
+          width: "fit-content",
+        },
+        ".today-focus-copy": {
+          maxWidth: 720,
+        },
+        ".pulse-card": {
+          height: "100%",
+        },
+        ".pulse-icon": {
+          width: 46,
+          height: 46,
+          color: "var(--univai-palette-primary-main) !important",
+          background:
+            "color-mix(in srgb, var(--univai-palette-primary-main) 10%, var(--univai-palette-background-paper)) !important",
+        },
+        ".dashboard-status-chip": {
+          alignSelf: "center",
         },
         ".feature-icon": {
           width: 48,
@@ -567,6 +957,31 @@ const theme = createTheme({
           ".hero-visual-shell": {
             minHeight: 440,
           },
+          ".hero-card-stage, .display-cards": {
+            minHeight: 450,
+            height: 450,
+          },
+          ".display-card-layer-1": {
+            top: 24,
+          },
+          ".display-card-layer-2": {
+            top: 154,
+          },
+          ".display-card-layer-3": {
+            top: 284,
+          },
+          ".feature-carousel-copy, .feature-carousel-preview-grid": {
+            minHeight: "auto",
+          },
+          ".feature-carousel-copy": {
+            padding: 32,
+          },
+          ".feature-carousel-preview-grid": {
+            padding: 24,
+          },
+          ".scroll-showcase": {
+            minHeight: 650,
+          },
           ".lecture-sidebar": {
             borderLeft: 0,
             borderTop: "1px solid var(--univai-palette-divider)",
@@ -598,6 +1013,48 @@ const theme = createTheme({
           ".hero-visual-shell": {
             minHeight: 360,
             borderRadius: 22,
+          },
+          ".hero-card-stage, .display-cards": {
+            minHeight: 390,
+            height: 390,
+          },
+          ".display-card-layer": {
+            width: "96%",
+          },
+          ".display-card-layer-1": {
+            top: 14,
+          },
+          ".display-card-layer-2": {
+            top: 132,
+          },
+          ".display-card-layer-3": {
+            top: 250,
+          },
+          ".display-card": {
+            padding: 15,
+          },
+          ".display-card-icon": {
+            width: 40,
+            height: 40,
+          },
+          ".feature-carousel-copy": {
+            padding: 24,
+          },
+          ".feature-carousel-preview-grid": {
+            padding: 16,
+          },
+          ".carousel-demo": {
+            padding: 20,
+          },
+          ".scroll-showcase": {
+            minHeight: "auto",
+            paddingTop: 36,
+          },
+          ".scroll-showcase-frame": {
+            borderRadius: "22px !important",
+          },
+          ".today-preview": {
+            padding: 18,
           },
           ".hero-float-chip": {
             top: 12,

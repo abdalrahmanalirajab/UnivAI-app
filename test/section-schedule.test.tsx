@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { NextRequest } from "next/server";
 import SchedulePage from "@/app/schedule/page";
 import { SEVEN_WEEK_PLAN_V1 } from "@/test/fixtures/programme-plans-v1";
@@ -290,6 +290,7 @@ describe("schedule page — section placement and typing", () => {
 
     render(<SchedulePage />);
     await waitFor(() => expect(screen.getAllByText(/^Week \d+ — /)).toHaveLength(7));
+    fireEvent.click(screen.getByRole("button", { name: /Full course timeline/i }));
 
     const lectureButtons = screen.getAllByRole("button").filter((button) =>
       (button.textContent ?? "").includes("Week ")

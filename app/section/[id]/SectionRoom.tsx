@@ -236,7 +236,18 @@ export default function SectionRoom({ sectionId }: { sectionId: string }) {
         </Button>
       </Stack></CardContent></Card> : null}
 
-      {completed ? <Alert severity="success">Section completed.</Alert> : null}
+      {completed ? (
+        <Alert
+          severity="success"
+          action={
+            <Button href="/start" color="inherit" variant="outlined">
+              Continue
+            </Button>
+          }
+        >
+          Section completed.
+        </Alert>
+      ) : null}
     </Stack>
   );
 }

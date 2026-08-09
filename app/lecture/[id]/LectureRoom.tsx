@@ -20,9 +20,6 @@ import Drawer from "@mui/material/Drawer";
 import Grid from "@mui/material/Grid";
 import LinearProgress from "@mui/material/LinearProgress";
 import Stack from "@mui/material/Stack";
-import Step from "@mui/material/Step";
-import StepLabel from "@mui/material/StepLabel";
-import Stepper from "@mui/material/Stepper";
 import Typography from "@mui/material/Typography";
 import MicIcon from "@mui/icons-material/Mic";
 import MicOffIcon from "@mui/icons-material/MicOff";
@@ -37,6 +34,7 @@ import type { OutputVersion } from "@/lib/feedback";
 import type { CitationV1 } from "@/test/fixtures/citation-v1";
 import { formatLateness } from "@/lib/time";
 import LectureSlides from "./LectureSlides";
+import VoiceStateCard from "@/components/ui/voice-state-card";
 
 /**
  * The live lecture room.
@@ -81,21 +79,6 @@ const STATE_COLOR: Record<AgentState, "default" | "primary" | "secondary" | "suc
   ended: "success",
 };
 
-/** The answer pipeline as fixed stepper stages, in the order the worker reports them. */
-const ANSWER_STAGES: { key: string; label: string }[] = [
-  { key: "retrieving", label: "Searching the book" },
-  { key: "retrieved", label: "Passages found" },
-  { key: "thinking", label: "Writing the answer" },
-  { key: "answered", label: "Answer ready" },
-  { key: "speaking", label: "Speaking" },
-];
-
-const JOURNEY_HINT: Record<number, string> = {
-  1: "The lecturer finishes the sentence, then asks you by name.",
-  2: "Your microphone is unlocked — unmute and speak.",
-  3: "Check the transcript below — edit it or send it as is.",
-};
-
 type Props = { lectureId: string };
 
 export default function LectureRoom({ lectureId }: Props) {
@@ -121,6 +104,7 @@ export default function LectureRoom({ lectureId }: Props) {
   const [selectedCitation, setSelectedCitation] = useState<CitationV1 | null>(null);
   // What Whisper heard, waiting for the student to confirm or correct it.
   const [transcript, setTranscript] = useState<string | null>(null);
+  const [voiceFallback, setVoiceFallback] = useState<string | null>(null);
   // The raise-hand protocol: nobody unmutes unannounced. Raise your hand, the
   // lecturer finishes the sentence and asks you by name, THEN the mic unlocks.
   const [hand, setHand] = useState<"idle" | "raised" | "acked">("idle");
@@ -146,7 +130,10 @@ export default function LectureRoom({ lectureId }: Props) {
       new TextEncoder().encode(JSON.stringify(message)),
       { reliable: true },
     );
-    if (message.type === "question" || message.type === "cancel") setTranscript(null);
+    if (message.type === "question" || message.type === "cancel") {
+      setTranscript(null);
+      setVoiceFallback(null);
+    }
   }, [room]);
 
   const connect = useCallback(async () => {
@@ -156,8 +143,8 @@ export default function LectureRoom({ lectureId }: Props) {
     startupComplete.current = false;
     if (startupTimer.current) clearTimeout(startupTimer.current);
     startupTimer.current = setTimeout(() => {
-      setError("The lecturer did not start audio within 8 seconds. Please try again.");
-    }, 800_000);
+      setError("The lecturer did not start audio within 45 seconds. Please try again.");
+    }, 45_000);
     try {
       const res = await fetch(`/api/lecture/${lectureId}/token`, { method: "POST" });
       const data = await res.json();
@@ -190,6 +177,7 @@ export default function LectureRoom({ lectureId }: Props) {
             if (message.type === "state") {
               setAgentState(message.state as AgentState);
               if (message.state === "answering") setSteps([]);
+              if (message.state === "listening") setVoiceFallback(null);
               // Reaching the end closes the lecture: it cannot be reopened.
               if (message.state === "ended") {
                 fetch(`/api/lecture/${lectureId}/complete`, { method: "POST" });
@@ -197,10 +185,20 @@ export default function LectureRoom({ lectureId }: Props) {
             }
             if (message.type === "answer") setLastAnswer(message.payload);
             if (message.type === "transcript") setTranscript(message.text ?? null);
+            if (message.type === "fallback") {
+              setVoiceFallback(
+                message.payload?.detail ??
+                  message.payload?.reason ??
+                  "Voice recognition could not finish. Type your question instead.",
+              );
+            }
             if (message.type === "progress") {
               if (message.stage === "problem" && !startupComplete.current) {
                 if (startupTimer.current) clearTimeout(startupTimer.current);
                 setError(message.detail || "The lecturer could not start. Please try again.");
+              }
+              if (message.stage === "problem" && startupComplete.current) {
+                setVoiceFallback(message.detail || "Voice recognition hit a problem.");
               }
               setSteps((previous) => {
                 const last = previous[previous.length - 1];
@@ -425,81 +423,55 @@ export default function LectureRoom({ lectureId }: Props) {
         agentState === "asking" ||
         agentState === "answering") &&
         (() => {
-          const journeyStep =
-            agentState === "answering"
-              ? 4
-              : agentState === "review" || transcript !== null
-                ? 3
-                : hand === "acked" || agentState === "listening"
-                  ? 2
-                  : 1;
-
-          // Where the answer currently is, mapped onto the fixed pipeline.
-          const reached = steps.filter((step) => step.stage !== "problem");
-          const currentStage = reached[reached.length - 1]?.stage ?? "retrieving";
-          const answerStep = Math.max(
-            0,
-            ANSWER_STAGES.findIndex((stage) => stage.key === currentStage)
-          );
           const problem = [...steps].reverse().find((step) => step.stage === "problem");
-          const detailFor = (key: string) =>
-            steps.filter((step) => step.stage === key).pop()?.detail || null;
+          const latest = [...steps].reverse().find((step) => step.stage !== "problem");
+
+          if (agentState === "answering") {
+            return (
+              <VoiceStateCard
+                label="Answer in progress"
+                title={latest?.detail || "Preparing a grounded answer"}
+                detail="Keep this page open. The lecturer will speak the answer and then resume the lesson."
+                active={!problem}
+                problem={problem?.detail ?? voiceFallback}
+              />
+            );
+          }
+
+          if (agentState === "review" || transcript !== null) {
+            return (
+              <VoiceStateCard
+                label="Your question"
+                title={voiceFallback ? "Type your question" : "Check what I heard"}
+                detail={
+                  voiceFallback
+                    ? "Speech recognition did not finish, but the lecture is still paused. Type below and send."
+                    : "Edit the transcript below if needed, then send it to the lecturer."
+                }
+                problem={voiceFallback}
+              />
+            );
+          }
+
+          if (hand === "acked" || agentState === "listening") {
+            return (
+              <VoiceStateCard
+                label="Microphone is live"
+                title="Speak now"
+                detail="Ask one clear question. When you stop talking, the transcript appears for review."
+                active
+                problem={voiceFallback}
+              />
+            );
+          }
 
           return (
-            <Card variant="outlined">
-              <CardContent>
-                <Stack spacing={2}>
-                  <Typography variant="overline" color="text.secondary">
-                    Your question
-                  </Typography>
-                  <Stepper activeStep={journeyStep} alternativeLabel>
-                    {[
-                      "Hand raised",
-                      "Lecturer calls on you",
-                      "Ask your question",
-                      "Confirm what I heard",
-                      "Answering",
-                    ].map((label) => (
-                      <Step key={label}>
-                        <StepLabel>{label}</StepLabel>
-                      </Step>
-                    ))}
-                  </Stepper>
-
-                  {journeyStep === 4 ? (
-                    <Stack spacing={1}>
-                      <Stepper activeStep={answerStep} alternativeLabel>
-                        {ANSWER_STAGES.map((stage, index) => (
-                          <Step key={stage.key} completed={index < answerStep}>
-                            <StepLabel
-                              error={Boolean(problem) && index === answerStep}
-                              optional={
-                                detailFor(stage.key) ? (
-                                  <Typography variant="caption" color="text.secondary">
-                                    {detailFor(stage.key)}
-                                  </Typography>
-                                ) : null
-                              }
-                            >
-                              {stage.label}
-                            </StepLabel>
-                          </Step>
-                        ))}
-                      </Stepper>
-                      {problem ? (
-                        <Alert severity="warning">{problem.detail || "Hit a problem — recovering."}</Alert>
-                      ) : (
-                        <LinearProgress />
-                      )}
-                    </Stack>
-                  ) : (
-                    <Typography variant="body2" color="text.secondary">
-                      {JOURNEY_HINT[journeyStep] ?? ""}
-                    </Typography>
-                  )}
-                </Stack>
-              </CardContent>
-            </Card>
+            <VoiceStateCard
+              label="Hand raised"
+              title="Waiting for the lecturer"
+              detail="The lecturer will finish the current sentence, pause, and call on you."
+              active
+            />
           );
         })()}
 
@@ -512,23 +484,9 @@ export default function LectureRoom({ lectureId }: Props) {
                 Your attendance is recorded. The quiz for this lecture opens as soon as
                 the lecture slot ends — do not miss its 24-hour window.
               </Typography>
-              <Grid container spacing={2}>
-                <Grid>
-                  <Button variant="contained" href="/exams">
-                    Go to the exam hall
-                  </Button>
-                </Grid>
-                <Grid>
-                  <Button variant="outlined" href="/schedule">
-                    Back to the schedule
-                  </Button>
-                </Grid>
-                <Grid>
-                  <Button variant="outlined" color="secondary" href="/dashboard">
-                    See your dashboard
-                  </Button>
-                </Grid>
-              </Grid>
+              <Button variant="contained" href="/start">
+                Continue
+              </Button>
             </Stack>
           </CardContent>
         </Card>

@@ -89,7 +89,7 @@ async function mockApis(page: Page) {
       await route.fulfill({ status: 405, json: { error: "Method not allowed" } });
       return;
     }
-    const body = (await route.request().postDataBuffer()).toString("latin1");
+    const body = (await route.request().postDataBuffer())?.toString("latin1") ?? "";
     const persistedRetry = apiState.docs.find(
       (doc) =>
         doc.status === "failed" &&

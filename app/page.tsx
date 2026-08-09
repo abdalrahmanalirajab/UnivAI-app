@@ -9,14 +9,15 @@ import SecondAudience from "@/app/components/landing/SecondAudience";
 import FinalCta from "@/app/components/landing/FinalCta";
 import Faq from "@/app/components/landing/Faq";
 import Footer from "@/app/components/landing/Footer";
-import content from "@/app/components/landing/content";
 
 export const metadata: Metadata = {
-  title: "Clearer learning. Steadier progress.",
-  description: content.hero.subhead,
+  title: "Turn your textbook into a live university course",
+  description:
+    "Build a scheduled source-backed course with live voice lectures, synced slides, assessments, transcripts, and verifiable certificates.",
   openGraph: {
-    title: "UnivAI — Clearer learning. Steadier progress.",
-    description: content.hero.subhead,
+    title: "UnivAI — Your book becomes a complete course",
+    description:
+      "Live lectures, synced slides, assessments, transcripts, and certificates from the source you choose.",
     siteName: "UnivAI",
     locale: "en_US",
     type: "website",
@@ -31,8 +32,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "UnivAI — Clearer learning. Steadier progress.",
-    description: content.hero.subhead,
+    title: "UnivAI — Your book becomes a complete course",
+    description:
+      "Live lectures, synced slides, assessments, transcripts, and certificates from the source you choose.",
     images: ["/images/family-learning-hero.webp"],
   },
 };
@@ -43,7 +45,8 @@ const jsonLd = {
   name: "UnivAI",
   applicationCategory: "EducationalApplication",
   operatingSystem: "Web",
-  description: content.hero.subhead,
+  description:
+    "Build a scheduled source-backed course with live voice lectures, synced slides, assessments, transcripts, and verifiable certificates.",
   audience: {
     "@type": "EducationalAudience",
     educationalRole: ["student", "teacher", "parent"],

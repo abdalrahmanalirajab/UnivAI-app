@@ -3,6 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import Alert from "@mui/material/Alert";
+import Accordion from "@mui/material/Accordion";
+import AccordionDetails from "@mui/material/AccordionDetails";
+import AccordionSummary from "@mui/material/AccordionSummary";
 import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
@@ -14,6 +17,7 @@ import ListItem from "@mui/material/ListItem";
 import ListItemText from "@mui/material/ListItemText";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
+import ExpandMoreRounded from "@mui/icons-material/ExpandMoreRounded";
 import { formatCountdown, formatDateTime, formatRelative, useVirtualClock } from "@/lib/time";
 
 type Exam = {
@@ -194,6 +198,9 @@ export default function ExamsPage() {
   }
 
   const openNow = exams.filter((exam) => exam.state === "open");
+  const nextLocked = [...exams]
+    .filter((exam) => exam.state === "locked")
+    .sort((a, b) => new Date(a.opensAt).getTime() - new Date(b.opensAt).getTime())[0];
   const quizOpenTimes = exams
     .filter((exam) => exam.kind === "quiz")
     .map((exam) => new Date(exam.opensAt).getTime());
@@ -212,17 +219,44 @@ export default function ExamsPage() {
       </Typography>
 
       {openNow.length ? (
-        <Alert severity="warning">
+        <Alert
+          severity="warning"
+          action={
+            <Button
+              color="inherit"
+              variant="outlined"
+              disabled={starting}
+              onClick={() => start(openNow[0])}
+            >
+              Take now
+            </Button>
+          }
+        >
           {openNow.length === 1
             ? `${openNow[0].title} is open — ${windowLine(openNow[0]).toLowerCase()}`
             : `${openNow.length} exams are open right now — do not miss the deadlines.`}
+        </Alert>
+      ) : nextLocked ? (
+        <Alert severity="info">
+          Next: {nextLocked.title}. {windowLine(nextLocked)}
         </Alert>
       ) : null}
 
       {error ? <Alert severity="error">{error}</Alert> : null}
 
-      <Card variant="outlined">
-        <List>
+      <Accordion>
+        <AccordionSummary
+          expandIcon={<ExpandMoreRounded />}
+          aria-controls="all-assessments"
+          id="all-assessments-heading"
+        >
+          <Stack direction="row" spacing={1.5} className="align-center">
+            <Typography variant="h6">All assessments</Typography>
+            <Chip size="small" variant="outlined" label={exams.length + " total"} />
+          </Stack>
+        </AccordionSummary>
+        <AccordionDetails id="all-assessments">
+          <List>
           {exams.map((exam) => (
             <ListItem
               key={`${exam.kind}-${exam.week ?? "mid"}`}
@@ -266,8 +300,9 @@ export default function ExamsPage() {
               <ListItemText primary={exam.title} secondary={windowLine(exam)} />
             </ListItem>
           ))}
-        </List>
-      </Card>
+          </List>
+        </AccordionDetails>
+      </Accordion>
 
       {finalAvailable || final !== null ? (
         <Card variant="outlined">

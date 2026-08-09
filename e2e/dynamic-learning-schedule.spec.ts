@@ -266,6 +266,10 @@ async function assertScheduleOrderAndStates(
   page: import("@playwright/test").Page,
   expected: { done: number; upcoming: number; live: number }
 ) {
+  const timeline = page.getByRole("button", { name: /Full course timeline/i });
+  if ((await timeline.getAttribute("aria-expanded")) !== "true") {
+    await timeline.click();
+  }
   await expect(page.getByText("Week 1 — Week 1")).toBeVisible();
   await expect(page.getByText("Week 7 — Week 7")).toBeVisible();
   await expect(page.getByText("Section — Introduction to AI — Tutorial")).toBeVisible();
@@ -418,6 +422,7 @@ test("keyboard: lecture rows are focusable with visible focus, Enter opens them,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/schedule");
+  await page.getByRole("button", { name: /Full course timeline/i }).click();
   await expect(page.getByText("Week 1 — Week 1")).toBeVisible();
 
   // Tab (keyboard-only) onto the first lecture row — the primary action.

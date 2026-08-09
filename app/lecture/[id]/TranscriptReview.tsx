@@ -39,7 +39,7 @@ export default function TranscriptReview({ transcript, onSend, onCancel }: Props
       <CardContent>
         <Stack spacing={2}>
           <Typography variant="overline" color="text.secondary">
-            We heard this — edit it if we got it wrong
+            {text ? "We heard this — edit it if we got it wrong" : "Type your question"}
           </Typography>
 
           <TextField
@@ -57,7 +57,11 @@ export default function TranscriptReview({ transcript, onSend, onCancel }: Props
               }
             }}
             label="Your question"
-            helperText="The lecture is paused. Press Enter to ask, or discard it and carry on."
+            helperText={
+              text
+                ? "The lecture is paused. Press Enter to ask, or discard it and carry on."
+                : "Voice recognition did not finish. The lecture stays paused while you type."
+            }
           />
 
           <Grid container spacing={2}>

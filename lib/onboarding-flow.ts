@@ -6,24 +6,11 @@ export type OnboardingState = {
 export type StudentNavItem = {
   href: string;
   label: string;
-  icon: "upload" | "schedule" | "library" | "dashboard" | "exams" | "transcript";
+  icon: "upload" | "schedule" | "library" | "dashboard";
 };
 
-export const ONBOARDING_STEPS = [
-  { id: "verify", label: "Verify email" },
-  { id: "upload", label: "Upload books" },
-  { id: "schedule", label: "Follow schedule" },
-  { id: "exams", label: "Take exams" },
-] as const;
-
-export function getStartDestination(state: OnboardingState): "/upload" | "/schedule" {
-  return state.hasPreparedSource ? "/schedule" : "/upload";
-}
-
-export function getActiveOnboardingStep(state: OnboardingState): number {
-  if (!state.emailVerified) return 0;
-  if (!state.hasPreparedSource) return 1;
-  return 2;
+export function getStartDestination(state: OnboardingState): "/upload" | "/dashboard" {
+  return state.hasPreparedSource ? "/dashboard" : "/upload";
 }
 
 export function getStudentNavItems(state: OnboardingState): StudentNavItem[] {
@@ -32,14 +19,8 @@ export function getStudentNavItems(state: OnboardingState): StudentNavItem[] {
   }
 
   return [
-    { href: "/schedule", label: "Schedule", icon: "schedule" },
-    { href: "/library", label: "Library", icon: "library" },
-    { href: "/dashboard", label: "Dashboard", icon: "dashboard" },
-    ...(state.emailVerified
-      ? [
-          { href: "/exams", label: "Exams", icon: "exams" } as const,
-          { href: "/transcript", label: "Transcript", icon: "transcript" } as const,
-        ]
-      : []),
+    { href: "/dashboard", label: "Today", icon: "dashboard" },
+    { href: "/schedule", label: "Course", icon: "schedule" },
+    { href: "/library", label: "Books", icon: "library" },
   ];
 }

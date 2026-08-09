@@ -43,7 +43,9 @@ export default function OnboardingProvider({ children }: { children: ReactNode }
         hasPreparedSource: data.hasPreparedSource,
       });
     } catch {
-      setState({ emailVerified, hasPreparedSource: false });
+      // A brief API outage must not throw an existing learner back into the
+      // first-time upload flow. Keep the last confirmed journey state.
+      setState((current) => current ?? { emailVerified, hasPreparedSource: false });
     } finally {
       setLoading(false);
     }

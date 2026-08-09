@@ -3,6 +3,9 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import Alert from "@mui/material/Alert";
 import AlertTitle from "@mui/material/AlertTitle";
+import Accordion from "@mui/material/Accordion";
+import AccordionDetails from "@mui/material/AccordionDetails";
+import AccordionSummary from "@mui/material/AccordionSummary";
 import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
@@ -19,6 +22,7 @@ import ListItemButton from "@mui/material/ListItemButton";
 import ListItemText from "@mui/material/ListItemText";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
+import ExpandMoreRounded from "@mui/icons-material/ExpandMoreRounded";
 import Link from "next/link";
 import {
   formatCountdown,
@@ -269,8 +273,22 @@ export default function SchedulePage() {
         </Alert>
       ) : null}
 
-      <Card variant="outlined">
-        <List>
+      <Accordion>
+        <AccordionSummary
+          expandIcon={<ExpandMoreRounded />}
+          aria-controls="full-course-timeline"
+          id="course-timeline-heading"
+        >
+          <Stack direction="row" spacing={1.5} className="align-center">
+            <Typography variant="h6">Full course timeline</Typography>
+            <Chip size="small" variant="outlined" label={lectures.length + " weeks"} />
+          </Stack>
+        </AccordionSummary>
+        <AccordionDetails id="full-course-timeline">
+          <Typography variant="body2" color="text.secondary">
+            Open a week for its time, attendance, materials, and join status.
+          </Typography>
+          <List>
           {lectures.map((lecture) => (
             <Fragment key={lecture.id}>
               <ListItemButton onClick={() => setSelected(lecture)}>
@@ -330,8 +348,9 @@ export default function SchedulePage() {
                 ))}
             </Fragment>
           ))}
-        </List>
-      </Card>
+          </List>
+        </AccordionDetails>
+      </Accordion>
 
       <Dialog open={Boolean(selected)} onClose={() => setSelected(null)} fullWidth maxWidth="sm">
         <DialogTitle>{selected ? `Week ${selected.week} — ${selected.title}` : ""}</DialogTitle>

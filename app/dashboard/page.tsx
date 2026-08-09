@@ -3,21 +3,25 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import Alert from "@mui/material/Alert";
+import Avatar from "@mui/material/Avatar";
 import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
 import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
 import Grid from "@mui/material/Grid";
+import LinearProgress from "@mui/material/LinearProgress";
 import Stack from "@mui/material/Stack";
-import Table from "@mui/material/Table";
-import TableBody from "@mui/material/TableBody";
-import TableCell from "@mui/material/TableCell";
-import TableHead from "@mui/material/TableHead";
-import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
-import { formatCountdown, formatDateTime, formatLateness, formatRelative, useVirtualClock } from "@/lib/time";
-import { FINAL_STATE_COLOR, FINAL_STATE_SUMMARY } from "@/lib/exam-status-view";
+import ArrowForwardRounded from "@mui/icons-material/ArrowForwardRounded";
+import AutoStoriesOutlined from "@mui/icons-material/AutoStoriesOutlined";
+import CheckCircleRounded from "@mui/icons-material/CheckCircleRounded";
+import EventAvailableOutlined from "@mui/icons-material/EventAvailableOutlined";
+import FolderCopyOutlined from "@mui/icons-material/FolderCopyOutlined";
+import QuizOutlined from "@mui/icons-material/QuizOutlined";
+import WorkspacePremiumOutlined from "@mui/icons-material/WorkspacePremiumOutlined";
+import { formatDateTime, formatRelative, useVirtualClock } from "@/lib/time";
+import { useHydratedSession } from "@/lib/use-hydrated-session";
 import type { ExamServiceStatusV1 } from "@/lib/exams";
 
 type Attendance = {
@@ -30,7 +34,7 @@ type Attendance = {
   lateMinutes: number;
 };
 
-type Data = {
+type DashboardData = {
   attendance: Attendance[];
   summary: {
     onTimeCount: number;
@@ -49,228 +53,346 @@ type Data = {
     feedback: string | null;
     flagged: boolean;
   }>;
-  /** The same Phase 1 contract the exams page renders — summary status here. */
   final: ExamServiceStatusV1 | null;
 };
 
-const STATUS_COLOR: Record<Attendance["status"], "success" | "warning" | "error" | "default"> = {
-  on_time: "success",
-  late: "warning",
-  absent: "error",
-  upcoming: "default",
+type Lecture = {
+  session_type?: "lecture";
+  id: string;
+  week: number;
+  title: string;
+  startsAt: string;
+  endsAt: string;
+  state: "upcoming" | "live" | "done";
+  joinable: boolean;
+  completed: boolean;
 };
 
-const STATUS_LABEL: Record<Attendance["status"], string> = {
-  on_time: "on time",
-  late: "late",
-  absent: "absent",
-  upcoming: "upcoming",
+type Exam = {
+  kind: "quiz" | "mid";
+  week: number | null;
+  title: string;
+  opensAt: string;
+  closesAt: string;
+  state: "locked" | "open" | "missed" | "submitted";
 };
+
+type FocusAction = {
+  eyebrow: string;
+  title: string;
+  body: string;
+  href: string;
+  label: string;
+  tone: "live" | "assessment" | "upcoming" | "complete" | "preparing";
+};
+
+async function fetchJson<T>(url: string): Promise<T> {
+  const response = await fetch(url, { cache: "no-store" });
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(body?.error ?? `Could not load ${url}.`);
+  }
+  return body as T;
+}
 
 export default function DashboardPage() {
-  const [data, setData] = useState<Data | null>(null);
+  const { data: session } = useHydratedSession();
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [lectures, setLectures] = useState<Lecture[]>([]);
+  const [exams, setExams] = useState<Exam[]>([]);
   const [error, setError] = useState<string | null>(null);
   const now = useVirtualClock();
 
   const load = useCallback(async () => {
-    try {
-      const res = await fetch("/api/dashboard", { cache: "no-store" });
-      const body = await res.json();
-      if (!res.ok) {
-        setError(body?.error ?? "Could not load the dashboard.");
-        return;
-      }
-      setData(body);
-      setError(null);
-    } catch {
-      // Offline or unreachable — previously loaded data stays visible (stale)
-      // and the retry button / next load recovers.
-      setError("Could not reach the server — retrying.");
+    const [dashboardResult, lecturesResult, examsResult] = await Promise.allSettled([
+      fetchJson<DashboardData>("/api/dashboard"),
+      fetchJson<{ lectures: Array<Lecture | { session_type: "section" }> }>(
+        "/api/lectures",
+      ),
+      fetchJson<{ exams: Exam[] }>("/api/exams"),
+    ]);
+
+    if (dashboardResult.status === "rejected") {
+      setError(dashboardResult.reason instanceof Error
+        ? dashboardResult.reason.message
+        : "Could not load your learning day.");
+      return;
     }
+
+    setData(dashboardResult.value);
+    if (lecturesResult.status === "fulfilled") {
+      setLectures(
+        lecturesResult.value.lectures.filter(
+          (record): record is Lecture => record.session_type !== "section",
+        ),
+      );
+    }
+    if (examsResult.status === "fulfilled") {
+      setExams(examsResult.value.exams);
+    }
+    setError(
+      lecturesResult.status === "rejected" || examsResult.status === "rejected"
+        ? "Some course details are still loading. Your main action is available."
+        : null,
+    );
   }, []);
 
   useEffect(() => {
-    load();
+    void load();
+    const refresh = window.setInterval(() => void load(), 30_000);
+    return () => window.clearInterval(refresh);
   }, [load]);
 
-  if (!data) return <CircularProgress />;
+  const focus: FocusAction = (() => {
+    const live = lectures.find((lecture) => lecture.state === "live" && lecture.joinable);
+    if (live) {
+      return {
+        eyebrow: "Live now",
+        title: `Week ${live.week}: ${live.title}`,
+        body: "Your lecturer is waiting. Join the room and continue from the current slide.",
+        href: `/lecture/${live.id}`,
+        label: "Join lecture",
+        tone: "live",
+      };
+    }
 
-  const { summary, final } = data;
+    const openExam = [...exams]
+      .filter((exam) => exam.state === "open")
+      .sort((a, b) => new Date(a.closesAt).getTime() - new Date(b.closesAt).getTime())[0];
+    if (openExam) {
+      return {
+        eyebrow: "Due now",
+        title: openExam.title,
+        body: `This ${openExam.kind === "mid" ? "midterm" : "quiz"} is open now and closes ${
+          now ? formatRelative(openExam.closesAt, now) : "soon"
+        }.`,
+        href: "/exams",
+        label: `Take ${openExam.kind === "mid" ? "midterm" : "quiz"}`,
+        tone: "assessment",
+      };
+    }
+
+    if (data?.final?.state === "ready" || data?.final?.state === "active") {
+      return {
+        eyebrow: data.final.state === "active" ? "In progress" : "Ready now",
+        title: "Final exam",
+        body:
+          data.final.state === "active"
+            ? "Your final attempt is already active. Return to the assessment page to continue."
+            : "Your semester is complete and the final exam is now available.",
+        href: "/exams",
+        label: data.final.state === "active" ? "Continue final" : "Start final",
+        tone: "assessment",
+      };
+    }
+
+    const next = lectures.find((lecture) => lecture.state === "upcoming");
+    if (next) {
+      return {
+        eyebrow: "Up next",
+        title: `Week ${next.week}: ${next.title}`,
+        body: `${now ? formatRelative(next.startsAt, now) : "Coming soon"} · ${formatDateTime(
+          next.startsAt,
+        )}`,
+        href: "/schedule",
+        label: "View course",
+        tone: "upcoming",
+      };
+    }
+
+    if (lectures.length > 0 && lectures.every((lecture) => lecture.state === "done")) {
+      return {
+        eyebrow: "Lectures complete",
+        title: "Finish your remaining assessments",
+        body: "Your lecture schedule has ended. Check whether an assessment or final is ready.",
+        href: "/exams",
+        label: "Check assessments",
+        tone: "complete",
+      };
+    }
+
+    return {
+      eyebrow: "Course setup",
+      title: "Your course is being prepared",
+      body: "We will place your first lecture here as soon as its schedule is ready.",
+      href: "/library",
+      label: "View your books",
+      tone: "preparing",
+    };
+  })();
+
+  if (!data) {
+    return (
+      <Stack className="dashboard-loading" spacing={2} aria-live="polite">
+        <CircularProgress size={32} />
+        <Typography color="text.secondary">Preparing your next step…</Typography>
+      </Stack>
+    );
+  }
+
+  const endedLectures = lectures.filter((lecture) => lecture.state === "done").length;
+  const courseProgress = lectures.length
+    ? Math.round((endedLectures / lectures.length) * 100)
+    : 0;
+  const submittedAssessments = exams.filter((exam) => exam.state === "submitted").length;
+  const openAssessments = exams.filter((exam) => exam.state === "open").length;
+  const learnerName = session?.user.name?.split(" ")[0] ?? "there";
 
   return (
-    <Stack spacing={3}>
-      <Typography variant="h4">Your dashboard</Typography>
+    <Stack spacing={4}>
+      <Stack spacing={0.75}>
+        <Typography variant="overline" color="primary">
+          Your learning day
+        </Typography>
+        <Typography variant="h3" component="h1">
+          Welcome back, {learnerName}.
+        </Typography>
+        <Typography color="text.secondary">
+          One useful next step, without the noise.
+        </Typography>
+      </Stack>
 
       {error ? (
         <Alert
-          severity="error"
-          action={
-            <Button size="small" onClick={load}>
-              Retry
-            </Button>
-          }
+          severity="info"
+          action={<Button onClick={() => void load()}>Retry</Button>}
         >
           {error}
         </Alert>
       ) : null}
 
-      <Card variant="outlined">
+      <Card className={`today-focus-card today-focus-${focus.tone}`}>
         <CardContent>
-          <Stack spacing={2}>
-            <Typography variant="h6">Final exam</Typography>
-            {final === null ? (
-              <Typography variant="body2" color="text.secondary">
-                No final exam information yet — the exam system decides availability.
-              </Typography>
-            ) : (
-              <Grid container spacing={1}>
-                <Grid>
-                  <Chip
-                    size="small"
-                    color={FINAL_STATE_COLOR[final.state]}
-                    label={FINAL_STATE_SUMMARY[final.state]}
-                  />
-                </Grid>
-                <Grid>
-                  {final.state === "graded" && final.result ? (
-                    <Typography variant="body2">
-                      Result {final.result.mark} / {final.result.max_score} —{" "}
-                      {final.result.passed ? "passed" : "not passed"}.
-                    </Typography>
-                  ) : (
-                    <Typography variant="body2" color="text.secondary">
-                      Summary status — see the exams page for full detail.
-                    </Typography>
-                  )}
-                </Grid>
-              </Grid>
-            )}
-            <Button component={Link} href="/exams" variant="outlined" size="small">
-              Open exams page
-            </Button>
-            {final?.state === "graded" ? (
-              <Button component={Link} href="/transcript" variant="contained" size="small">
-                View transcript and GPA
-              </Button>
-            ) : null}
-          </Stack>
-        </CardContent>
-      </Card>
-
-      <Card variant="outlined">
-        <CardContent>
-          <Stack spacing={2}>
-            <Typography variant="h6">Attendance</Typography>
-            <Grid container spacing={1}>
-              <Grid>
-                <Chip color="success" label={`on time: ${summary.onTimeCount}`} />
-              </Grid>
-              <Grid>
-                <Chip color="warning" label={`late: ${summary.lateCount}`} />
-              </Grid>
-              <Grid>
-                <Chip color="error" label={`absent: ${summary.absentCount}`} />
-              </Grid>
-              <Grid>
-                <Chip variant="outlined" label={`upcoming: ${summary.upcomingCount}`} />
-              </Grid>
-              <Grid>
-                <Chip
-                  variant="outlined"
-                  label={`total lateness: ${summary.totalLateMinutes ? formatCountdown(summary.totalLateMinutes * 60_000) : "none"}`}
-                />
-              </Grid>
-              <Grid>
-                <Chip
-                  variant="outlined"
-                  label={`average lateness: ${summary.averageLateMinutes ? formatCountdown(summary.averageLateMinutes * 60_000) : "none"}`}
-                />
-              </Grid>
+          <Grid container spacing={3} className="align-center">
+            <Grid size={{ xs: 12, md: 8 }}>
+              <Stack spacing={1.5}>
+                <Chip size="small" label={focus.eyebrow} className="focus-chip" />
+                <Typography variant="h4" component="h2">
+                  {focus.title}
+                </Typography>
+                <Typography color="text.secondary" className="today-focus-copy">
+                  {focus.body}
+                </Typography>
+              </Stack>
             </Grid>
-
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Week</TableCell>
-                  <TableCell>Lecture</TableCell>
-                  <TableCell>Starts at</TableCell>
-                  <TableCell>You joined</TableCell>
-                  <TableCell>Status</TableCell>
-                  <TableCell align="right">Lateness</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {data.attendance.map((record) => (
-                  <TableRow key={record.lectureId}>
-                    <TableCell>{record.week}</TableCell>
-                    <TableCell>{record.title}</TableCell>
-                    <TableCell>
-                      {formatDateTime(record.startsAt)}
-                      <Typography variant="caption" color="text.secondary" component="div">
-                        {formatRelative(record.startsAt, now)}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>{formatDateTime(record.joinedAt)}</TableCell>
-                    <TableCell>
-                      <Chip
-                        size="small"
-                        color={STATUS_COLOR[record.status]}
-                        label={STATUS_LABEL[record.status]}
-                      />
-                    </TableCell>
-                    <TableCell align="right">
-                      {record.lateMinutes ? formatLateness(record.lateMinutes) : "—"}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </Stack>
+            <Grid size={{ xs: 12, md: 4 }}>
+              <Button
+                fullWidth
+                size="large"
+                variant="contained"
+                component={Link}
+                href={focus.href}
+                endIcon={<ArrowForwardRounded />}
+              >
+                {focus.label}
+              </Button>
+            </Grid>
+          </Grid>
         </CardContent>
       </Card>
 
-      <Card variant="outlined">
-        <CardContent>
-          <Stack spacing={2}>
-            <Typography variant="h6">Grades</Typography>
-            {data.grades.length ? (
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Assessment</TableCell>
-                    <TableCell>Week</TableCell>
-                    <TableCell align="right">Score</TableCell>
-                    <TableCell>Feedback</TableCell>
-                    <TableCell>Integrity</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {data.grades.map((grade) => (
-                    <TableRow key={grade.id}>
-                      <TableCell>{grade.kind === "midterm" ? "Midterm" : "Quiz"}</TableCell>
-                      <TableCell>{grade.week ?? "—"}</TableCell>
-                      <TableCell align="right">{`${grade.score} / ${grade.max_score}`}</TableCell>
-                      <TableCell>{grade.feedback ?? "—"}</TableCell>
-                      <TableCell>
-                        <Chip
-                          size="small"
-                          color={grade.flagged ? "error" : "success"}
-                          variant="outlined"
-                          label={grade.flagged ? "flagged" : "clean"}
-                        />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            ) : (
-              <Typography color="text.secondary">
-                No grades yet. Quizzes and the midterm come from the exam system.
-              </Typography>
-            )}
-          </Stack>
-        </CardContent>
-      </Card>
+      <Grid container spacing={2.5}>
+        <Grid size={{ xs: 12, md: 4 }}>
+          <Card className="pulse-card">
+            <CardContent>
+              <Stack spacing={2}>
+                <Avatar variant="rounded" className="pulse-icon">
+                  <AutoStoriesOutlined />
+                </Avatar>
+                <Stack spacing={0.5}>
+                  <Typography variant="h6">Course progress</Typography>
+                  <Typography variant="h4">{courseProgress}%</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {endedLectures} of {lectures.length || "—"} lecture weeks finished
+                  </Typography>
+                </Stack>
+                <LinearProgress
+                  variant="determinate"
+                  value={courseProgress}
+                  aria-label={`Course progress ${courseProgress} percent`}
+                />
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid size={{ xs: 12, md: 4 }}>
+          <Card className="pulse-card">
+            <CardContent>
+              <Stack spacing={2}>
+                <Avatar variant="rounded" className="pulse-icon">
+                  <QuizOutlined />
+                </Avatar>
+                <Stack spacing={0.5}>
+                  <Typography variant="h6">Assessments</Typography>
+                  <Typography variant="h4">
+                    {openAssessments ? `${openAssessments} open` : "All clear"}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {submittedAssessments} submitted so far
+                  </Typography>
+                </Stack>
+                <Button component={Link} href="/exams" size="small">
+                  View assessments
+                </Button>
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid size={{ xs: 12, md: 4 }}>
+          <Card className="pulse-card">
+            <CardContent>
+              <Stack spacing={2}>
+                <Avatar variant="rounded" className="pulse-icon">
+                  <EventAvailableOutlined />
+                </Avatar>
+                <Stack spacing={0.5}>
+                  <Typography variant="h6">Attendance</Typography>
+                  <Typography variant="h4">
+                    {data.summary.onTimeCount + data.summary.lateCount} attended
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {data.summary.onTimeCount} on time · {data.summary.lateCount} late
+                  </Typography>
+                </Stack>
+                <Button component={Link} href="/schedule" size="small">
+                  View course timeline
+                </Button>
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      <Stack spacing={1.5}>
+        <Typography variant="h6">More when you need it</Typography>
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={1.25}>
+          <Button component={Link} href="/schedule" startIcon={<EventAvailableOutlined />}>
+            Full course
+          </Button>
+          <Button component={Link} href="/library" startIcon={<FolderCopyOutlined />}>
+            Books
+          </Button>
+          {data.final?.state === "graded" ? (
+            <>
+              <Button
+                component={Link}
+                href="/transcript"
+                startIcon={<WorkspacePremiumOutlined />}
+              >
+                Transcript
+              </Button>
+              <Chip
+                color="success"
+                icon={<CheckCircleRounded />}
+                label="Final grade ready"
+                className="dashboard-status-chip"
+              />
+            </>
+          ) : null}
+        </Stack>
+      </Stack>
     </Stack>
   );
 }

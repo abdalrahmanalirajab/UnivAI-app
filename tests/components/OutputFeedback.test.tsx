@@ -9,10 +9,10 @@ const BOOK_ID = 42;
 const OUTPUT_ID = 7;
 
 function mockFetchEndpoint(handler: (url: string, options: RequestInit) => unknown) {
-  const fetchMock = vi.fn(async (url: string, options: RequestInit) => {
-    return { ok: true, status: 200, json: async () => handler(url, options) };
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, options: RequestInit = {}) => {
+    return Response.json(handler(String(input), options), { status: 200 });
   });
-  globalThis.fetch = fetchMock;
+  globalThis.fetch = fetchMock as typeof fetch;
   return fetchMock;
 }
 
@@ -155,7 +155,7 @@ describe("OutputFeedback — retry", () => {
 
   it("surfaces a retry failure from the route as an error alert", async () => {
     const fetchMock = vi.fn(async () => {
-      return { ok: false, status: 409, json: async () => ({ error: "Course is already generating." }) };
+      return Response.json({ error: "Course is already generating." }, { status: 409 });
     });
     globalThis.fetch = fetchMock;
     const user = userEvent.setup();
