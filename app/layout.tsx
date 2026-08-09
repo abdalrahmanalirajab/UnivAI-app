@@ -29,6 +29,9 @@ export const metadata: Metadata = {
   description:
     "A focused learning experience that helps learners build momentum and gives families greater confidence.",
   applicationName: "UnivAI",
+  icons: {
+    icon: "/brand/univai-mark.svg",
+  },
   keywords: [
     "learning platform",
     "student progress",

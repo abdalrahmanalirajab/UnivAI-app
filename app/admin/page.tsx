@@ -1,624 +1,1016 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import Link from "next/link";
+import Accordion from "@mui/material/Accordion";
+import AccordionDetails from "@mui/material/AccordionDetails";
+import AccordionSummary from "@mui/material/AccordionSummary";
 import Alert from "@mui/material/Alert";
+import Avatar from "@mui/material/Avatar";
 import Button from "@mui/material/Button";
-import ButtonGroup from "@mui/material/ButtonGroup";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
 import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
+import Dialog from "@mui/material/Dialog";
+import DialogActions from "@mui/material/DialogActions";
+import DialogContent from "@mui/material/DialogContent";
+import DialogTitle from "@mui/material/DialogTitle";
 import Divider from "@mui/material/Divider";
 import Grid from "@mui/material/Grid";
 import LinearProgress from "@mui/material/LinearProgress";
 import MenuItem from "@mui/material/MenuItem";
+import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
+import Tab from "@mui/material/Tab";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
+import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
+import Tabs from "@mui/material/Tabs";
 import TextField from "@mui/material/TextField";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Typography from "@mui/material/Typography";
+import AutoStoriesOutlined from "@mui/icons-material/AutoStoriesOutlined";
+import BuildOutlined from "@mui/icons-material/BuildOutlined";
+import EventAvailableOutlined from "@mui/icons-material/EventAvailableOutlined";
+import ExpandMoreRounded from "@mui/icons-material/ExpandMoreRounded";
+import FactCheckOutlined from "@mui/icons-material/FactCheckOutlined";
+import ManageAccountsOutlined from "@mui/icons-material/ManageAccountsOutlined";
+import QueryStatsOutlined from "@mui/icons-material/QueryStatsOutlined";
+import ScheduleOutlined from "@mui/icons-material/ScheduleOutlined";
+import ShieldOutlined from "@mui/icons-material/ShieldOutlined";
+import WarningAmberOutlined from "@mui/icons-material/WarningAmberOutlined";
 import { formatCountdown, formatDateTime, formatLateness } from "@/lib/time";
 
 type CourseSize = "XS" | "S" | "M" | "L" | "XL";
 type SizeInfo = { slides: number; quizPaper: number; midPaper: number; blurb: string };
-
 type Student = { sid: string; name: string; email: string; role: string };
-
+type Book = {
+  id: number;
+  filename: string;
+  title: string | null;
+  pages: number;
+  status: string;
+  error: string | null;
+  progress: string | null;
+};
+type Lecture = {
+  id: string;
+  week: number;
+  title: string;
+  starts_at: string;
+  status: string;
+};
+type Attendance = {
+  lectureId: string;
+  week: number;
+  title: string;
+  startsAt: string;
+  status: string;
+  joinedAt: string | null;
+  lateMinutes: number;
+};
+type Grade = {
+  id: number;
+  kind: string;
+  week: number | null;
+  score: string;
+  max_score: string;
+  feedback: string | null;
+  flagged?: boolean;
+  report?: { suspicion_score?: number; events?: unknown[] } | null;
+};
+type QaEntry = {
+  id: number;
+  question: string;
+  answer: string;
+  model_used: string | null;
+  asked_at: string;
+};
+type AuditEntry = {
+  id: number;
+  action: string;
+  actor_email: string | null;
+  target_id: string | null;
+  detail: unknown;
+  created_at: string;
+};
+type AttendanceSummary = {
+  onTimeCount: number;
+  lateCount: number;
+  absentCount: number;
+  upcomingCount: number;
+  totalLateMinutes: number;
+  averageLateMinutes: number;
+};
 type AdminState = {
   clock: { now: string; offsetMs: number };
-  // Always present; the per-student blocks below are empty until one is picked.
-  students?: Student[];
-  needsStudent?: boolean;
+  students: Student[];
   sid?: string;
-  books: Array<Record<string, unknown>>;
-  lectures: Array<{ id: string; week: number; title: string; starts_at: string; status: string }>;
-  attendance: Array<{
-    lectureId: string;
-    week: number;
-    title: string;
-    startsAt: string;
-    status: string;
-    joinedAt: string | null;
-    lateMinutes: number;
-  }>;
-  attendanceSummary: {
-    onTimeCount: number;
-    lateCount: number;
-    absentCount: number;
-    upcomingCount: number;
-    totalLateMinutes: number;
-    averageLateMinutes: number;
-  };
-  grades: Array<{
-    id: number;
-    kind: string;
-    week: number | null;
-    score: string;
-    max_score: string;
-    feedback: string | null;
-    flagged?: boolean;
-    report?: { suspicion_score?: number; events?: unknown[] } | null;
-  }>;
-  qaLog: Array<{
-    id: number;
-    question: string;
-    answer: string;
-    model_used: string | null;
-    asked_at: string;
-  }>;
+  books: Book[];
+  lectures: Lecture[];
+  attendance: Attendance[];
+  attendanceSummary: AttendanceSummary;
+  grades: Grade[];
+  qaLog: QaEntry[];
 };
+
+const EMPTY_SUMMARY: AttendanceSummary = {
+  onTimeCount: 0,
+  lateCount: 0,
+  absentCount: 0,
+  upcomingCount: 0,
+  totalLateMinutes: 0,
+  averageLateMinutes: 0,
+};
+
+type ConfirmAction = "regenerate" | "restart" | null;
+
+function detailText(detail: unknown): string {
+  if (detail === null || detail === undefined) return "—";
+  if (typeof detail === "string") return detail;
+  try {
+    return JSON.stringify(detail);
+  } catch {
+    return "Unreadable detail";
+  }
+}
 
 export default function AdminPage() {
   const [state, setState] = useState<AdminState | null>(null);
+  const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [isoInput, setIsoInput] = useState("");
   const [size, setSize] = useState<CourseSize>("XS");
   const [sizes, setSizes] = useState<Record<CourseSize, SizeInfo> | null>(null);
-  // Multi-tenant: the panel inspects/acts on ONE student at a time.
-  const [selectedSid, setSelectedSid] = useState<string>("");
+  const [selectedSid, setSelectedSid] = useState("");
+  const [tab, setTab] = useState(0);
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null);
+  const loadSequence = useRef(0);
 
   const load = useCallback(async () => {
+    const sequence = ++loadSequence.current;
     try {
       const url = selectedSid
-        ? `/api/admin/state?sid=${encodeURIComponent(selectedSid)}`
+        ? "/api/admin/state?sid=" + encodeURIComponent(selectedSid)
         : "/api/admin/state";
-      const res = await fetch(url, { cache: "no-store" });
-      if (!res.ok) throw new Error(await res.text());
-      const raw = await res.json();
-      // Normalize the per-student arrays so the render never touches undefined
-      // (they're absent until a student is selected).
+      const response = await fetch(url, { cache: "no-store" });
+      const raw = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(raw?.error ?? "Could not load administration state.");
+      if (sequence !== loadSequence.current) return;
       setState({
-        ...raw,
+        clock: raw.clock,
+        students: raw.students ?? [],
+        sid: raw.sid,
         books: raw.books ?? [],
         lectures: raw.lectures ?? [],
         attendance: raw.attendance ?? [],
+        attendanceSummary: raw.attendanceSummary ?? EMPTY_SUMMARY,
         grades: raw.grades ?? [],
         qaLog: raw.qaLog ?? [],
       });
       setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "failed to load state");
+    } catch (reason) {
+      if (sequence !== loadSequence.current) return;
+      setError(reason instanceof Error ? reason.message : "Could not load administration state.");
     }
   }, [selectedSid]);
 
+  const loadAudit = useCallback(async () => {
+    try {
+      const response = await fetch("/api/admin/audit", { cache: "no-store" });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(body?.error ?? "Could not load the audit trail.");
+      setAudit(body.audit ?? []);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not load the audit trail.");
+    }
+  }, []);
+
   useEffect(() => {
-    load();
+    void load();
+  }, [load]);
+
+  useEffect(() => {
+    void loadAudit();
     fetch("/api/admin/generate", { cache: "no-store" })
-      .then((res) => res.json())
+      .then((response) => response.json())
       .then((data) => {
         setSize(data.size);
         setSizes(data.sizes);
       })
       .catch(() => undefined);
-  }, [load]);
+  }, [loadAudit]);
 
-  const building =
-    state?.books?.some((book) => book.status === "generating" || book.status === "ingesting") ??
-    false;
+  const building = state?.books.some(
+    (book) => book.status === "generating" || book.status === "ingesting",
+  ) ?? false;
 
-  // While a build runs, keep the book status fresh so the admin sees it finish.
   useEffect(() => {
     if (!building) return;
-    const poll = setInterval(load, 5_000);
-    return () => clearInterval(poll);
+    const poll = window.setInterval(() => void load(), 5_000);
+    return () => window.clearInterval(poll);
   }, [building, load]);
 
-  async function regenerate(mode: "full" | "quizzes") {
+  const selectedStudent = state?.students.find((student) => student.sid === selectedSid);
+  const latestBook = state?.books[0] ?? null;
+  const flaggedCount = state?.grades.filter((grade) => grade.flagged).length ?? 0;
+  const summary = state?.attendanceSummary ?? EMPTY_SUMMARY;
+  const recordedAttendance = summary.onTimeCount + summary.lateCount + summary.absentCount;
+  const attendanceRate = recordedAttendance
+    ? Math.round(((summary.onTimeCount + summary.lateCount) / recordedAttendance) * 100)
+    : 0;
+  const nextLecture = (() => {
+    if (!state?.clock.now) return null;
+    const nowMs = new Date(state.clock.now).getTime();
+    return [...state.lectures]
+      .filter((lecture) => new Date(lecture.starts_at).getTime() >= nowMs)
+      .sort(
+        (left, right) =>
+          new Date(left.starts_at).getTime() - new Date(right.starts_at).getTime(),
+      )[0] ?? null;
+  })();
+  const firstLectureStart = state?.lectures.length
+    ? Math.min(...state.lectures.map((lecture) => new Date(lecture.starts_at).getTime()))
+    : null;
+  const semesterStarted =
+    firstLectureStart !== null &&
+    Boolean(state?.clock.now) &&
+    new Date(state?.clock.now ?? 0).getTime() >= firstLectureStart;
+
+  async function regenerate() {
     setBusy(true);
     try {
-      const res = await fetch("/api/admin/generate", {
+      const response = await fetch("/api/admin/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ size, mode, sid: selectedSid }),
+        body: JSON.stringify({ size, mode: "full", sid: selectedSid }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "regeneration failed to start");
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(body?.error ?? "Course rebuild could not start.");
+      setNotice("Course rebuild started.");
       setError(null);
       await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "regeneration failed to start");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Course rebuild could not start.");
     } finally {
       setBusy(false);
+      setConfirmAction(null);
     }
   }
 
   async function restartSemester() {
     setBusy(true);
     try {
-      const res = await fetch("/api/admin/restart", {
+      const response = await fetch("/api/admin/restart", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sid: selectedSid }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "restart failed");
-      setError(null);
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(body?.error ?? "Semester restart failed.");
       setNotice(
-        "Semester restarted — progress and exam attempts wiped, week 1 starts tomorrow at 10:00 (virtual time)."
+        "Semester restarted. Progress and attempts were cleared; week 1 starts tomorrow at 10:00 virtual time.",
       );
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "restart failed");
+      setError(null);
+      await Promise.all([load(), loadAudit()]);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Semester restart failed.");
     } finally {
       setBusy(false);
+      setConfirmAction(null);
     }
   }
 
   async function control(body: Record<string, unknown>) {
     setBusy(true);
     try {
-      const res = await fetch("/api/clock", {
+      const response = await fetch("/api/clock", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "clock control failed");
+      const result = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(result?.error ?? "Clock control failed.");
       setError(null);
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "clock control failed");
+      await Promise.all([load(), loadAudit()]);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Clock control failed.");
     } finally {
       setBusy(false);
     }
   }
 
-  if (!state && !error) return <CircularProgress />;
-
-  const summary = state?.attendanceSummary;
-  // The server refuses a restart once week 1 has begun, because attendance and
-  // results are a record of what happened. Work that out here too, so the
-  // button says so instead of failing after the click.
-  const firstLectureStart = state?.lectures?.length
-    ? Math.min(...state.lectures.map((lecture) => new Date(lecture.starts_at).getTime()))
-    : null;
-  const semesterStarted =
-    firstLectureStart !== null &&
-    !!state?.clock.now &&
-    new Date(state.clock.now).getTime() >= firstLectureStart;
+  if (!state && !error) {
+    return (
+      <Stack className="admin-loading" spacing={1.5}>
+        <CircularProgress size={32} />
+        <Typography color="text.secondary">Loading university operations…</Typography>
+      </Stack>
+    );
+  }
 
   return (
-    <Stack spacing={3}>
-      <Typography variant="h4">Admin — SUDO</Typography>
-      <Alert severity="info">
-        Admin only. The virtual clock is shared by everyone; the book, course,
-        attendance and grades below belong to the student you select.
-      </Alert>
+    <Stack spacing={3.5}>
+      <Stack
+        direction={{ xs: "column", md: "row" }}
+        spacing={2}
+        className="admin-page-header"
+      >
+        <Stack spacing={0.5}>
+          <Typography variant="overline" color="primary">
+            Restricted operations
+          </Typography>
+          <Typography variant="h3" component="h1">
+            University control room
+          </Typography>
+          <Typography color="text.secondary">
+            Inspect one learner at a time. Global controls are isolated in System.
+          </Typography>
+        </Stack>
+        <Button
+          component={Link}
+          href="/admin/users"
+          variant="outlined"
+          startIcon={<ManageAccountsOutlined />}
+          className="admin-users-button"
+        >
+          Manage users
+        </Button>
+      </Stack>
 
-      {error ? <Alert severity="error">{error}</Alert> : null}
+      {error ? (
+        <Alert
+          severity="error"
+          action={
+            <Button color="inherit" onClick={() => void load()}>
+              Retry
+            </Button>
+          }
+        >
+          {error}
+        </Alert>
+      ) : null}
       {notice ? (
         <Alert severity="success" onClose={() => setNotice(null)}>
           {notice}
         </Alert>
       ) : null}
 
-      <Card variant="outlined">
+      <Card className="admin-command-card">
         <CardContent>
-          <Stack spacing={2}>
-            <Typography variant="h6">Student</Typography>
-            <TextField
-              select
-              label="Inspect student"
-              size="small"
-              value={selectedSid}
-              onChange={(event) => setSelectedSid(event.target.value)}
-            >
-              <MenuItem value="">
-                <em>— select a student —</em>
-              </MenuItem>
-              {(state?.students ?? []).map((student) => (
-                <MenuItem key={student.sid} value={student.sid}>
-                  {student.name} · {student.sid} · {student.role}
+          <Grid container spacing={2.5} className="align-center">
+            <Grid size={{ xs: 12, md: 7 }}>
+              <TextField
+                select
+                fullWidth
+                label="Learner workspace"
+                value={selectedSid}
+                onChange={(event) => {
+                  const nextSid = event.target.value;
+                  setSelectedSid(nextSid);
+                  setState((current) =>
+                    current
+                      ? {
+                          ...current,
+                          sid: undefined,
+                          books: [],
+                          lectures: [],
+                          attendance: [],
+                          attendanceSummary: EMPTY_SUMMARY,
+                          grades: [],
+                          qaLog: [],
+                        }
+                      : current,
+                  );
+                  setTab(0);
+                }}
+              >
+                <MenuItem value="">
+                  <em>Select a learner</em>
                 </MenuItem>
-              ))}
-            </TextField>
-            {!selectedSid ? (
-              <Typography variant="body2" color="text.secondary">
-                Pick a student to see and manage their book, course and records.
-              </Typography>
-            ) : null}
-          </Stack>
+                {(state?.students ?? []).map((student) => (
+                  <MenuItem key={student.sid} value={student.sid}>
+                    {student.name} · {student.sid} · {student.role}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+            <Grid size={{ xs: 12, md: 5 }}>
+              <Stack spacing={0.5} className="admin-clock-summary">
+                <Typography variant="overline" color="text.secondary">
+                  Shared virtual time
+                </Typography>
+                <Typography variant="h6">{formatDateTime(state?.clock.now)}</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {state?.clock.offsetMs
+                    ? formatCountdown(Math.abs(state.clock.offsetMs)) +
+                      (state.clock.offsetMs > 0 ? " ahead of real time" : " behind real time")
+                    : "Aligned with real time"}
+                </Typography>
+              </Stack>
+            </Grid>
+          </Grid>
         </CardContent>
       </Card>
 
-      <Card variant="outlined">
-        <CardContent>
-          <Stack spacing={2}>
-            <Typography variant="h6">Virtual clock</Typography>
+      <Paper className="admin-tabs-shell" elevation={0}>
+        <Tabs
+          value={tab}
+          onChange={(_event, value: number) => setTab(value)}
+          variant="scrollable"
+          scrollButtons="auto"
+          aria-label="Administration areas"
+        >
+          <Tab label="Overview" />
+          <Tab label="Course" disabled={!selectedSid} />
+          <Tab label="Records" disabled={!selectedSid} />
+          <Tab label="System" />
+        </Tabs>
+      </Paper>
 
-            <Grid container spacing={1}>
-              <Grid>
-                <Chip color="primary" label={`now: ${formatDateTime(state?.clock.now)}`} />
-              </Grid>
-              <Grid>
-                <Chip
-                  variant="outlined"
-                  label={
-                    state?.clock.offsetMs
-                      ? `${formatCountdown(Math.abs(state.clock.offsetMs))} ${
-                          state.clock.offsetMs > 0 ? "ahead of" : "behind"
-                        } real time`
-                      : "real time"
+      {tab === 0 ? (
+        <Stack spacing={3}>
+          {!selectedSid ? (
+            <Card className="admin-empty-state">
+              <CardContent>
+                <Stack spacing={2} className="align-center text-center">
+                  <Avatar variant="rounded" className="admin-empty-icon">
+                    <ManageAccountsOutlined />
+                  </Avatar>
+                  <Typography variant="h5">Select a learner to begin</Typography>
+                  <Typography color="text.secondary">
+                    Course content, attendance, grades, and Q&amp;A stay scoped to the
+                    selected registration number.
+                  </Typography>
+                </Stack>
+              </CardContent>
+            </Card>
+          ) : (
+            <>
+              <Grid container spacing={2}>
+                <AdminMetric
+                  icon={<AutoStoriesOutlined />}
+                  label="Course source"
+                  value={latestBook?.status ?? "No source"}
+                  detail={latestBook?.title ?? latestBook?.filename ?? "Nothing uploaded"}
+                  tone={latestBook?.status === "ready" ? "success" : "default"}
+                />
+                <AdminMetric
+                  icon={<EventAvailableOutlined />}
+                  label="Attendance"
+                  value={recordedAttendance ? attendanceRate + "%" : "No records"}
+                  detail={
+                    summary.onTimeCount +
+                    " on time · " +
+                    summary.lateCount +
+                    " late · " +
+                    summary.absentCount +
+                    " absent"
                   }
+                  tone={summary.absentCount ? "warning" : "success"}
+                />
+                <AdminMetric
+                  icon={<FactCheckOutlined />}
+                  label="Assessment records"
+                  value={String(state?.grades.length ?? 0)}
+                  detail={flaggedCount ? flaggedCount + " integrity flag(s)" : "No integrity flags"}
+                  tone={flaggedCount ? "error" : "success"}
+                />
+                <AdminMetric
+                  icon={<ScheduleOutlined />}
+                  label="Next lecture"
+                  value={nextLecture ? "Week " + nextLecture.week : "None"}
+                  detail={
+                    nextLecture
+                      ? formatDateTime(nextLecture.starts_at)
+                      : "No upcoming lecture in this schedule"
+                  }
+                  tone="default"
                 />
               </Grid>
-            </Grid>
 
-            <ButtonGroup variant="contained" disabled={busy}>
-              <Button onClick={() => control({ action: "advance", minutes: 5 })}>+5 min</Button>
-              <Button onClick={() => control({ action: "advance", hours: 1 })}>+1 hour</Button>
-              <Button onClick={() => control({ action: "advance", days: 1 })}>+1 day</Button>
-              <Button onClick={() => control({ action: "advance", weeks: 1 })}>+1 week</Button>
-            </ButtonGroup>
+              <Card>
+                <CardContent>
+                  <Grid container spacing={3}>
+                    <Grid size={{ xs: 12, md: 7 }}>
+                      <Stack spacing={1}>
+                        <Typography variant="overline" color="text.secondary">
+                          Selected learner
+                        </Typography>
+                        <Typography variant="h5">{selectedStudent?.name}</Typography>
+                        <Typography>{selectedStudent?.email}</Typography>
+                        <Stack direction="row" spacing={1}>
+                          <Chip label={selectedStudent?.sid} variant="outlined" />
+                          <Chip label={selectedStudent?.role} variant="outlined" />
+                        </Stack>
+                      </Stack>
+                    </Grid>
+                    <Grid size={{ xs: 12, md: 5 }}>
+                      <Stack spacing={1.25}>
+                        <Typography variant="overline" color="text.secondary">
+                          Operational status
+                        </Typography>
+                        {building ? (
+                          <>
+                            <LinearProgress />
+                            <Typography variant="body2">
+                              {latestBook?.progress ?? "Building course content…"}
+                            </Typography>
+                          </>
+                        ) : latestBook?.status === "failed" ? (
+                          <Alert severity="error">
+                            {latestBook.error ?? "The latest course build failed."}
+                          </Alert>
+                        ) : (
+                          <Alert severity="success">
+                            No active generation job for this learner.
+                          </Alert>
+                        )}
+                      </Stack>
+                    </Grid>
+                  </Grid>
+                </CardContent>
+              </Card>
+            </>
+          )}
+        </Stack>
+      ) : null}
 
-            <Grid container spacing={2}>
-              <Grid>
-                <Button
-                  variant="outlined"
-                  // Every learner has their own timetable, so this jump only
-                  // means something once one of them is selected.
-                  disabled={busy || !selectedSid}
-                  onClick={() => control({ action: "jumpToNextLecture", sid: selectedSid })}
+      {tab === 1 && selectedSid ? (
+        <Stack spacing={3}>
+          <Card>
+            <CardContent>
+              <Stack spacing={2}>
+                <Stack direction="row" spacing={1.5} className="align-center">
+                  <Avatar variant="rounded" className="admin-section-icon">
+                    <AutoStoriesOutlined />
+                  </Avatar>
+                  <Stack>
+                    <Typography variant="h5">Source and generation</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Current source files and the generation job they produced.
+                    </Typography>
+                  </Stack>
+                </Stack>
+                <TableContainer className="admin-table-scroll">
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>File</TableCell>
+                        <TableCell>Title</TableCell>
+                        <TableCell align="right">Pages</TableCell>
+                        <TableCell>Status</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {state?.books.length ? (
+                        state.books.map((book) => (
+                          <TableRow key={book.id}>
+                            <TableCell>{book.filename}</TableCell>
+                            <TableCell>{book.title ?? "—"}</TableCell>
+                            <TableCell align="right">{book.pages}</TableCell>
+                            <TableCell>
+                              <Chip
+                                size="small"
+                                label={book.status}
+                                color={
+                                  book.status === "ready"
+                                    ? "success"
+                                    : book.status === "failed"
+                                      ? "error"
+                                      : "default"
+                                }
+                              />
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={4}>No source uploaded.</TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+                {building ? (
+                  <Stack spacing={1}>
+                    <LinearProgress />
+                    <Typography variant="body2">
+                      {latestBook?.progress ?? "Starting generation…"}
+                    </Typography>
+                  </Stack>
+                ) : null}
+              </Stack>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent>
+              <Stack spacing={2.5}>
+                <Stack direction="row" spacing={1.5} className="align-center">
+                  <Avatar variant="rounded" className="admin-section-icon">
+                    <BuildOutlined />
+                  </Avatar>
+                  <Stack>
+                    <Typography variant="h5">Rebuild policy</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Rebuild lectures, slides, quizzes, and sections as one consistent set.
+                    </Typography>
+                  </Stack>
+                </Stack>
+                <ToggleButtonGroup
+                  exclusive
+                  color="primary"
+                  value={size}
+                  onChange={(_event, value) => value && setSize(value as CourseSize)}
+                  disabled={busy || building}
+                  aria-label="Assessment size"
                 >
-                  Jump to next lecture start
-                </Button>
-              </Grid>
-              <Grid>
-                <Button
-                  variant="outlined"
-                  color="secondary"
-                  disabled={busy}
-                  onClick={() => control({ action: "reset" })}
-                >
-                  Reset to real time
-                </Button>
-              </Grid>
-            </Grid>
-
-            <Typography variant="body2" color="text.secondary">
-              {selectedSid
-                ? `Jumping moves the shared clock to ${selectedSid}'s next lecture. Every other learner's schedule moves with it.`
-                : "Select a student to jump to their next lecture — each learner has their own timetable."}
-            </Typography>
-
-            <Divider />
-
-            <Grid container spacing={2}>
-              <Grid>
-                <TextField
-                  label="Set exact time (ISO)"
-                  size="small"
-                  placeholder="2026-08-01T10:00:00Z"
-                  value={isoInput}
-                  onChange={(event) => setIsoInput(event.target.value)}
-                />
-              </Grid>
-              <Grid>
-                <Button
-                  variant="contained"
-                  disabled={busy || !isoInput}
-                  onClick={() => control({ action: "set", iso: isoInput })}
-                >
-                  Set
-                </Button>
-              </Grid>
-            </Grid>
-          </Stack>
-        </CardContent>
-      </Card>
-
-      <Card variant="outlined">
-        <CardContent>
-          <Stack spacing={2}>
-            <Typography variant="h6">Semester</Typography>
-            <Typography variant="body2" color="text.secondary">
-              Only before week 1 begins. Moves the four lectures to start tomorrow at
-              10:00 (virtual time) and clears anything already recorded — attendance,
-              grades, proctoring reports, the Q&amp;A log and every exam attempt. The
-              generated content is untouched.
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Once the first lecture has started, the semester can no longer be
-              restarted: attendance and results are a record of what happened and are
-              not rewritten.
-            </Typography>
-            <Grid container spacing={2}>
-              <Grid>
+                  {(["XS", "S", "M", "L", "XL"] as CourseSize[]).map((option) => (
+                    <ToggleButton key={option} value={option}>
+                      {option}
+                    </ToggleButton>
+                  ))}
+                </ToggleButtonGroup>
+                {sizes ? (
+                  <Typography variant="body2" color="text.secondary">
+                    {size} · {sizes[size].blurb} · {sizes[size].slides} slides per lecture ·
+                    {" " + sizes[size].quizPaper} quiz questions ·
+                    {" " + sizes[size].midPaper} midterm questions
+                  </Typography>
+                ) : null}
                 <Button
                   variant="contained"
                   color="warning"
-                  disabled={busy || building || !selectedSid || semesterStarted}
-                  onClick={restartSemester}
+                  disabled={busy || building}
+                  onClick={() => setConfirmAction("regenerate")}
+                  className="admin-action-button"
+                >
+                  Rebuild course
+                </Button>
+              </Stack>
+            </CardContent>
+          </Card>
+
+          <Card className="admin-danger-zone">
+            <CardContent>
+              <Stack spacing={2}>
+                <Stack direction="row" spacing={1.5} className="align-center">
+                  <WarningAmberOutlined color="warning" />
+                  <Typography variant="h5">Semester boundary</Typography>
+                </Stack>
+                <Typography variant="body2" color="text.secondary">
+                  Before week 1 only. Restart clears attendance, grades, proctoring reports,
+                  Q&amp;A history, and exam attempts. Generated source content remains.
+                </Typography>
+                <Button
+                  variant="outlined"
+                  color="warning"
+                  disabled={busy || building || semesterStarted}
+                  onClick={() => setConfirmAction("restart")}
+                  className="admin-action-button"
                 >
                   Restart semester
                 </Button>
-              </Grid>
-            </Grid>
-            {semesterStarted ? (
-              <Alert severity="info">
-                Week 1 has already started for this student, so their semester can no
-                longer be restarted.
-              </Alert>
-            ) : null}
-          </Stack>
-        </CardContent>
-      </Card>
-
-      <Card variant="outlined">
-        <CardContent>
-          <Stack spacing={2}>
-            <Typography variant="h6">Book</Typography>
-            {state?.books.length ? (
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>File</TableCell>
-                    <TableCell>Title</TableCell>
-                    <TableCell align="right">Pages</TableCell>
-                    <TableCell>Status</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {state.books.map((book) => (
-                    <TableRow key={String(book.id)}>
-                      <TableCell>{String(book.filename)}</TableCell>
-                      <TableCell>{String(book.title ?? "—")}</TableCell>
-                      <TableCell align="right">{String(book.pages)}</TableCell>
-                      <TableCell>
-                        <Chip
-                          size="small"
-                          label={String(book.status)}
-                          color={book.status === "ready" ? "success" : "default"}
-                        />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            ) : (
-              <Typography color="text.secondary">No book uploaded yet.</Typography>
-            )}
-          </Stack>
-        </CardContent>
-      </Card>
-
-      <Card variant="outlined">
-        <CardContent>
-          <Stack spacing={2}>
-            <Typography variant="h6">Assessment size</Typography>
-            <Typography variant="body2" color="text.secondary">
-              Choose how many questions each served quiz and midterm carries.
-              Regenerating rebuilds from the already-uploaded book.
-            </Typography>
-
-            <ToggleButtonGroup
-              exclusive
-              color="primary"
-              value={size}
-              onChange={(_event, value) => value && setSize(value as CourseSize)}
-              disabled={busy || building || !selectedSid}
-            >
-              {(["XS", "S", "M", "L", "XL"] as CourseSize[]).map((option) => (
-                <ToggleButton key={option} value={option}>
-                  {option}
-                </ToggleButton>
-              ))}
-            </ToggleButtonGroup>
-
-            {sizes ? (
-              <Typography variant="body2" color="text.secondary">
-                {size} — {sizes[size].blurb}. Midterm: {sizes[size].midPaper} questions.
-              </Typography>
-            ) : null}
-
-            <Grid container spacing={2}>
-              <Grid>
-                <Button
-                  variant="contained"
-                  disabled={busy || building || !selectedSid}
-                  onClick={() => regenerate("full")}
-                >
-                  Regenerate course
-                </Button>
-              </Grid>
-            </Grid>
-
-            {building ? (
-              <Stack spacing={1}>
-                <LinearProgress />
-                <Typography variant="body2">
-                  {String(
-                    state?.books.find(
-                      (book) => book.status === "generating" || book.status === "ingesting"
-                    )?.progress ?? "Starting…"
-                  )}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  Live from the build — this line updates every few seconds. Content-heavy
-                  weeks take longer on local models; narration is synthesized live.
-                </Typography>
+                {semesterStarted ? (
+                  <Alert severity="info">
+                    Week 1 has started. Historical records can no longer be reset.
+                  </Alert>
+                ) : null}
               </Stack>
-            ) : (
-              <Typography variant="caption" color="text.secondary">
-                One button on purpose: lectures, slides, quizzes, and sections are
-                rebuilt together in the database, so every activity matches what
-                students are actually taught.
-              </Typography>
-            )}
-            {state?.books.some((book) => book.status === "failed") && !building ? (
-              <Alert severity="error">
-                Last build failed:{" "}
-                {String(state.books.find((book) => book.status === "failed")?.error ?? "unknown")}
-              </Alert>
-            ) : null}
-          </Stack>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        </Stack>
+      ) : null}
 
-      <Card variant="outlined">
-        <CardContent>
-          <Stack spacing={2}>
-            <Typography variant="h6">Attendance</Typography>
-            <Grid container spacing={1}>
-              <Grid>
-                <Chip color="success" label={`on time: ${summary?.onTimeCount ?? 0}`} />
-              </Grid>
-              <Grid>
-                <Chip color="warning" label={`late: ${summary?.lateCount ?? 0}`} />
-              </Grid>
-              <Grid>
-                <Chip color="error" label={`absent: ${summary?.absentCount ?? 0}`} />
-              </Grid>
-              <Grid>
-                <Chip variant="outlined" label={`upcoming: ${summary?.upcomingCount ?? 0}`} />
-              </Grid>
-              <Grid>
-                <Chip
-                  variant="outlined"
-                  label={`total late: ${summary?.totalLateMinutes ?? 0} min`}
-                />
-              </Grid>
-              <Grid>
-                <Chip
-                  variant="outlined"
-                  label={`avg late: ${summary?.averageLateMinutes ?? 0} min`}
-                />
-              </Grid>
-            </Grid>
-            {state?.attendance.length ? (
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Week</TableCell>
-                    <TableCell>Lecture</TableCell>
-                    <TableCell>Starts at</TableCell>
-                    <TableCell>Joined at</TableCell>
-                    <TableCell>Status</TableCell>
-                    <TableCell align="right">Lateness</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {state.attendance.map((record) => (
-                    <TableRow key={record.lectureId}>
-                      <TableCell>{record.week}</TableCell>
-                      <TableCell>{record.title}</TableCell>
-                      <TableCell>{formatDateTime(record.startsAt)}</TableCell>
-                      <TableCell>{formatDateTime(record.joinedAt)}</TableCell>
-                      <TableCell>{record.status}</TableCell>
-                      <TableCell align="right">{record.lateMinutes ? formatLateness(record.lateMinutes) : "—"}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            ) : (
-              <Typography color="text.secondary">No lectures scheduled yet.</Typography>
-            )}
-          </Stack>
-        </CardContent>
-      </Card>
+      {tab === 2 && selectedSid ? (
+        <Stack spacing={2}>
+          <Accordion defaultExpanded>
+            <AccordionSummary expandIcon={<ExpandMoreRounded />}>
+              <Stack direction="row" spacing={1.5} className="align-center">
+                <EventAvailableOutlined />
+                <Typography variant="h6">Attendance</Typography>
+                <Chip size="small" label={(state?.attendance.length ?? 0) + " records"} />
+              </Stack>
+            </AccordionSummary>
+            <AccordionDetails>
+              <Stack spacing={2}>
+                <Stack direction="row" spacing={1} className="wrap-row">
+                  <Chip color="success" label={"On time " + summary.onTimeCount} />
+                  <Chip color="warning" label={"Late " + summary.lateCount} />
+                  <Chip color="error" label={"Absent " + summary.absentCount} />
+                  <Chip variant="outlined" label={"Upcoming " + summary.upcomingCount} />
+                </Stack>
+                <TableContainer className="admin-table-scroll">
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Week</TableCell>
+                        <TableCell>Lecture</TableCell>
+                        <TableCell>Starts</TableCell>
+                        <TableCell>Joined</TableCell>
+                        <TableCell>Status</TableCell>
+                        <TableCell align="right">Lateness</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {state?.attendance.map((record) => (
+                        <TableRow key={record.lectureId}>
+                          <TableCell>{record.week}</TableCell>
+                          <TableCell>{record.title}</TableCell>
+                          <TableCell>{formatDateTime(record.startsAt)}</TableCell>
+                          <TableCell>{formatDateTime(record.joinedAt)}</TableCell>
+                          <TableCell>{record.status.replace("_", " ")}</TableCell>
+                          <TableCell align="right">
+                            {record.lateMinutes ? formatLateness(record.lateMinutes) : "—"}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Stack>
+            </AccordionDetails>
+          </Accordion>
 
-      <Card variant="outlined">
-        <CardContent>
-          <Stack spacing={2}>
-            <Typography variant="h6">Grades</Typography>
-            {state?.grades.length ? (
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Kind</TableCell>
-                    <TableCell>Week</TableCell>
-                    <TableCell align="right">Score</TableCell>
-                    <TableCell>Feedback</TableCell>
-                    <TableCell>Integrity</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {state.grades.map((grade) => (
-                    <TableRow key={grade.id}>
-                      <TableCell>{grade.kind}</TableCell>
-                      <TableCell>{grade.week ?? "—"}</TableCell>
-                      <TableCell align="right">{`${grade.score} / ${grade.max_score}`}</TableCell>
-                      <TableCell>{grade.feedback ?? "—"}</TableCell>
-                      <TableCell>
-                        <Chip
-                          size="small"
-                          color={grade.flagged ? "error" : "success"}
-                          label={
-                            grade.flagged
-                              ? `FLAGGED — suspicion ${grade.report?.suspicion_score ?? "?"}, ${grade.report?.events?.length ?? 0} events`
-                              : `clean — ${grade.report?.events?.length ?? 0} events`
-                          }
-                        />
-                      </TableCell>
+          <Accordion>
+            <AccordionSummary expandIcon={<ExpandMoreRounded />}>
+              <Stack direction="row" spacing={1.5} className="align-center">
+                <FactCheckOutlined />
+                <Typography variant="h6">Grades and integrity</Typography>
+                <Chip size="small" label={(state?.grades.length ?? 0) + " records"} />
+                {flaggedCount ? <Chip size="small" color="error" label={flaggedCount + " flagged"} /> : null}
+              </Stack>
+            </AccordionSummary>
+            <AccordionDetails>
+              <TableContainer className="admin-table-scroll">
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Assessment</TableCell>
+                      <TableCell>Week</TableCell>
+                      <TableCell align="right">Score</TableCell>
+                      <TableCell>Feedback</TableCell>
+                      <TableCell>Integrity</TableCell>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            ) : (
-              <Typography color="text.secondary">No grades recorded yet.</Typography>
-            )}
-          </Stack>
-        </CardContent>
-      </Card>
+                  </TableHead>
+                  <TableBody>
+                    {state?.grades.map((grade) => (
+                      <TableRow key={grade.id}>
+                        <TableCell>{grade.kind}</TableCell>
+                        <TableCell>{grade.week ?? "—"}</TableCell>
+                        <TableCell align="right">
+                          {grade.score} / {grade.max_score}
+                        </TableCell>
+                        <TableCell>{grade.feedback ?? "—"}</TableCell>
+                        <TableCell>
+                          <Chip
+                            size="small"
+                            color={grade.flagged ? "error" : "success"}
+                            label={
+                              grade.flagged
+                                ? "Flagged · score " + (grade.report?.suspicion_score ?? "?")
+                                : "Clean"
+                            }
+                          />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </AccordionDetails>
+          </Accordion>
 
-      <Card variant="outlined">
-        <CardContent>
-          <Stack spacing={2}>
-            <Typography variant="h6">Q&amp;A log (live-lecture questions)</Typography>
-            {state?.qaLog.length ? (
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Asked</TableCell>
-                    <TableCell>Question</TableCell>
-                    <TableCell>Answer</TableCell>
-                    <TableCell>Model</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {state.qaLog.map((entry) => (
-                    <TableRow key={entry.id}>
-                      <TableCell>{formatDateTime(entry.asked_at)}</TableCell>
-                      <TableCell>{entry.question}</TableCell>
-                      <TableCell>{entry.answer}</TableCell>
-                      <TableCell>{entry.model_used ?? "—"}</TableCell>
+          <Accordion>
+            <AccordionSummary expandIcon={<ExpandMoreRounded />}>
+              <Stack direction="row" spacing={1.5} className="align-center">
+                <QueryStatsOutlined />
+                <Typography variant="h6">Live lecture Q&amp;A</Typography>
+                <Chip size="small" label={(state?.qaLog.length ?? 0) + " questions"} />
+              </Stack>
+            </AccordionSummary>
+            <AccordionDetails>
+              <TableContainer className="admin-table-scroll">
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Asked</TableCell>
+                      <TableCell>Question</TableCell>
+                      <TableCell>Answer</TableCell>
+                      <TableCell>Model</TableCell>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            ) : (
-              <Typography color="text.secondary">No questions asked yet.</Typography>
-            )}
+                  </TableHead>
+                  <TableBody>
+                    {state?.qaLog.map((entry) => (
+                      <TableRow key={entry.id}>
+                        <TableCell>{formatDateTime(entry.asked_at)}</TableCell>
+                        <TableCell>{entry.question}</TableCell>
+                        <TableCell>{entry.answer}</TableCell>
+                        <TableCell>{entry.model_used ?? "—"}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </AccordionDetails>
+          </Accordion>
+        </Stack>
+      ) : null}
+
+      {tab === 3 ? (
+        <Stack spacing={3}>
+          <Card>
+            <CardContent>
+              <Stack spacing={2.5}>
+                <Stack direction="row" spacing={1.5} className="align-center">
+                  <Avatar variant="rounded" className="admin-section-icon">
+                    <ScheduleOutlined />
+                  </Avatar>
+                  <Stack>
+                    <Typography variant="h5">Virtual clock</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Global control. Every learner observes the same virtual time.
+                    </Typography>
+                  </Stack>
+                </Stack>
+                <Alert severity="warning">
+                  Time changes affect lecture windows, attendance, quizzes, midterms, and finals.
+                </Alert>
+                <Stack direction="row" spacing={1} className="wrap-row">
+                  <Button disabled={busy} variant="outlined" onClick={() => control({ action: "advance", minutes: 5 })}>
+                    +5 minutes
+                  </Button>
+                  <Button disabled={busy} variant="outlined" onClick={() => control({ action: "advance", hours: 1 })}>
+                    +1 hour
+                  </Button>
+                  <Button disabled={busy} variant="outlined" onClick={() => control({ action: "advance", days: 1 })}>
+                    +1 day
+                  </Button>
+                  <Button disabled={busy} variant="outlined" onClick={() => control({ action: "advance", weeks: 1 })}>
+                    +1 week
+                  </Button>
+                  <Button
+                    disabled={busy || !selectedSid}
+                    variant="contained"
+                    onClick={() => control({ action: "jumpToNextLecture", sid: selectedSid })}
+                  >
+                    Jump to selected learner’s next lecture
+                  </Button>
+                  <Button disabled={busy} color="secondary" onClick={() => control({ action: "reset" })}>
+                    Reset to real time
+                  </Button>
+                </Stack>
+                <Divider />
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                  <TextField
+                    fullWidth
+                    label="Set exact ISO time"
+                    placeholder="2026-08-01T10:00:00Z"
+                    value={isoInput}
+                    onChange={(event) => setIsoInput(event.target.value)}
+                  />
+                  <Button
+                    variant="contained"
+                    disabled={busy || !isoInput}
+                    onClick={() => control({ action: "set", iso: isoInput })}
+                  >
+                    Set time
+                  </Button>
+                </Stack>
+              </Stack>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent>
+              <Stack spacing={2}>
+                <Stack direction="row" spacing={1.5} className="align-center">
+                  <Avatar variant="rounded" className="admin-section-icon">
+                    <ShieldOutlined />
+                  </Avatar>
+                  <Stack>
+                    <Typography variant="h5">Privileged action trail</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Most recent admin and authentication operations.
+                    </Typography>
+                  </Stack>
+                  <Button className="nav-actions" onClick={() => void loadAudit()}>
+                    Refresh
+                  </Button>
+                </Stack>
+                <TableContainer className="admin-table-scroll">
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Time</TableCell>
+                        <TableCell>Action</TableCell>
+                        <TableCell>Actor</TableCell>
+                        <TableCell>Target</TableCell>
+                        <TableCell>Detail</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {audit.map((entry) => (
+                        <TableRow key={entry.id}>
+                          <TableCell>{formatDateTime(entry.created_at)}</TableCell>
+                          <TableCell>{entry.action}</TableCell>
+                          <TableCell>{entry.actor_email ?? "—"}</TableCell>
+                          <TableCell>{entry.target_id ?? "—"}</TableCell>
+                          <TableCell>{detailText(entry.detail)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Stack>
+            </CardContent>
+          </Card>
+        </Stack>
+      ) : null}
+
+      <Dialog
+        open={confirmAction !== null}
+        onClose={() => {
+          if (!busy) setConfirmAction(null);
+        }}
+        maxWidth="sm"
+      >
+        <DialogTitle>
+          {confirmAction === "restart" ? "Restart this semester?" : "Rebuild this course?"}
+        </DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={2}>
+            <Alert severity={confirmAction === "restart" ? "error" : "warning"}>
+              {confirmAction === "restart"
+                ? "This clears attendance, grades, proctoring reports, Q&A history, and exam attempts. It cannot run after week 1 begins."
+                : "This replaces the learner’s generated lectures, slides, quizzes, and sections with a new consistent set."}
+            </Alert>
+            <Typography>
+              Learner: {selectedStudent?.name} · {selectedSid}
+            </Typography>
           </Stack>
-        </CardContent>
-      </Card>
+        </DialogContent>
+        <DialogActions>
+          <Button disabled={busy} onClick={() => setConfirmAction(null)}>
+            Cancel
+          </Button>
+          <Button
+            disabled={busy}
+            variant="contained"
+            color={confirmAction === "restart" ? "error" : "warning"}
+            onClick={() => {
+              if (confirmAction === "restart") void restartSemester();
+              if (confirmAction === "regenerate") void regenerate();
+            }}
+          >
+            {busy ? "Working…" : confirmAction === "restart" ? "Restart semester" : "Rebuild course"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Stack>
+  );
+}
+
+function AdminMetric({
+  icon,
+  label,
+  value,
+  detail,
+  tone,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+  detail: string;
+  tone: "success" | "warning" | "error" | "default";
+}) {
+  const color = tone === "default" ? "primary" : tone;
+  return (
+    <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
+      <Card className="admin-metric-card">
+        <CardContent>
+          <Stack spacing={1.5}>
+            <Avatar variant="rounded" className={"admin-metric-icon admin-metric-" + color}>
+              {icon}
+            </Avatar>
+            <Typography variant="overline" color="text.secondary">
+              {label}
+            </Typography>
+            <Typography variant="h5">{value}</Typography>
+            <Typography variant="body2" color="text.secondary">
+              {detail}
+            </Typography>
+          </Stack>
+        </CardContent>
+      </Card>
+    </Grid>
   );
 }

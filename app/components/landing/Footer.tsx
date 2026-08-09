@@ -1,4 +1,3 @@
-import Avatar from "@mui/material/Avatar";
 import Box from "@mui/material/Box";
 import Container from "@mui/material/Container";
 import Divider from "@mui/material/Divider";
@@ -6,7 +5,7 @@ import Grid from "@mui/material/Grid";
 import MuiLink from "@mui/material/Link";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
-import AutoStoriesOutlined from "@mui/icons-material/AutoStoriesOutlined";
+import BrandMark from "@/app/components/BrandMark";
 import content from "./content";
 
 type FooterLink = {
@@ -51,9 +50,7 @@ export default function Footer() {
             <Grid size={{ xs: 12, md: 5 }}>
               <Stack spacing={2} className="section-copy">
                 <Stack direction="row" spacing={1.25} className="align-center">
-                  <Avatar variant="rounded" className="brand-mark">
-                    <AutoStoriesOutlined />
-                  </Avatar>
+                  <BrandMark />
                   <Typography variant="h5">UnivAI</Typography>
                 </Stack>
                 <Typography variant="body1" color="text.secondary">

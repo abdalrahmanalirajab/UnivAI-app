@@ -23,7 +23,6 @@ import Toolbar from "@mui/material/Toolbar";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import AccountCircleOutlined from "@mui/icons-material/AccountCircleOutlined";
-import AutoStoriesOutlined from "@mui/icons-material/AutoStoriesOutlined";
 import CloseOutlined from "@mui/icons-material/CloseOutlined";
 import DashboardOutlined from "@mui/icons-material/DashboardOutlined";
 import EventOutlined from "@mui/icons-material/EventOutlined";
@@ -35,6 +34,7 @@ import MenuBookOutlined from "@mui/icons-material/MenuBookOutlined";
 import SettingsOutlined from "@mui/icons-material/SettingsOutlined";
 import UploadFileOutlined from "@mui/icons-material/UploadFileOutlined";
 import ThemeModeMenu from "./ThemeModeMenu";
+import BrandMark from "./components/BrandMark";
 import { useHydratedSession } from "@/lib/use-hydrated-session";
 import { useSignOut } from "@/lib/use-sign-out";
 import { getStudentNavItems } from "@/lib/onboarding-flow";
@@ -129,9 +129,7 @@ export default function NavBar() {
           <Stack direction="row" className="nav-shell">
             <Button component={Link} href="/" className="brand-link">
               <Stack direction="row" spacing={1} className="align-center">
-                <Avatar variant="rounded" className="brand-mark">
-                  <AutoStoriesOutlined fontSize="small" />
-                </Avatar>
+                <BrandMark />
                 <Stack className="align-start">
                   <Typography variant="h6" component="span">
                     UnivAI
@@ -254,9 +252,7 @@ export default function NavBar() {
         >
           <Stack direction="row" className="align-center">
             <Stack direction="row" spacing={1} className="align-center">
-              <Avatar variant="rounded" className="brand-mark">
-                <AutoStoriesOutlined fontSize="small" />
-              </Avatar>
+              <BrandMark />
               <Typography variant="h6">UnivAI</Typography>
             </Stack>
             <IconButton

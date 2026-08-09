@@ -227,14 +227,11 @@ const theme = createTheme({
           padding: 4,
           color: "var(--univai-palette-text-primary)",
         },
-        ".brand-mark": {
-          width: 38,
-          height: 38,
-          color: "var(--univai-palette-primary-contrastText)",
-          background:
-            "linear-gradient(135deg, var(--univai-palette-primary-main), var(--univai-palette-secondary-main))",
-          boxShadow:
-            "0 8px 18px color-mix(in srgb, var(--univai-palette-primary-main) 24%, transparent)",
+        ".brand-logo": {
+          display: "block",
+          flexShrink: 0,
+          width: 40,
+          height: 40,
         },
         ".brand-tagline": {
           display: "block",
@@ -286,13 +283,26 @@ const theme = createTheme({
         ".landing-main": {
           overflow: "hidden",
         },
-        "@keyframes heroFloat": {
+        "@keyframes journeyFieldDrift": {
           "0%, 100%": {
-            transform: "translate3d(0, 0, 0) rotate(12deg)",
+            transform: "translate3d(-0.7%, 0.35%, 0) scale(1.018)",
           },
           "50%": {
-            transform: "translate3d(0, -14px, 0) rotate(18deg)",
+            transform: "translate3d(0.7%, -0.35%, 0) scale(1.028)",
           },
+        },
+        "@keyframes journeyDraw": {
+          "0%": { strokeDashoffset: 1, opacity: 0 },
+          "100%": { strokeDashoffset: 0, opacity: 1 },
+        },
+        "@keyframes journeyTravel": {
+          "0%": { strokeDashoffset: 0, opacity: 0.18 },
+          "12%, 88%": { opacity: 0.88 },
+          "100%": { strokeDashoffset: -0.945, opacity: 0.18 },
+        },
+        "@keyframes journeyNodePulse": {
+          "0%, 100%": { transform: "scale(0.72)", opacity: 0.22 },
+          "50%": { transform: "scale(1.22)", opacity: 0.58 },
         },
         "@keyframes voicePulse": {
           "0%, 100%": {
@@ -306,15 +316,107 @@ const theme = createTheme({
         },
         ".background-paths": {
           position: "absolute",
-          zIndex: -2,
+          zIndex: 0,
           inset: 0,
           color: "var(--univai-palette-primary-main)",
-          opacity: 0.58,
+          opacity: 0.76,
           pointerEvents: "none",
+          contain: "paint",
         },
-        ".background-paths svg": {
-          width: "100%",
-          height: "100%",
+        ".background-path-layer": {
+          position: "absolute",
+          inset: "-2%",
+          width: "104%",
+          height: "104%",
+          transformOrigin: "center",
+          backfaceVisibility: "hidden",
+        },
+        ".journey-field": {
+          transformOrigin: "center",
+          animation: "journeyFieldDrift 19s ease-in-out infinite",
+        },
+        ".journey-base-path": {
+          strokeWidth: 1.05,
+          opacity: 0.21,
+          animation: "journeyDraw 1.7s ease-out both",
+        },
+        ".journey-base-path-2, .journey-base-path-6": {
+          animationDelay: "90ms",
+        },
+        ".journey-base-path-3, .journey-base-path-7": {
+          animationDelay: "180ms",
+        },
+        ".journey-base-path-4, .journey-base-path-8": {
+          animationDelay: "270ms",
+        },
+        ".journey-base-path-5": {
+          animationDelay: "360ms",
+        },
+        ".journey-pulse": {
+          strokeWidth: 2.15,
+          opacity: 0,
+          animationName: "journeyTravel",
+          animationTimingFunction: "cubic-bezier(0.45, 0, 0.55, 1)",
+          animationIterationCount: "infinite",
+          animationDirection: "alternate",
+          animationFillMode: "both",
+        },
+        ".journey-pulse-1": {
+          animationDuration: "10.5s",
+          animationDelay: "1.1s",
+        },
+        ".journey-pulse-2": {
+          animationDuration: "13s",
+          animationDelay: "2.4s",
+        },
+        ".journey-pulse-3": {
+          animationDuration: "11.5s",
+          animationDelay: "3.2s",
+          animationDirection: "alternate-reverse",
+        },
+        ".journey-pulse-4": {
+          animationDuration: "15s",
+          animationDelay: "1.8s",
+        },
+        ".journey-pulse-5": {
+          animationDuration: "12.5s",
+          animationDelay: "4s",
+          animationDirection: "alternate-reverse",
+        },
+        ".journey-pulse-6": {
+          animationDuration: "14s",
+          animationDelay: "2.8s",
+        },
+        ".journey-waypoints": {
+          color: "var(--univai-palette-secondary-main)",
+        },
+        ".journey-node-ring": {
+          fill: "none",
+          stroke: "currentColor",
+          strokeWidth: 1.5,
+          transformBox: "fill-box",
+          transformOrigin: "center",
+          animation: "journeyNodePulse 4.6s ease-in-out infinite",
+        },
+        ".journey-node-core": {
+          fill: "currentColor",
+          stroke: "var(--univai-palette-background-default)",
+          strokeWidth: 1.5,
+        },
+        ".journey-origin, .journey-horizon": {
+          color: "var(--univai-palette-primary-main)",
+        },
+        ".journey-waypoint:nth-child(2) .journey-node-ring": {
+          animationDelay: "700ms",
+        },
+        ".journey-waypoint:nth-child(3) .journey-node-ring": {
+          animationDelay: "1.4s",
+        },
+        ".journey-waypoint:nth-child(4) .journey-node-ring": {
+          animationDelay: "2.1s",
+        },
+        ".journey-waypoint:nth-child(5) .journey-node-ring": {
+          animationDelay: "2.8s",
         },
         ".shape-hero-section": {
           isolation: "isolate",
@@ -329,88 +431,24 @@ const theme = createTheme({
           position: "relative",
           zIndex: 1,
         },
-        ".hero-shape": {
-          position: "absolute",
-          zIndex: -1,
-          border: "1px solid color-mix(in srgb, var(--univai-palette-primary-main) 22%, transparent)",
-          background:
-            "linear-gradient(145deg, color-mix(in srgb, var(--univai-palette-primary-main) 14%, transparent), color-mix(in srgb, var(--univai-palette-secondary-main) 12%, transparent))",
-          boxShadow:
-            "inset 0 1px 0 color-mix(in srgb, white 30%, transparent), 0 24px 60px color-mix(in srgb, var(--univai-palette-primary-main) 12%, transparent)",
-          backdropFilter: "blur(6px)",
-          pointerEvents: "none",
-          animation: "heroFloat 9s ease-in-out infinite",
+        ".simple-hero-section": {
+          minHeight: "min(860px, calc(100svh - 72px))",
         },
-        ".hero-shape-one": {
-          width: 180,
-          height: 180,
-          top: 72,
-          right: "5%",
-          borderRadius: "42% 58% 62% 38% / 54% 38% 62% 46%",
+        ".simple-hero-copy": {
+          maxWidth: 980,
+          marginInline: "auto",
+          alignItems: "center",
+          textAlign: "center",
         },
-        ".hero-shape-two": {
-          width: 120,
-          height: 120,
-          left: "42%",
-          bottom: 56,
-          borderRadius: "28px 60px 38px 68px",
-          animationDelay: "-4s",
-          animationDirection: "reverse",
+        ".simple-hero-copy .hero-subhead": {
+          maxWidth: 760,
+        },
+        ".simple-hero-proof": {
+          justifyContent: "center",
         },
         ".hero-eyebrow": {
           backgroundColor:
-            "color-mix(in srgb, var(--univai-palette-background-paper) 74%, transparent)",
-          backdropFilter: "blur(10px)",
-        },
-        ".hero-card-stage": {
-          position: "relative",
-          minHeight: 510,
-          perspective: 1200,
-        },
-        ".display-cards": {
-          position: "relative",
-          width: "100%",
-          height: 510,
-        },
-        ".display-card-layer": {
-          position: "absolute",
-          width: "min(92%, 500px)",
-          transformOrigin: "center",
-        },
-        ".display-card-layer-1": {
-          top: 58,
-          left: 0,
-        },
-        ".display-card-layer-2": {
-          top: 190,
-          right: 0,
-          zIndex: 2,
-        },
-        ".display-card-layer-3": {
-          top: 322,
-          left: "4%",
-          zIndex: 3,
-        },
-        ".display-card": {
-          padding: 22,
-          borderRadius: "22px !important",
-          border:
-            "1px solid color-mix(in srgb, var(--univai-palette-primary-main) 24%, var(--univai-palette-divider))",
-          backgroundColor:
-            "color-mix(in srgb, var(--univai-palette-background-paper) 88%, transparent) !important",
-          boxShadow: "0 24px 60px rgba(18, 28, 64, 0.16)",
-          backdropFilter: "blur(18px)",
-        },
-        ".display-card-copy": {
-          flex: 1,
-          minWidth: 0,
-        },
-        ".display-card-icon": {
-          width: 48,
-          height: 48,
-          color: "var(--univai-palette-primary-main) !important",
-          background:
-            "color-mix(in srgb, var(--univai-palette-primary-main) 11%, var(--univai-palette-background-paper)) !important",
+            "color-mix(in srgb, var(--univai-palette-background-paper) 92%, var(--univai-palette-primary-main))",
         },
         ".landing-section": {
           paddingBlock: 104,
@@ -799,6 +837,84 @@ const theme = createTheme({
         ".dashboard-status-chip": {
           alignSelf: "center",
         },
+        ".admin-loading": {
+          minHeight: 360,
+          alignItems: "center",
+          justifyContent: "center",
+        },
+        ".admin-page-header": {
+          alignItems: "flex-end",
+          paddingBottom: 8,
+          borderBottom: "1px solid var(--univai-palette-divider)",
+        },
+        ".admin-users-button": {
+          marginLeft: "auto !important",
+        },
+        ".admin-command-card": {
+          borderColor:
+            "color-mix(in srgb, var(--univai-palette-primary-main) 28%, var(--univai-palette-divider))",
+        },
+        ".admin-clock-summary": {
+          alignItems: "flex-end",
+        },
+        ".admin-tabs-shell": {
+          border: "1px solid var(--univai-palette-divider)",
+          borderRadius: "16px !important",
+          overflow: "hidden",
+        },
+        ".admin-empty-state": {
+          minHeight: 300,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          borderStyle: "dashed",
+        },
+        ".admin-empty-state .MuiCardContent-root": {
+          maxWidth: 540,
+        },
+        ".admin-empty-icon": {
+          width: 58,
+          height: 58,
+          color: "var(--univai-palette-primary-main) !important",
+          background:
+            "color-mix(in srgb, var(--univai-palette-primary-main) 10%, var(--univai-palette-background-paper)) !important",
+        },
+        ".admin-metric-card": {
+          height: "100%",
+          minHeight: 220,
+        },
+        ".admin-metric-icon, .admin-section-icon": {
+          width: 44,
+          height: 44,
+          color: "var(--univai-palette-primary-main) !important",
+          background:
+            "color-mix(in srgb, var(--univai-palette-primary-main) 10%, var(--univai-palette-background-paper)) !important",
+        },
+        ".admin-metric-success": {
+          color: "var(--univai-palette-success-main) !important",
+          background:
+            "color-mix(in srgb, var(--univai-palette-success-main) 10%, var(--univai-palette-background-paper)) !important",
+        },
+        ".admin-metric-warning": {
+          color: "var(--univai-palette-warning-main) !important",
+          background:
+            "color-mix(in srgb, var(--univai-palette-warning-main) 10%, var(--univai-palette-background-paper)) !important",
+        },
+        ".admin-metric-error": {
+          color: "var(--univai-palette-error-main) !important",
+          background:
+            "color-mix(in srgb, var(--univai-palette-error-main) 10%, var(--univai-palette-background-paper)) !important",
+        },
+        ".admin-action-button": {
+          alignSelf: "flex-start",
+        },
+        ".admin-danger-zone": {
+          borderColor:
+            "color-mix(in srgb, var(--univai-palette-warning-main) 48%, var(--univai-palette-divider))",
+        },
+        ".admin-table-scroll": {
+          overflowX: "auto",
+        },
         ".feature-icon": {
           width: 48,
           height: 48,
@@ -957,19 +1073,6 @@ const theme = createTheme({
           ".hero-visual-shell": {
             minHeight: 440,
           },
-          ".hero-card-stage, .display-cards": {
-            minHeight: 450,
-            height: 450,
-          },
-          ".display-card-layer-1": {
-            top: 24,
-          },
-          ".display-card-layer-2": {
-            top: 154,
-          },
-          ".display-card-layer-3": {
-            top: 284,
-          },
           ".feature-carousel-copy, .feature-carousel-preview-grid": {
             minHeight: "auto",
           },
@@ -1014,29 +1117,6 @@ const theme = createTheme({
             minHeight: 360,
             borderRadius: 22,
           },
-          ".hero-card-stage, .display-cards": {
-            minHeight: 390,
-            height: 390,
-          },
-          ".display-card-layer": {
-            width: "96%",
-          },
-          ".display-card-layer-1": {
-            top: 14,
-          },
-          ".display-card-layer-2": {
-            top: 132,
-          },
-          ".display-card-layer-3": {
-            top: 250,
-          },
-          ".display-card": {
-            padding: 15,
-          },
-          ".display-card-icon": {
-            width: 40,
-            height: 40,
-          },
           ".feature-carousel-copy": {
             padding: 24,
           },
@@ -1071,6 +1151,15 @@ const theme = createTheme({
           ".footer-bottom": {
             alignItems: "flex-start",
           },
+          ".admin-page-header": {
+            alignItems: "flex-start",
+          },
+          ".admin-users-button": {
+            marginLeft: "0 !important",
+          },
+          ".admin-clock-summary": {
+            alignItems: "flex-start",
+          },
         },
         "@media (prefers-reduced-motion: reduce)": {
           html: {
@@ -1090,10 +1179,9 @@ const theme = createTheme({
         root: {
           color: "var(--univai-palette-text-primary)",
           backgroundColor:
-            "color-mix(in srgb, var(--univai-palette-background-default) 88%, transparent)",
+            "color-mix(in srgb, var(--univai-palette-background-default) 96%, var(--univai-palette-primary-main))",
           backgroundImage: "none",
           borderBottom: "1px solid var(--univai-palette-divider)",
-          backdropFilter: "blur(18px)",
         },
       },
     },
