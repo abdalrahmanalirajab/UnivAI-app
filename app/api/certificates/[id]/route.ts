@@ -17,7 +17,7 @@ export async function GET(
   }>(
     `SELECT filename, mime_type, image_data FROM certificate_artifacts
       WHERE id = $1 AND student_id = $2`,
-    [id, gate.studentId],
+    [id, gate.registrationNumber],
   );
   if (!certificate) return Response.json({ error: "Certificate not found." }, { status: 404 });
 

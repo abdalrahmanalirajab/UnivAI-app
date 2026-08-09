@@ -8,7 +8,6 @@ import {
   documentStorageKey,
   getDocument,
   getOwnedCollection,
-  hasApprovedPlanReferencingDocument,
   listDocuments,
   removeDocument,
   removeDocumentAndBook,
@@ -39,7 +38,7 @@ export async function GET(
     return Response.json({ error: "Invalid collection ID." }, { status: 400 });
   }
 
-  const ownership = await getOwnedCollection(collectionId, gate.studentId);
+  const ownership = await getOwnedCollection(collectionId, gate.registrationNumber);
   if (!ownership.owned) {
     return Response.json(
       { error: ownership.exists ? "You do not have access to this collection." : "Collection not found." },
@@ -47,7 +46,7 @@ export async function GET(
     );
   }
 
-  const documents = await listDocuments(collectionId, gate.studentId);
+  const documents = await listDocuments(collectionId, gate.registrationNumber);
   return Response.json({ documents });
 }
 
@@ -64,7 +63,7 @@ export async function POST(
     return Response.json({ error: "Invalid collection ID." }, { status: 400 });
   }
 
-  const ownership = await getOwnedCollection(collectionId, gate.studentId);
+  const ownership = await getOwnedCollection(collectionId, gate.registrationNumber);
   if (!ownership.owned) {
     return Response.json(
       { error: ownership.exists ? "You do not have access to this collection." : "Collection not found." },
@@ -101,7 +100,7 @@ export async function POST(
     );
   }
 
-  const result = await addDocument(collectionId, gate.studentId, safeName);
+  const result = await addDocument(collectionId, gate.registrationNumber, safeName);
   if (!result.ok) {
     return Response.json(
       {
@@ -116,7 +115,7 @@ export async function POST(
   const uploadsDir = path.join(
     REPO_ROOT,
     "uploads",
-    gate.studentId,
+    gate.registrationNumber,
     "collections",
     String(collectionId),
     String(result.document.id),
@@ -125,7 +124,7 @@ export async function POST(
     await fs.mkdir(uploadsDir, { recursive: true });
     await fs.writeFile(path.join(uploadsDir, safeName), bytes);
   } catch {
-    await removeDocument(result.document.id, gate.studentId);
+    await removeDocument(result.document.id, gate.registrationNumber);
     await fs.rm(uploadsDir, { recursive: true, force: true }).catch(() => {});
     return Response.json({ error: "Could not store the uploaded PDF." }, { status: 500 });
   }
@@ -146,7 +145,7 @@ export async function DELETE(
     return Response.json({ error: "Invalid collection ID." }, { status: 400 });
   }
 
-  const ownership = await getOwnedCollection(collectionId, gate.studentId);
+  const ownership = await getOwnedCollection(collectionId, gate.registrationNumber);
   if (!ownership.owned) {
     return Response.json(
       { error: ownership.exists ? "You do not have access to this collection." : "Collection not found." },
@@ -159,29 +158,17 @@ export async function DELETE(
     return Response.json({ error: "Invalid document ID." }, { status: 400 });
   }
 
-  const doc = await getDocument(documentId, gate.studentId);
+  const doc = await getDocument(documentId, gate.registrationNumber);
   if (!doc || doc.collection_id !== collectionId) {
     return Response.json({ error: "Document not found." }, { status: 404 });
   }
 
-  const planReferenced = await hasApprovedPlanReferencingDocument(
-    gate.studentId,
-    documentId,
-    collectionId,
-  );
-  if (planReferenced) {
-    return Response.json(
-      { error: "This source is part of your approved plan and cannot be removed." },
-      { status: 409 },
-    );
-  }
-
   const storageKey = documentStorageKey(collectionId, documentId, doc.filename);
-  await cancelGenerationForSource(gate.studentId, storageKey);
+  await cancelGenerationForSource(gate.registrationNumber, storageKey);
   const docDir = path.join(
     REPO_ROOT,
     "uploads",
-    gate.studentId,
+    gate.registrationNumber,
     "collections",
     String(collectionId),
     String(documentId),
@@ -189,7 +176,7 @@ export async function DELETE(
 
   const removed = await removeDocumentAndBook(
     documentId,
-    gate.studentId,
+    gate.registrationNumber,
     storageKey,
   );
   if (!removed.ok) {
@@ -200,5 +187,11 @@ export async function DELETE(
   // detaching the running process; a missing file is already a successful state.
   await fs.rm(docDir, { recursive: true, force: true }).catch(() => undefined);
 
-  return Response.json({ removed: true });
+  return Response.json({
+    removed: true,
+    curriculumInvalidated: removed.curriculumInvalidated,
+    message: removed.curriculumInvalidated
+      ? "Source removed. Its approved curriculum was cleared; rebuild it from the remaining books."
+      : "Source removed.",
+  });
 }

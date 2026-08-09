@@ -246,7 +246,7 @@ function appPlan(
             theoretical_lectures: semester.weekCount,
             practical_sections: semester.weekCount,
             quizzes: semester.weekCount,
-            midterms: Math.floor(semester.weekCount / 4),
+            midterms: 1,
             finals: 1,
           })),
         }]
@@ -261,7 +261,7 @@ function appPlan(
  * makes sense before one exists, and once it does, pressing it opens the
  * workspace rather than rebuilding anything.
  *
- * Scoped by the session's studentId, never by anything the client sends.
+ * Scoped by the session's registrationNumber, never by anything the client sends.
  */
 export async function GET(request: NextRequest) {
   const gate = await requireUserApi();
@@ -272,7 +272,7 @@ export async function GET(request: NextRequest) {
     return Response.json({ error: "A valid collectionId is required." }, { status: 400 });
   }
 
-  const ownership = await getOwnedCollection(collectionId, gate.studentId);
+  const ownership = await getOwnedCollection(collectionId, gate.registrationNumber);
   if (!ownership.owned) {
     return Response.json(
       { error: ownership.exists ? "You do not have access to this collection." : "Collection not found." },
@@ -280,7 +280,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const programme = await getProgrammeForCollection(collectionId, gate.studentId);
+  const programme = await getProgrammeForCollection(collectionId, gate.registrationNumber);
   return Response.json({ programme: programme ?? null });
 }
 
@@ -304,7 +304,7 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "A valid collectionId is required." }, { status: 400 });
   }
 
-  const ownership = await getOwnedCollection(collectionId, gate.studentId);
+  const ownership = await getOwnedCollection(collectionId, gate.registrationNumber);
   if (!ownership.owned) {
     return Response.json(
       { error: ownership.exists ? "You do not have access to this collection." : "Collection not found." },
@@ -312,7 +312,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const existing = await getProgrammeForCollection(collectionId, gate.studentId);
+  const existing = await getProgrammeForCollection(collectionId, gate.registrationNumber);
   // Older plans mapped every extracted topic to a separate course. Keep
   // approved history immutable, but allow an unapproved legacy plan to be
   // rebuilt below from the generated chapter contract.
@@ -320,7 +320,7 @@ export async function POST(request: NextRequest) {
     return Response.json({ programme: existing });
   }
 
-  const documents = await listDocuments(collectionId, gate.studentId);
+  const documents = await listDocuments(collectionId, gate.registrationNumber);
   const readyDocuments = documents.filter((document) => document.status === "ready");
   const stillProcessing = documents.some((document) =>
     document.status === "pending" || document.status === "uploading"
@@ -375,7 +375,7 @@ export async function POST(request: NextRequest) {
   }>(
     `SELECT filename, status, error, generation_ready_weeks FROM books
       WHERE student_id = $1 AND filename = ANY($2::text[])`,
-    [gate.studentId, storageKeys],
+    [gate.registrationNumber, storageKeys],
   );
   const generatedByFilename = new Map(generatedBooks.map((book) => [book.filename, book]));
   const unfinished = storageKeys.filter(
@@ -399,7 +399,7 @@ export async function POST(request: NextRequest) {
   // The current teaching schedule serves one selected book at a time. For that
   // common path, bind the curriculum to the exact chapter-derived structure.
   const generatedPlan = readyDocuments.length === 1
-    ? await readGeneratedSemesterPlan(gate.studentId)
+    ? await readGeneratedSemesterPlan(gate.registrationNumber)
     : null;
   if (readyDocuments.length === 1 && !generatedPlan) {
     return Response.json(
@@ -412,7 +412,7 @@ export async function POST(request: NextRequest) {
   const seedQueries = buildSeedQueries(readyDocuments);
   const result = await runPython(
     "services/rag-tools/rag_plan.py",
-    [title, String(collectionId), gate.studentId, ...seedQueries],
+    [title, String(collectionId), gate.registrationNumber, ...seedQueries],
     60 * 60_000,
   );
   const payload = parseJsonLine<PlanBridgeResponse>(result.stdout);
@@ -425,7 +425,7 @@ export async function POST(request: NextRequest) {
   if (existing) {
     const updated = await updateProgrammePlan(
       existing.id,
-      gate.studentId,
+      gate.registrationNumber,
       nextPlan,
       existing.plan_version,
     );
@@ -438,7 +438,7 @@ export async function POST(request: NextRequest) {
     return Response.json({ programme: updated.programme });
   }
   const programme = await createProgrammeIfMissing(
-    gate.studentId,
+    gate.registrationNumber,
     collectionId,
     title,
     nextPlan,

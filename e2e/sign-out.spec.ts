@@ -86,12 +86,12 @@ async function seedPreparedSchedule(page: Page, email: string) {
       "postgresql://univai:univai@127.0.0.1:5434/univai_app_standalone",
   });
   try {
-    const learner = await pool.query<{ studentId: string }>(
-      'SELECT "studentId" FROM "user" WHERE email = $1',
+    const learner = await pool.query<{ registrationNumber: string }>(
+      'SELECT "registrationNumber" FROM "user" WHERE email = $1',
       [email]
     );
-    const sid = learner.rows[0]?.studentId;
-    if (!sid) throw new Error("seeded learner has no studentId");
+    const sid = learner.rows[0]?.registrationNumber;
+    if (!sid) throw new Error("seeded learner has no registrationNumber");
 
     await pool.query(
       `INSERT INTO books (filename, title, pages, status, uploaded_at, progress, student_id)

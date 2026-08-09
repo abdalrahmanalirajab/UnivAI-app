@@ -125,8 +125,8 @@ function assessmentPercentage(rows: GradeRow[], expectedCount: number): number {
   return round2((Math.min(expectedCount, earnedRatios) / expectedCount) * 100);
 }
 
-function transcriptId(studentId: string, courseKey: string): string {
-  return `tr_${createHash("sha256").update(`${studentId}:${courseKey}`).digest("hex").slice(0, 24)}`;
+function transcriptId(registrationNumber: string, courseKey: string): string {
+  return `tr_${createHash("sha256").update(`${registrationNumber}:${courseKey}`).digest("hex").slice(0, 24)}`;
 }
 
 function cleanCourseTitle(title: string | null, filename: string | null, fallback: string): string {
@@ -136,7 +136,7 @@ function cleanCourseTitle(title: string | null, filename: string | null, fallbac
 
 /** Build or refresh the stable transcript snapshot after a clean final result. */
 export async function upsertCourseTranscript(
-  studentId: string,
+  registrationNumber: string,
   completedAt: Date,
   fallbackTitle = "Completed course",
 ): Promise<CourseTranscript | null> {
@@ -145,7 +145,7 @@ export async function upsertCourseTranscript(
        FROM grades
       WHERE student_id = $1 AND kind = 'final' AND flagged = false
       ORDER BY taken_at DESC, id DESC LIMIT 1`,
-    [studentId],
+    [registrationNumber],
   );
   if (!finalGrade || Number(finalGrade.max_score) <= 0) return null;
 
@@ -153,23 +153,23 @@ export async function upsertCourseTranscript(
     queryOne<{ id: number; title: string | null; filename: string }>(
       `SELECT id, title, filename FROM books
         WHERE student_id = $1 ORDER BY uploaded_at DESC, id DESC LIMIT 1`,
-      [studentId],
+      [registrationNumber],
     ),
     queryOne<{ total: string }>(
       "SELECT COUNT(*)::text AS total FROM lectures WHERE student_id = $1",
-      [studentId],
+      [registrationNumber],
     ),
     queryOne<{ attended: string }>(
       `SELECT COUNT(*)::text AS attended
          FROM attendance a
          JOIN lectures l ON l.id = a.lecture_id
         WHERE a.student_id = $1 AND l.student_id = $1 AND a.joined_at IS NOT NULL`,
-      [studentId],
+      [registrationNumber],
     ),
     query<GradeRow>(
       `SELECT kind, week, score, max_score, flagged FROM grades
         WHERE student_id = $1 AND kind IN ('quiz', 'midterm')`,
-      [studentId],
+      [registrationNumber],
     ),
   ]);
 
@@ -190,7 +190,7 @@ export async function upsertCourseTranscript(
   });
 
   const courseKey = book ? `book:${book.id}` : `final:${fallbackTitle}`;
-  const id = transcriptId(studentId, courseKey);
+  const id = transcriptId(registrationNumber, courseKey);
   const courseTitle = cleanCourseTitle(book?.title ?? null, book?.filename ?? null, fallbackTitle);
   await query(
     `INSERT INTO course_transcripts
@@ -213,7 +213,7 @@ export async function upsertCourseTranscript(
        updated_at = CURRENT_TIMESTAMP`,
     [
       id,
-      studentId,
+      registrationNumber,
       courseKey,
       courseTitle,
       score.quizPercentage,
@@ -228,7 +228,7 @@ export async function upsertCourseTranscript(
       completedAt,
     ],
   );
-  return getTranscript(studentId, id);
+  return getTranscript(registrationNumber, id);
 }
 
 type TranscriptRow = {
@@ -275,18 +275,18 @@ const TRANSCRIPT_SELECT = `
     FROM course_transcripts t
     LEFT JOIN certificate_artifacts c ON c.transcript_id = t.id`;
 
-export async function getTranscript(studentId: string, id: string): Promise<CourseTranscript | null> {
+export async function getTranscript(registrationNumber: string, id: string): Promise<CourseTranscript | null> {
   const row = await queryOne<TranscriptRow>(
     `${TRANSCRIPT_SELECT} WHERE t.student_id = $1 AND t.id = $2`,
-    [studentId, id],
+    [registrationNumber, id],
   );
   return row ? mapTranscript(row) : null;
 }
 
-export async function getTranscripts(studentId: string): Promise<CourseTranscript[]> {
+export async function getTranscripts(registrationNumber: string): Promise<CourseTranscript[]> {
   const rows = await query<TranscriptRow>(
     `${TRANSCRIPT_SELECT} WHERE t.student_id = $1 ORDER BY t.completed_at DESC`,
-    [studentId],
+    [registrationNumber],
   );
   return rows.map(mapTranscript);
 }

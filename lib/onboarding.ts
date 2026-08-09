@@ -5,25 +5,25 @@ import type { SessionUser } from "./auth-types";
 type ExistsRow = { exists: boolean };
 type DatabaseError = { code?: string };
 
-async function hasPreparedBook(studentId: string): Promise<boolean> {
+async function hasPreparedBook(registrationNumber: string): Promise<boolean> {
   const row = await queryOne<ExistsRow>(
     `SELECT EXISTS(
        SELECT 1 FROM books
        WHERE student_id = $1 AND status = 'ready'
      ) AS exists`,
-    [studentId],
+    [registrationNumber],
   );
   return Boolean(row?.exists);
 }
 
-async function hasPreparedDocument(studentId: string): Promise<boolean> {
+async function hasPreparedDocument(registrationNumber: string): Promise<boolean> {
   try {
     const row = await queryOne<ExistsRow>(
       `SELECT EXISTS(
          SELECT 1 FROM documents
          WHERE student_id = $1 AND status = 'ready'
        ) AS exists`,
-      [studentId],
+      [registrationNumber],
     );
     return Boolean(row?.exists);
   } catch (error) {
@@ -35,8 +35,8 @@ async function hasPreparedDocument(studentId: string): Promise<boolean> {
 }
 
 export async function getOnboardingState(user: SessionUser): Promise<OnboardingState> {
-  const bookReady = await hasPreparedBook(user.studentId);
-  const documentReady = bookReady ? false : await hasPreparedDocument(user.studentId);
+  const bookReady = await hasPreparedBook(user.registrationNumber);
+  const documentReady = bookReady ? false : await hasPreparedDocument(user.registrationNumber);
 
   return {
     emailVerified: user.emailVerified,

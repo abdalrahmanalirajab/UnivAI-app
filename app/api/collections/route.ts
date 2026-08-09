@@ -12,7 +12,7 @@ export async function GET() {
   const gate = await requireUserApi();
   if (gate instanceof Response) return gate;
 
-  const collections = await listCollections(gate.studentId);
+  const collections = await listCollections(gate.registrationNumber);
   return Response.json({ collections });
 }
 
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: validationMsg }, { status: 400 });
   }
 
-  const result = await getOrCreateCollection(gate.studentId, name);
+  const result = await getOrCreateCollection(gate.registrationNumber, name);
   if (!result.ok) {
     return Response.json({ error: result.error }, { status: 400 });
   }

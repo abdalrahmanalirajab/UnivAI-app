@@ -63,7 +63,7 @@ function titleLines(title: string): [string, string?] {
 
 export async function renderCertificate(input: {
   recipientName: string;
-  studentId: string;
+  registrationNumber: string;
   transcript: CourseTranscript;
   certificateId: string;
   issuedAt: Date;
@@ -121,19 +121,19 @@ export type CertificateRecord = {
 };
 
 export async function ensureCertificate(input: {
-  studentId: string;
+  registrationNumber: string;
   recipientName: string;
   transcript: CourseTranscript;
 }): Promise<CertificateRecord> {
   if (!input.transcript.passed) throw new Error("A certificate is not available for an F grade.");
   const id = `cert_${createHash("sha256")
-    .update(`${input.studentId}:${input.transcript.id}`)
+    .update(`${input.registrationNumber}:${input.transcript.id}`)
     .digest("hex")
     .slice(0, 24)}`;
   const existing = await queryOne<{ id: string; filename: string; template_key: CertificateTemplateKey }>(
     `SELECT id, filename, template_key FROM certificate_artifacts
       WHERE transcript_id = $1 AND student_id = $2`,
-    [input.transcript.id, input.studentId],
+    [input.transcript.id, input.registrationNumber],
   );
   if (existing) {
     return { id: existing.id, filename: existing.filename, templateKey: existing.template_key };
@@ -143,7 +143,7 @@ export async function ensureCertificate(input: {
   const issuedAt = new Date(input.transcript.completedAt);
   const image = await renderCertificate({
     recipientName: input.recipientName,
-    studentId: input.studentId,
+    registrationNumber: input.registrationNumber,
     transcript: input.transcript,
     certificateId: id,
     issuedAt,
@@ -154,12 +154,12 @@ export async function ensureCertificate(input: {
       (id, transcript_id, student_id, template_key, filename, mime_type, image_data, issued_at)
      VALUES ($1,$2,$3,$4,$5,'image/png',$6,$7)
      ON CONFLICT (transcript_id) DO NOTHING`,
-    [id, input.transcript.id, input.studentId, templateKey, filename, image, issuedAt],
+    [id, input.transcript.id, input.registrationNumber, templateKey, filename, image, issuedAt],
   );
   const saved = await queryOne<{ id: string; filename: string; template_key: CertificateTemplateKey }>(
     `SELECT id, filename, template_key FROM certificate_artifacts
       WHERE transcript_id = $1 AND student_id = $2`,
-    [input.transcript.id, input.studentId],
+    [input.transcript.id, input.registrationNumber],
   );
   if (!saved) throw new Error("Certificate could not be saved.");
   return { id: saved.id, filename: saved.filename, templateKey: saved.template_key };

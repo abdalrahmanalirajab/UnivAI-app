@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 export async function POST(_request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const gate = await requireLearningActionApi();
   if (gate instanceof Response) return gate;
-  const sid = gate.studentId;
+  const sid = gate.registrationNumber;
 
   const { id } = await context.params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) {

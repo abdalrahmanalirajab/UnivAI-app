@@ -50,7 +50,7 @@ function jump(body: Record<string, unknown>) {
 describe("POST /api/clock jumpToNextLecture", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGate.mockResolvedValue({ studentId: "admin", role: "super_admin" });
+    mockGate.mockResolvedValue({ registrationNumber: "admin", role: "super_admin" });
     mockNow.mockResolvedValue(new Date("2026-08-08T01:00:00.000Z"));
     mockGetOffsetMs.mockResolvedValue(0);
     mockSetNow.mockImplementation(async (value: Date) => value);

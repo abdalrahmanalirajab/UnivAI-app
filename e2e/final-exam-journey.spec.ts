@@ -235,12 +235,12 @@ test.beforeEach(async ({ page }) => {
       'UPDATE "user" SET "emailVerified" = TRUE WHERE email = $1',
       [email]
     );
-    const learner = await verificationPool.query<{ studentId: string }>(
-      'SELECT "studentId" FROM "user" WHERE email = $1',
+    const learner = await verificationPool.query<{ registrationNumber: string }>(
+      'SELECT "registrationNumber" FROM "user" WHERE email = $1',
       [email]
     );
-    const sid = learner.rows[0]?.studentId;
-    if (!sid) throw new Error("prepared learner has no studentId");
+    const sid = learner.rows[0]?.registrationNumber;
+    if (!sid) throw new Error("prepared learner has no registrationNumber");
     await verificationPool.query(
       `INSERT INTO books
          (filename, title, pages, status, uploaded_at, progress, student_id)

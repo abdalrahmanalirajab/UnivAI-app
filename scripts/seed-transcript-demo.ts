@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+import { randomUUID } from "node:crypto";
 
 import { hashPassword } from "better-auth/crypto";
 import { Pool, type PoolClient } from "pg";
@@ -15,21 +16,21 @@ const DEMOS = [
   {
     email: "good@gmail.com",
     name: "Ahmed",
-    studentId: "S-2026-990001",
+    registrationNumber: "S-2026-990001",
     scores: { quizPercentage: 96, attendancePercentage: 100, midtermPercentage: 95, finalPercentage: 98 },
     preview: "ahmed-a-star-certificate.png",
   },
   {
     email: "good2@gmail.com",
     name: "tolba",
-    studentId: "S-2026-990002",
+    registrationNumber: "S-2026-990002",
     scores: { quizPercentage: 80, attendancePercentage: 90, midtermPercentage: 78, finalPercentage: 83.5 },
     preview: "tolba-a-minus-certificate.png",
   },
   {
     email: "good3@gmail.com",
     name: "samir",
-    studentId: "S-2026-990003",
+    registrationNumber: "S-2026-990003",
     scores: { quizPercentage: 75, attendancePercentage: 80, midtermPercentage: 72, finalPercentage: 77.75 },
     preview: "samir-b-certificate.png",
   },
@@ -46,20 +47,20 @@ function safeDatabaseUrl(): string {
 
 async function upsertLogin(client: PoolClient, demo: (typeof DEMOS)[number]): Promise<void> {
   const password = await hashPassword(demo.email);
-  const userId = `transcript-demo-user-${demo.studentId.slice(-6)}`;
-  const accountId = `transcript-demo-account-${demo.studentId.slice(-6)}`;
+  const userId = randomUUID();
+  const accountId = randomUUID();
   const user = await client.query<{ id: string }>(
     `INSERT INTO "user"
-      ("id", "name", "email", "emailVerified", "createdAt", "updatedAt", "role", "studentId")
+      ("id", "name", "email", "emailVerified", "createdAt", "updatedAt", "role", "registrationNumber")
      VALUES ($1,$2,$3,true,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,'student',$4)
      ON CONFLICT ("email") DO UPDATE SET
        "name" = EXCLUDED."name",
        "emailVerified" = true,
        "updatedAt" = CURRENT_TIMESTAMP,
        "role" = 'student',
-       "studentId" = EXCLUDED."studentId"
+       "registrationNumber" = EXCLUDED."registrationNumber"
      RETURNING "id"`,
-    [userId, demo.name, demo.email, demo.studentId],
+    [userId, demo.name, demo.email, demo.registrationNumber],
   );
   const credential = await client.query<{ id: string }>(
     `SELECT "id" FROM "account" WHERE "userId" = $1 AND "providerId" = 'credential' LIMIT 1`,
@@ -86,7 +87,7 @@ async function upsertLogin(client: PoolClient, demo: (typeof DEMOS)[number]): Pr
         SELECT 1 FROM books
          WHERE student_id = $3 AND filename = 'demo-designing-data-intensive-applications.pdf'
       )`,
-    [COURSE_TITLE, COMPLETED_AT, demo.studentId],
+    [COURSE_TITLE, COMPLETED_AT, demo.registrationNumber],
   );
 }
 
@@ -98,17 +99,17 @@ async function main(): Promise<void> {
   for (const demo of DEMOS) {
     const score = scoreCourse(demo.scores);
     const transcript: CourseTranscript = {
-      id: `tr_demo_${demo.studentId.slice(-6)}`,
+      id: `tr_demo_${demo.registrationNumber.slice(-6)}`,
       courseKey: "demo:designing-data-intensive-applications",
       courseTitle: COURSE_TITLE,
       ...score,
       completedAt: COMPLETED_AT.toISOString(),
       certificateId: null,
     };
-    const certificateId = `cert_demo_${demo.studentId.slice(-6)}`;
+    const certificateId = `cert_demo_${demo.registrationNumber.slice(-6)}`;
     const image = await renderCertificate({
       recipientName: demo.name,
-      studentId: demo.studentId,
+      registrationNumber: demo.registrationNumber,
       transcript,
       certificateId,
       issuedAt: COMPLETED_AT,
@@ -139,7 +140,7 @@ async function main(): Promise<void> {
            updated_at = CURRENT_TIMESTAMP`,
         [
           transcript.id,
-          demo.studentId,
+          demo.registrationNumber,
           transcript.courseKey,
           transcript.courseTitle,
           score.quizPercentage,
@@ -167,7 +168,7 @@ async function main(): Promise<void> {
         [
           certificateId,
           transcript.id,
-          demo.studentId,
+          demo.registrationNumber,
           templateForGrade(score.letterGrade),
           demo.preview,
           image,

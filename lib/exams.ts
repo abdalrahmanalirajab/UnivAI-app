@@ -14,7 +14,7 @@ import { readGeneratedSemesterPlan } from "./semester-plan";
  *
  * The exam system owns exams in MongoDB and knows nothing about our virtual
  * clock. Deadlines live HERE: a quiz is takeable for 24 hours after its
- * lecture ends, and each monthly midterm for 3 days after its fourth lecture. We
+ * lecture ends, and the semester midterm for 3 days after its midpoint. We
  * gate access, hand the student over by exam id, and the exam system webhooks
  * the result + proctoring report back to /api/exams/callback.
  *
@@ -56,7 +56,7 @@ async function mongo(): Promise<Db> {
 }
 
 export type ExamLink = {
-  /** The app's tenant key (user.studentId, S-YYYY-NNNNNN). */
+  /** The app's tenant key (user.registrationNumber, S-YYYY-NNNNNN). */
   sid: string;
   /** The exam system's own Mongo student _id (string). */
   student_id: string;
@@ -64,7 +64,7 @@ export type ExamLink = {
   /** week -> chapter id, so webhook payloads can be mapped back to a week */
   chapters: { week: number; chapter_id: string; title: string }[];
   midterms?: { number: number; after_week: number; exam_id: string; title: string }[];
-  /** v1 compatibility: the first monthly midterm. */
+  /** v1 compatibility: the semester midterm. */
   mid_exam_id: string | null;
 };
 
@@ -85,19 +85,16 @@ async function plannedMidterms(sid: string): Promise<Array<{
     title: string;
   }> = [];
   let offset = 0;
-  let number = 1;
   for (const semester of plan.semesters) {
-    for (let localWeek = 4; localWeek <= semester.weekCount; localWeek += 4) {
-      const afterWeek = offset + localWeek;
-      result.push({
-        number,
-        semester: semester.semester,
-        afterWeek,
-        startWeek: afterWeek - 3,
-        title: `Semester ${semester.semester} Midterm ${Math.floor(localWeek / 4)} — Weeks ${afterWeek - 3} to ${afterWeek}`,
-      });
-      number += 1;
-    }
+    const midpoint = Math.ceil(semester.weekCount / 2);
+    const afterWeek = offset + midpoint;
+    result.push({
+      number: semester.semester,
+      semester: semester.semester,
+      afterWeek,
+      startWeek: offset + 1,
+      title: `Semester ${semester.semester} Midterm — Weeks ${offset + 1} to ${afterWeek}`,
+    });
     offset += semester.weekCount;
   }
   return result;
@@ -532,13 +529,19 @@ export async function ensureExamWorld(sid: string, studentName: string): Promise
   const links = db.collection("univai_link");
 
   const existing = await links.findOne<ExamLink & { _id: unknown }>({ sid });
-  if (existing && Array.isArray(existing.midterms)) return existing;
+  const midtermPlans = await plannedMidterms(sid);
+  if (
+    existing &&
+    Array.isArray(existing.midterms) &&
+    existing.midterms.length === midtermPlans.length &&
+    existing.midterms.every((midterm, index) => midterm.after_week === midtermPlans[index]?.afterWeek)
+  ) return existing;
 
   const lectures = await getLectures(sid);
 
   // Student, Curriculum, Chapters, Enrollment — shapes match the exam system's
   // mongoose models (mongoose validates app-side; the DB accepts plain docs).
-  // The app's studentId (sid) is stamped on the exam-system student so results
+  // The app's registrationNumber (sid) is stamped on the exam-system student so results
   // route back to the right owner.
   const students = db.collection("students");
   let student = await students.findOne({ sid });
@@ -611,10 +614,10 @@ export async function ensureExamWorld(sid: string, studentName: string): Promise
     });
   }
 
-  // A midterm is pre-created after every completed four-week month. Each one
-  // is scoped to that month's four theoretical lectures, not the whole book.
+  // One midterm is pre-created at each semester's midpoint and covers its
+  // completed first-half lectures.
   const midterms: NonNullable<ExamLink["midterms"]> = [];
-  for (const planned of await plannedMidterms(sid)) {
+  for (const planned of midtermPlans) {
     const chapterIds = chapters
       .filter((chapter) => chapter.week >= planned.startWeek && chapter.week <= planned.afterWeek)
       .map((chapter) => chapter.chapter_id);

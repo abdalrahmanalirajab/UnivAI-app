@@ -223,7 +223,7 @@ export default function NavBar() {
                     <Stack>
                       <Typography variant="body1">{user.name}</Typography>
                       <Typography variant="body2" color="text.secondary">
-                        {user.studentId}
+                        {user.registrationNumber}
                       </Typography>
                     </Stack>
                   </MenuItem>
@@ -299,7 +299,7 @@ export default function NavBar() {
               </Typography>
               <Typography variant="subtitle1">{user.name}</Typography>
               <Typography variant="body2" color="text.secondary">
-                {user.studentId}
+                {user.registrationNumber}
               </Typography>
               <Button
                 variant="outlined"

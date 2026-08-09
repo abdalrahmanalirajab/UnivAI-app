@@ -131,7 +131,7 @@ async function bootstrapAuth(): Promise<void> {
   }
   sqlText(`
     UPDATE "user"
-    SET "emailVerified" = true, "studentId" = '${STANDALONE_SID}', "role" = 'student'
+    SET "emailVerified" = true, "registrationNumber" = '${STANDALONE_SID}', "role" = 'student'
     WHERE "email" = '${STANDALONE_USER.email}';
   `);
   console.log(

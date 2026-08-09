@@ -83,7 +83,7 @@ export function validateDocumentStatus(status: string): string | null {
 }
 
 export async function createCollection(
-  studentId: string,
+  registrationNumber: string,
   name: string,
 ): Promise<CollectionResult> {
   const nameMsg = validateCollectionName(name);
@@ -91,18 +91,18 @@ export async function createCollection(
 
   const collection = await queryOne<Collection>(
     `INSERT INTO collections (student_id, name) VALUES ($1, $2) RETURNING ${COLLECTION_COLUMNS}`,
-    [studentId, name.trim()],
+    [registrationNumber, name.trim()],
   );
   return { ok: true, collection: collection! };
 }
 
 export async function getCollection(
   collectionId: number,
-  studentId: string,
+  registrationNumber: string,
 ): Promise<Collection | null> {
   return queryOne<Collection>(
     `SELECT ${COLLECTION_COLUMNS} FROM collections WHERE id = $1 AND student_id = $2`,
-    [collectionId, studentId],
+    [collectionId, registrationNumber],
   );
 }
 
@@ -112,9 +112,9 @@ export type CollectionOwnership =
 
 export async function getOwnedCollection(
   collectionId: number,
-  studentId: string,
+  registrationNumber: string,
 ): Promise<CollectionOwnership> {
-  const owned = await getCollection(collectionId, studentId);
+  const owned = await getCollection(collectionId, registrationNumber);
   if (owned) return { owned: true, collection: owned };
   const exists = await queryOne<{ id: number }>(
     "SELECT id FROM collections WHERE id = $1",
@@ -123,47 +123,29 @@ export async function getOwnedCollection(
   return { owned: false, exists: Boolean(exists) };
 }
 
-export async function hasApprovedPlanReferencingDocument(
-  studentId: string,
-  documentId: number,
-  collectionId: number,
-): Promise<boolean> {
-  const row = await queryOne<{ id: number }>(
-    `SELECT id FROM programmes
-     WHERE student_id = $1 AND status = 'approved' AND collection_id = $2
-       AND EXISTS (
-         SELECT 1 FROM jsonb_array_elements(plan->'source_coverage') AS s
-         WHERE (s->>'document_id')::int = $3
-       )
-     LIMIT 1`,
-    [studentId, collectionId, documentId],
-  );
-  return Boolean(row);
-}
-
 export async function hasInFlightCourseGeneration(
-  studentId: string,
+  registrationNumber: string,
 ): Promise<boolean> {
   const row = await queryOne<{ id: number }>(
     `SELECT id FROM books
      WHERE student_id = $1 AND status IN ('ingesting', 'generating')
      LIMIT 1`,
-    [studentId],
+    [registrationNumber],
   );
   return Boolean(row);
 }
 
-export async function listCollections(studentId: string): Promise<Collection[]> {
+export async function listCollections(registrationNumber: string): Promise<Collection[]> {
   return query<Collection>(
     `SELECT ${COLLECTION_COLUMNS} FROM collections WHERE student_id = $1 ORDER BY created_at DESC`,
-    [studentId],
+    [registrationNumber],
   );
 }
 
 export const DEFAULT_COLLECTION_NAME = "My Library";
 
 export async function getOrCreateCollection(
-  studentId: string,
+  registrationNumber: string,
   name = DEFAULT_COLLECTION_NAME,
 ): Promise<GetOrCreateCollectionResult> {
   const nameMsg = validateCollectionName(name);
@@ -172,7 +154,7 @@ export async function getOrCreateCollection(
   // The transaction-scoped advisory lock makes the read/insert one atomic
   // operation even when two tabs create the learner's first collection at
   // the same time. No client-provided name or collection ID is trusted as an
-  // ownership boundary; studentId always comes from the authenticated session.
+  // ownership boundary; registrationNumber always comes from the authenticated session.
   const row = await queryOne<Collection & { created: boolean }>(
     `WITH lock AS (
        SELECT pg_advisory_xact_lock(hashtextextended($1, 0))
@@ -192,7 +174,7 @@ export async function getOrCreateCollection(
      UNION ALL
      SELECT existing.*, FALSE AS created FROM existing
      LIMIT 1`,
-    [studentId, name.trim()],
+    [registrationNumber, name.trim()],
   );
   if (!row) return { ok: false, error: "Could not create the collection." };
   return { ok: true, collection: row, created: row.created };
@@ -220,7 +202,7 @@ const STALE_UPLOAD_HOURS = 4;
 
 export async function addDocument(
   collectionId: number,
-  studentId: string,
+  registrationNumber: string,
   filename: string,
 ): Promise<AddDocumentResult> {
   const nameMsg = validateFilename(filename);
@@ -263,7 +245,7 @@ export async function addDocument(
      UNION ALL
      SELECT existing.*, FALSE AS created FROM existing
      LIMIT 1`,
-    [collectionId, studentId, filename],
+    [collectionId, registrationNumber, filename],
   );
   if (!doc) {
     return {
@@ -291,33 +273,33 @@ export async function addDocument(
  * document. This query is scoped to one student for the same reason.
  */
 export async function findDocumentByContent(
-  studentId: string,
+  registrationNumber: string,
   contentSha256: string,
 ): Promise<Document | null> {
   return queryOne<Document>(
     `SELECT ${DOCUMENT_COLUMNS} FROM documents
       WHERE student_id = $1 AND content_sha256 = $2 AND status <> 'failed'
       ORDER BY created_at ASC, id ASC LIMIT 1`,
-    [studentId, contentSha256],
+    [registrationNumber, contentSha256],
   );
 }
 
 /** Record the bytes a document turned out to hold, once they are on disk. */
 export async function setDocumentContentHash(
   documentId: number,
-  studentId: string,
+  registrationNumber: string,
   contentSha256: string,
 ): Promise<void> {
   await query(
     `UPDATE documents SET content_sha256 = $1, updated_at = NOW()
       WHERE id = $2 AND student_id = $3`,
-    [contentSha256, documentId, studentId],
+    [contentSha256, documentId, registrationNumber],
   );
 }
 
 export async function listDocuments(
   collectionId: number,
-  studentId: string,
+  registrationNumber: string,
 ): Promise<Document[]> {
   return query<Document>(
     `SELECT ${DOCUMENT_COLUMNS},
@@ -374,23 +356,23 @@ export async function listDocuments(
          )
        ), '[]'::jsonb) AS generation_milestones
      FROM documents WHERE collection_id = $1 AND student_id = $2 ORDER BY created_at DESC`,
-    [collectionId, studentId],
+    [collectionId, registrationNumber],
   );
 }
 
 export async function getDocument(
   documentId: number,
-  studentId: string,
+  registrationNumber: string,
 ): Promise<Document | null> {
   return queryOne<Document>(
     `SELECT ${DOCUMENT_COLUMNS} FROM documents WHERE id = $1 AND student_id = $2`,
-    [documentId, studentId],
+    [documentId, registrationNumber],
   );
 }
 
 export async function updateDocumentStatus(
   documentId: number,
-  studentId: string,
+  registrationNumber: string,
   status: DocumentStatus,
   error?: string,
 ): Promise<DocumentResult> {
@@ -401,7 +383,7 @@ export async function updateDocumentStatus(
     `UPDATE documents SET status = $1, error = $2, updated_at = NOW()
      WHERE id = $3 AND student_id = $4
      RETURNING ${DOCUMENT_COLUMNS}`,
-    [status, error ?? null, documentId, studentId],
+    [status, error ?? null, documentId, registrationNumber],
   );
   if (!doc) return { ok: false, error: "Document not found." };
   return { ok: true, document: doc };
@@ -409,23 +391,23 @@ export async function updateDocumentStatus(
 
 export async function claimDocumentUpload(
   documentId: number,
-  studentId: string,
+  registrationNumber: string,
 ): Promise<Document | null> {
   return queryOne<Document>(
     `UPDATE documents SET status = 'uploading', error = NULL, updated_at = NOW()
      WHERE id = $1 AND student_id = $2 AND status IN ('pending', 'failed')
      RETURNING ${DOCUMENT_COLUMNS}`,
-    [documentId, studentId],
+    [documentId, registrationNumber],
   );
 }
 
 export async function removeDocument(
   documentId: number,
-  studentId: string,
+  registrationNumber: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const result = await query(
     "DELETE FROM documents WHERE id = $1 AND student_id = $2 RETURNING id",
-    [documentId, studentId],
+    [documentId, registrationNumber],
   );
   if (result.length === 0) return { ok: false, error: "Document not found." };
   return { ok: true };
@@ -433,31 +415,49 @@ export async function removeDocument(
 
 export async function removeDocumentAndBook(
   documentId: number,
-  studentId: string,
+  registrationNumber: string,
   storageKey: string,
-): Promise<{ ok: true } | { ok: false; error: string }> {
-  const row = await queryOne<{ id: number }>(
-    `WITH deleted_books AS (
+): Promise<{ ok: true; curriculumInvalidated: boolean } | { ok: false; error: string }> {
+  const row = await queryOne<{ id: number; curriculum_invalidated: boolean }>(
+    `WITH referenced_programmes AS MATERIALIZED (
+       SELECT id FROM programmes
+       WHERE student_id = $1
+         AND collection_id = (SELECT collection_id FROM documents WHERE id = $3 AND student_id = $1)
+         AND EXISTS (
+           SELECT 1 FROM jsonb_array_elements(COALESCE(plan->'source_coverage', '[]'::jsonb)) AS source
+           WHERE (source->>'document_id')::int = $3
+         )
+     ), deleted_section_packs AS (
+       DELETE FROM section_packs
+       WHERE tenant_id = $1
+         AND programme_id IN (SELECT id::text FROM referenced_programmes)
+       RETURNING section_pack_id
+     ), deleted_programmes AS (
+       DELETE FROM programmes WHERE id IN (SELECT id FROM referenced_programmes)
+       RETURNING id
+     ), deleted_books AS (
        DELETE FROM books WHERE student_id = $1 AND filename = $2 RETURNING id
      ), deleted_document AS (
        DELETE FROM documents WHERE id = $3 AND student_id = $1 RETURNING id
      )
-     SELECT id FROM deleted_document`,
-    [studentId, storageKey, documentId],
+     SELECT id,
+            EXISTS (SELECT 1 FROM deleted_programmes) AS curriculum_invalidated
+       FROM deleted_document`,
+    [registrationNumber, storageKey, documentId],
   );
   if (!row) return { ok: false, error: "Document not found." };
-  return { ok: true };
+  return { ok: true, curriculumInvalidated: row.curriculum_invalidated };
 }
 
 export async function retryDocument(
   documentId: number,
-  studentId: string,
+  registrationNumber: string,
 ): Promise<DocumentResult> {
   const doc = await queryOne<Document>(
     `UPDATE documents SET status = 'pending', error = NULL, updated_at = NOW()
      WHERE id = $1 AND student_id = $2 AND status = 'failed'
      RETURNING ${DOCUMENT_COLUMNS}`,
-    [documentId, studentId],
+    [documentId, registrationNumber],
   );
   if (!doc) return { ok: false, error: "Document not found or not in failed state." };
   return { ok: true, document: doc };

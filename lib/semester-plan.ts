@@ -127,23 +127,33 @@ export function parseGeneratedSemesterPlan(value: unknown): GeneratedSemesterPla
     ) {
       throw new GeneratedSemesterPlanError("The generated course has inconsistent semester timing.");
     }
-    const expectedMidterms = Array.from(
+    const expectedMidterms = [Math.ceil(semester.week_count / 2)];
+    const legacyMidterms = Array.from(
       { length: Math.floor(semester.week_count / 4) },
       (_, midtermIndex) => (midtermIndex + 1) * 4,
     );
+    const actualMidterms = Array.isArray(semester.midterms)
+      ? semester.midterms.map((midterm) =>
+          midterm && typeof midterm === "object"
+            ? (midterm as { after_week?: unknown }).after_week
+            : undefined,
+        )
+      : [];
     if (
       !Array.isArray(semester.midterms) ||
-      semester.midterms.length !== expectedMidterms.length ||
       !semester.midterms.every((midterm, midtermIndex) =>
         Boolean(
           midterm &&
           typeof midterm === "object" &&
-          (midterm as { number?: unknown }).number === midtermIndex + 1 &&
-          (midterm as { after_week?: unknown }).after_week === expectedMidterms[midtermIndex],
+          (midterm as { number?: unknown }).number === midtermIndex + 1,
         ),
-      )
+      ) ||
+      (!actualMidterms.every((week, index) => week === expectedMidterms[index]) &&
+        !actualMidterms.every((week, index) => week === legacyMidterms[index])) ||
+      (actualMidterms.length !== expectedMidterms.length &&
+        actualMidterms.length !== legacyMidterms.length)
     ) {
-      throw new GeneratedSemesterPlanError("The generated course has an invalid monthly midterm cadence.");
+      throw new GeneratedSemesterPlanError("The generated course must have one midterm at its midpoint.");
     }
     const semesterWeeks = (plan.weeks as unknown[]).slice(
       globalWeek - 1,

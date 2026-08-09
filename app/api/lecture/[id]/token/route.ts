@@ -134,7 +134,7 @@ export function buildLiveSessionMetadata(input: {
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const gate = await requireLearningActionApi();
   if (gate instanceof Response) return gate;
-  const sid = gate.studentId;
+  const sid = gate.registrationNumber;
 
   const { id } = await context.params;
   const lectureId = id;
@@ -251,7 +251,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     url,
     room,
     // Used by the client for learner-scoped session display only.
-    studentId: sid,
+    registrationNumber: sid,
     lecture: { id: lecture.public_id, week: lecture.week, title: lecture.title },
     attendance: record
       ? { status: record.status, lateMinutes: record.lateMinutes }

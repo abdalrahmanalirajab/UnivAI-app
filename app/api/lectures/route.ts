@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const gate = await requirePreparedSourceApi();
   if (gate instanceof Response) return gate;
-  const sid = gate.studentId;
+  const sid = gate.registrationNumber;
 
   try {
     const lectures = await getLectures(sid);

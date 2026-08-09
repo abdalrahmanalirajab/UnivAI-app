@@ -12,7 +12,7 @@ import { getOnboardingState } from "./onboarding";
  *
  * Note: server-side `createdAt` is a Date object here; the SessionUser contract
  * type (a string) is the wire shape Dev B sees via useSession(). Server callers
- * use id/role/studentId, so the cast is safe in practice.
+ * use id/role/registrationNumber, so the cast is safe in practice.
  */
 export async function getSessionUser(): Promise<SessionUser | null> {
   const session = await auth.api.getSession({ headers: await headers() });

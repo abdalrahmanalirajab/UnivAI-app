@@ -71,15 +71,15 @@ type FakeDb = {
   programmes: FakeRow[];
 };
 
-function seedCollection(db: FakeDb, id: number, studentId: string, name: string) {
-  db.collections.push({ id, student_id: studentId, name, created_at: "2026-07-01T00:00:00Z" });
+function seedCollection(db: FakeDb, id: number, registrationNumber: string, name: string) {
+  db.collections.push({ id, student_id: registrationNumber, name, created_at: "2026-07-01T00:00:00Z" });
 }
 
-function seedDocument(db: FakeDb, id: number, collectionId: number, studentId: string, filename: string, status: string, error: string | null = null) {
+function seedDocument(db: FakeDb, id: number, collectionId: number, registrationNumber: string, filename: string, status: string, error: string | null = null) {
   db.documents.push({
     id,
     collection_id: collectionId,
-    student_id: studentId,
+    student_id: registrationNumber,
     filename,
     status,
     error,
@@ -230,7 +230,14 @@ function createDbFake(): FakeDb {
       return row;
     }
 
-    if (sql.includes("WITH deleted_books AS") && sql.includes("deleted_document")) {
+    if (sql.includes("deleted_books AS") && sql.includes("deleted_document")) {
+      const before = db.programmes.length;
+      db.programmes = db.programmes.filter((programme) => {
+        if (programme.student_id !== params[0]) return true;
+        const coverage = (programme.plan as { source_coverage?: Array<{ document_id: unknown }> })
+          .source_coverage ?? [];
+        return !coverage.some((source) => Number(source.document_id) === Number(params[2]));
+      });
       db.books = db.books.filter(
         (b) => !(b.student_id === params[0] && b.filename === params[1]),
       );
@@ -239,7 +246,7 @@ function createDbFake(): FakeDb {
       );
       if (index === -1) return null;
       const [removed] = db.documents.splice(index, 1);
-      return { id: removed.id };
+      return { id: removed.id, curriculum_invalidated: db.programmes.length < before };
     }
 
     if (sql.includes("FROM collections WHERE id = $1 AND student_id = $2")) {
@@ -658,9 +665,9 @@ describe("Upload route — multi-book library is additive", () => {
     vi.clearAllMocks();
     db = createDbFake();
     useFakeDb(db);
-    mockRequireUserApi.mockResolvedValue({ studentId: SID });
+    mockRequireUserApi.mockResolvedValue({ registrationNumber: SID });
     mockRequireVerifiedUserApi.mockResolvedValue({
-      studentId: SID,
+      registrationNumber: SID,
       emailVerified: true,
     });
     mockRunPython.mockResolvedValue({ stdout: '{"ok":true,"message":"indexed"}', stderr: "" });
@@ -867,7 +874,7 @@ describe("Collections route — idempotent create", () => {
     vi.clearAllMocks();
     db = createDbFake();
     useFakeDb(db);
-    mockRequireUserApi.mockResolvedValue({ studentId: SID });
+    mockRequireUserApi.mockResolvedValue({ registrationNumber: SID });
   });
 
   it("a duplicate create returns the existing collection and inserts no second row", async () => {
@@ -931,7 +938,7 @@ describe("Documents route — safe removal", () => {
     vi.clearAllMocks();
     db = createDbFake();
     useFakeDb(db);
-    mockRequireUserApi.mockResolvedValue({ studentId: SID });
+    mockRequireUserApi.mockResolvedValue({ registrationNumber: SID });
   });
 
   it("removing an unreferenced document succeeds and leaves the other documents intact", async () => {
@@ -953,7 +960,7 @@ describe("Documents route — safe removal", () => {
       { params: Promise.resolve({ collectionId: "1" }) },
     );
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ removed: true });
+    expect(await res.json()).toMatchObject({ removed: true, curriculumInvalidated: false });
 
     expect(db.documents.length).toBe(2);
     const remaining = db.documents.map((d) => ({ id: d.id, filename: d.filename, status: d.status }));
@@ -980,12 +987,12 @@ describe("Documents route — safe removal", () => {
       { params: Promise.resolve({ collectionId: "1" }) },
     );
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ removed: true });
+    expect(await res.json()).toMatchObject({ removed: true, curriculumInvalidated: false });
     expect(db.documents).toHaveLength(0);
     expect(db.books).toHaveLength(0);
   });
 
-  it("removing a document referenced by an approved plan is rejected with 409 and nothing is removed", async () => {
+  it("removing a document referenced by an approved plan clears that plan and succeeds", async () => {
     const { DELETE } = await import("@/app/api/collections/[collectionId]/documents/route");
 
     seedCollection(db, 1, SID, "My Library");
@@ -998,12 +1005,11 @@ describe("Documents route — safe removal", () => {
       makeRequest("http://localhost/api/collections/1/documents?documentId=11"),
       { params: Promise.resolve({ collectionId: "1" }) },
     );
-    expect(res.status).toBe(409);
-    const body = (await res.json()) as { error: string };
-    expect(body.error).toBe("This source is part of your approved plan and cannot be removed.");
-
-    expect(db.documents.length).toBe(3);
-    expect(db.documents.find((d) => d.id === 11)?.filename).toBe("b.pdf");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ removed: true, curriculumInvalidated: true });
+    expect(db.documents.length).toBe(2);
+    expect(db.documents.find((d) => d.id === 11)).toBeUndefined();
+    expect(db.programmes).toHaveLength(0);
   });
 });
 
@@ -1018,7 +1024,7 @@ describe("Cross-user access — denied via mocked session identity", () => {
     vi.clearAllMocks();
     db = createDbFake();
     useFakeDb(db);
-    mockRequireUserApi.mockResolvedValue({ studentId: SID });
+    mockRequireUserApi.mockResolvedValue({ registrationNumber: SID });
   });
 
   it("listing another user's collection documents is denied with 403", async () => {

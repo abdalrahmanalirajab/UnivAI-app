@@ -34,7 +34,7 @@ export async function verifyCertificate(id: string): Promise<VerifiedCertificate
             t.completed_at, c.issued_at
        FROM certificate_artifacts c
        JOIN course_transcripts t ON t.id = c.transcript_id
-       JOIN "user" u ON u."studentId" = c.student_id
+       JOIN "user" u ON u."registrationNumber" = c.student_id
       WHERE c.id = $1`,
     [id],
   );

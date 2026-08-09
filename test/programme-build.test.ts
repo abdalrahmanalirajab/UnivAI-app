@@ -58,7 +58,7 @@ const mergedProgramme = {
 describe("POST /api/programmes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.requireUserApi.mockResolvedValue({ studentId: "S-2026-000004" });
+    mocks.requireUserApi.mockResolvedValue({ registrationNumber: "S-2026-000004" });
     mocks.getOwnedCollection.mockResolvedValue({
       owned: true,
       collection: { id: 5, name: "My Library" },
@@ -107,7 +107,7 @@ describe("POST /api/programmes", () => {
       },
     });
     mocks.createProgrammeIfMissing.mockImplementation(
-      async (_studentId: string, _collectionId: number, name: string, plan: unknown) => ({
+      async (_registrationNumber: string, _collectionId: number, name: string, plan: unknown) => ({
         id: 9,
         name,
         plan,
@@ -247,8 +247,8 @@ describe("POST /api/programmes", () => {
     expect(body.programme.plan.course_structure[0]).toMatchObject({
       chapter_count: 30,
       semesters: [
-        { week_count: 12, quizzes: 12, midterms: 3, finals: 1 },
-        { week_count: 12, quizzes: 12, midterms: 3, finals: 1 },
+        { week_count: 12, quizzes: 12, midterms: 1, finals: 1 },
+        { week_count: 12, quizzes: 12, midterms: 1, finals: 1 },
       ],
     });
   });

@@ -20,20 +20,20 @@ export async function POST(
     return Response.json({ error: "outputId must be a positive integer." }, { status: 400 });
   }
 
-  const result = await createRetryVersion(gate.studentId, outputId);
+  const result = await createRetryVersion(gate.registrationNumber, outputId);
   if (!result.ok) {
     return Response.json({ error: result.error }, { status: result.status });
   }
 
   try {
     spawnGeneration(
-      path.join(REPO_ROOT, "uploads", gate.studentId, result.filename),
+      path.join(REPO_ROOT, "uploads", gate.registrationNumber, result.filename),
       result.output.book_id,
       "full",
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not start generation.";
-    await markRetryFailed(gate.studentId, result.output.id, message);
+    await markRetryFailed(gate.registrationNumber, result.output.id, message);
     return Response.json(
       { error: message },
       { status: 500 },

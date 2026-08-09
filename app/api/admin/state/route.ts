@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * SUDO endpoint: everything the system knows about ONE student. Admin+ only.
- * Multi-tenant: the admin picks the student with ?sid=<studentId>. Without it
+ * Multi-tenant: the admin picks the student with ?sid=<registrationNumber>. Without it
  * we return the list of students so the panel can offer a picker.
  */
 export async function GET(request: NextRequest) {
@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
   // so both come back regardless of whether a student is selected.
   const [virtualNow, offsetMs] = await Promise.all([now(), getOffsetMs()]);
   const students = await query(
-    `SELECT "studentId" AS sid, name, email, role FROM "user" ORDER BY "createdAt" ASC`
+    `SELECT "registrationNumber" AS sid, name, email, role FROM "user" ORDER BY "createdAt" ASC`
   );
   const clock = { now: virtualNow.toISOString(), offsetMs };
 

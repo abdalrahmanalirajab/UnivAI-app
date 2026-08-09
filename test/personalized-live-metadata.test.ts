@@ -61,7 +61,7 @@ const createRoomSpy = vi.spyOn(RoomServiceClient.prototype, "createRoom");
 const updateRoomMetadataSpy = vi.spyOn(RoomServiceClient.prototype, "updateRoomMetadata");
 
 const MOHAMED = {
-  studentId: "S-2026-000042",
+  registrationNumber: "S-2026-000042",
   name: "Mohamed Hany",
   email: "mohamed@univai.local",
   emailVerified: true,
@@ -72,7 +72,7 @@ const MOHAMED = {
 };
 
 const SARA = {
-  studentId: "S-2026-000043",
+  registrationNumber: "S-2026-000043",
   name: "Sara Ali",
   email: "sara@univai.local",
   emailVerified: true,
@@ -87,7 +87,7 @@ const LECTURE = { id: 1, public_id: PUBLIC_LECTURE_ID, week: 3, title: "Week 3" 
 
 function post(
   id = PUBLIC_LECTURE_ID,
-  body: Record<string, unknown> = { name: "Eve Mallory", studentId: "S-ATTACKER-99" },
+  body: Record<string, unknown> = { name: "Eve Mallory", registrationNumber: "S-ATTACKER-99" },
 ) {
   return POST(
     new NextRequest(`http://localhost/api/lecture/${id}/token`, {
@@ -100,7 +100,7 @@ function post(
 
 async function mintAndVerify(
   gate = MOHAMED,
-  body: Record<string, unknown> = { name: "Eve Mallory", studentId: "S-ATTACKER-99" },
+  body: Record<string, unknown> = { name: "Eve Mallory", registrationNumber: "S-ATTACKER-99" },
 ) {
   mockGate.mockResolvedValue(gate);
   const response = await post(PUBLIC_LECTURE_ID, body);
@@ -152,14 +152,14 @@ describe("buildLiveSessionMetadata", () => {
     const a = buildLiveSessionMetadata({
       lectureId: PUBLIC_LECTURE_ID,
       week: 3,
-      sid: MOHAMED.studentId,
+      sid: MOHAMED.registrationNumber,
       planVersion: 3,
       spokenName: "Mohamed Hany",
     });
     const b = buildLiveSessionMetadata({
       lectureId: PUBLIC_LECTURE_ID,
       week: 3,
-      sid: MOHAMED.studentId,
+      sid: MOHAMED.registrationNumber,
       planVersion: 3,
       spokenName: "Mohamed Hany",
     });
@@ -168,7 +168,7 @@ describe("buildLiveSessionMetadata", () => {
       v: LIVE_METADATA_VERSION,
       lectureId: PUBLIC_LECTURE_ID,
       week: 3,
-      sid: MOHAMED.studentId,
+      sid: MOHAMED.registrationNumber,
       planVersion: 3,
       nonce: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i),
       spokenName: "Mohamed Hany",
@@ -199,17 +199,17 @@ describe("POST /api/lecture/[id]/token — personalized signed metadata", () => 
   it("mints a verifiable signed token whose metadata holds only the learner's safe spoken name", async () => {
     const { claims, metadata } = await mintAndVerify();
 
-    expect(claims.sub).toBe(MOHAMED.studentId);
+    expect(claims.sub).toBe(MOHAMED.registrationNumber);
     expect(claims.name).toBe("Mohamed Hany");
     expect((claims.video as { room?: string }).room).toBe(
-      `lecture-${MOHAMED.studentId}-week-${LECTURE.week}`,
+      `lecture-${MOHAMED.registrationNumber}-week-${LECTURE.week}`,
     );
 
     expect(metadata).toEqual({
       v: LIVE_METADATA_VERSION,
       lectureId: PUBLIC_LECTURE_ID,
       week: 3,
-      sid: MOHAMED.studentId,
+      sid: MOHAMED.registrationNumber,
       planVersion: 3,
       nonce: expect.any(String),
       spokenName: "Mohamed Hany",
@@ -234,7 +234,7 @@ describe("POST /api/lecture/[id]/token — personalized signed metadata", () => 
       plan_version: 3,
       week: 3,
       lecture_id: "course-ai-101",
-      learner_id: MOHAMED.studentId,
+      learner_id: MOHAMED.registrationNumber,
       nonce: metadata.nonce,
       display_name: "Mohamed Hany",
     });
@@ -260,7 +260,7 @@ describe("POST /api/lecture/[id]/token — personalized signed metadata", () => 
     const { claims, metadata } = await mintAndVerify();
     expect(claims.name).toBe("Mohamed Hany");
     expect(metadata.spokenName).toBe("Mohamed Hany");
-    expect(metadata.sid).toBe(MOHAMED.studentId);
+    expect(metadata.sid).toBe(MOHAMED.registrationNumber);
     expect(JSON.stringify(claims)).not.toContain("Eve");
     expect(JSON.stringify(metadata)).not.toContain("Eve");
     expect(JSON.stringify(claims)).not.toContain("ATTACKER");
@@ -272,8 +272,8 @@ describe("POST /api/lecture/[id]/token — personalized signed metadata", () => 
 
     expect(mohamed.metadata.spokenName).toBe("Mohamed Hany");
     expect(sara.metadata.spokenName).toBe("Sara Ali");
-    expect(mohamed.metadata.sid).toBe(MOHAMED.studentId);
-    expect(sara.metadata.sid).toBe(SARA.studentId);
+    expect(mohamed.metadata.sid).toBe(MOHAMED.registrationNumber);
+    expect(sara.metadata.sid).toBe(SARA.registrationNumber);
     expect(mohamed.metadata.nonce).not.toBe(sara.metadata.nonce);
     expect(JSON.stringify(sara.metadata)).not.toContain("Mohamed");
     expect(JSON.stringify(mohamed.metadata)).not.toContain("Sara");
@@ -319,7 +319,7 @@ describe("POST /api/lecture/[id]/token — personalized signed metadata", () => 
 
   it("rejects expired tokens", async () => {
     const expired = await new AccessToken(mockEnv.LIVEKIT_API_KEY, mockEnv.LIVEKIT_API_SECRET, {
-      identity: MOHAMED.studentId,
+      identity: MOHAMED.registrationNumber,
       ttl: -60,
     }).toJwt();
     await expect(VERIFIER.verify(expired, 0)).rejects.toThrow();

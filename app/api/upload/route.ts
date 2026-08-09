@@ -74,8 +74,8 @@ function readFormString(value: FormDataEntryValue | null): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-function uploadPath(studentId: string, storageKey: string): string {
-  return path.join(REPO_ROOT, "uploads", studentId, ...storageKey.split("/"));
+function uploadPath(registrationNumber: string, storageKey: string): string {
+  return path.join(REPO_ROOT, "uploads", registrationNumber, ...storageKey.split("/"));
 }
 
 function publicBook(book: Book | null): Book | null {
@@ -90,7 +90,7 @@ export async function GET() {
 
   const books = await query<Book & { uploaded_at: string }>(
     `SELECT ${BOOK_COLUMNS}, uploaded_at FROM books WHERE student_id = $1 ORDER BY id DESC`,
-    [gate.studentId]
+    [gate.registrationNumber]
   );
   return Response.json({
     books: books.map((book) => publicBook(book)),
@@ -100,7 +100,7 @@ export async function GET() {
 }
 
 /** Where a claimed document is parked, so the wrapper below can release it. */
-type UploadClaim = { current: { documentId: number; studentId: string } | null };
+type UploadClaim = { current: { documentId: number; registrationNumber: string } | null };
 
 export async function POST(request: NextRequest) {
   // Claiming a document parks it in 'uploading', and only this request moves it
@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
     if (claim.current) {
       await updateDocumentStatus(
         claim.current.documentId,
-        claim.current.studentId,
+        claim.current.registrationNumber,
         "failed",
         "The upload stopped unexpectedly. Try again.",
       ).catch(() => {});
@@ -130,7 +130,7 @@ async function runUpload(request: NextRequest, claim: UploadClaim) {
   // Authorization must run before multipart parsing or any upload side effect.
   const gate = await requireVerifiedUserApi();
   if (gate instanceof Response) return gate;
-  const sid = gate.studentId;
+  const sid = gate.registrationNumber;
 
   const form = await request.formData().catch(() => null);
   const fileValue = form?.get("file");
@@ -355,7 +355,7 @@ async function runUpload(request: NextRequest, claim: UploadClaim) {
     );
   }
   document = claimed;
-  claim.current = { documentId: document.id, studentId: sid };
+  claim.current = { documentId: document.id, registrationNumber: sid };
 
   const storageKey = documentStorageKey(collectionId, document.id, document.filename);
   const destination = uploadPath(sid, storageKey);

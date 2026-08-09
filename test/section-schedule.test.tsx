@@ -338,7 +338,7 @@ function sessionUser(overrides: Partial<SessionUser> = {}): SessionUser {
     emailVerified: true,
     phone: null,
     role: "student",
-    studentId: "S-2026-000001",
+    registrationNumber: "S-2026-000001",
     image: null,
     createdAt: "2026-08-01T00:00:00.000Z",
     ...overrides,
@@ -483,8 +483,8 @@ describe("api routes — real backend behavior", () => {
     expect(await res.json()).toEqual({ error: "Admins only." });
   });
 
-  it("schedule queries are scoped to the session's studentId — another user's ID is never honored", async () => {
-    await setSession(sessionUser({ studentId: "S-2026-000002" }));
+  it("schedule queries are scoped to the session's registrationNumber — another user's ID is never honored", async () => {
+    await setSession(sessionUser({ registrationNumber: "S-2026-000002" }));
     const { GET } = await import("@/app/api/lectures/route");
 
     const res = await GET();
@@ -502,7 +502,7 @@ describe("api routes — real backend behavior", () => {
   });
 
   it("an already-started plan's history cannot be rewritten (409 PLAN_ALREADY_STARTED)", async () => {
-    await setSession(sessionUser({ role: "super_admin", studentId: "S-2026-000042" }));
+    await setSession(sessionUser({ role: "super_admin", registrationNumber: "S-2026-000042" }));
     const { POST } = await import("@/app/api/admin/restart/route");
 
     const res = await POST(
@@ -526,7 +526,7 @@ describe("api routes — real backend behavior", () => {
   it("a not-yet-started plan passes the real guard and the restart rewrites it", async () => {
     vi.stubEnv("UNIVAI_MODE", "standalone");
     try {
-      await setSession(sessionUser({ role: "super_admin", studentId: "S-2026-000042" }));
+      await setSession(sessionUser({ role: "super_admin", registrationNumber: "S-2026-000042" }));
       mockGetSetting.mockResolvedValue(SCHEDULE_BINDING);
       mockQuery.mockImplementation(async (sql: string) => {
         if (sql.includes("MIN(starts_at)"))

@@ -31,7 +31,7 @@ export async function GET(
     return Response.json({ error: "Invalid programme ID." }, { status: 400 });
   }
 
-  const programme = await getProgramme(programmeId, gate.studentId);
+  const programme = await getProgramme(programmeId, gate.registrationNumber);
   if (!programme) {
     return Response.json({ error: "Programme not found." }, { status: 404 });
   }
@@ -81,7 +81,7 @@ export async function PATCH(
     );
   }
 
-  const programme = await getProgramme(programmeId, gate.studentId);
+  const programme = await getProgramme(programmeId, gate.registrationNumber);
   if (!programme) {
     return Response.json({ error: "Programme not found." }, { status: 404 });
   }
@@ -308,7 +308,7 @@ export async function PATCH(
 
   const result = await updateProgrammePlan(
     programmeId,
-    gate.studentId,
+    gate.registrationNumber,
     updatedPlan,
     expectedVersion,
   );

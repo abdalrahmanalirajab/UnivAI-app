@@ -36,7 +36,7 @@ export async function GET(
        FROM lecture_artifacts la
        JOIN lectures l ON l.lecture_artifact_id = la.artifact_id
       WHERE la.artifact_id = $1::uuid AND l.student_id = $2`,
-    [id, gate.studentId],
+    [id, gate.registrationNumber],
   );
   if (!owned) return new Response("Not found", { status: 404 });
 

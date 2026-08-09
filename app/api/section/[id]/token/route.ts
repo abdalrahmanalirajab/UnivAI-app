@@ -20,7 +20,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
     return Response.json({ error: "No such section." }, { status: 404 });
   }
-  const section = await getSectionPack(gate.studentId, id);
+  const section = await getSectionPack(gate.registrationNumber, id);
   if (!section) return Response.json({ error: "No such section." }, { status: 404 });
   // Open on the clock, like the week's quiz: a section is practice for a
   // lecture that has been delivered, not a reward for staying to the last line.
@@ -39,11 +39,11 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     return Response.json({ error: "LiveKit is not configured." }, { status: 503 });
   }
   const nonce = randomUUID();
-  const room = `section-${gate.studentId}-week-${section.week}`;
+  const room = `section-${gate.registrationNumber}-week-${section.week}`;
   const metadata = {
     schema_name: "univai.section-session-meta",
     schema_version: "2.0.0",
-    learner_id: gate.studentId,
+    learner_id: gate.registrationNumber,
     section_pack_id: section.id,
     nonce,
   };
@@ -62,7 +62,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
   }
 
   const token = new AccessToken(apiKey, apiSecret, {
-    identity: gate.studentId,
+    identity: gate.registrationNumber,
     name: gate.name,
     ttl: TOKEN_TTL_SECONDS,
     metadata: JSON.stringify({ sectionPackId: section.id, nonce }),

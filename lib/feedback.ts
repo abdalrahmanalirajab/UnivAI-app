@@ -161,7 +161,7 @@ function toOutput(row: OutputRow): OutputVersion {
   };
 }
 
-async function selectOutput(studentId: string, outputId: number): Promise<OutputVersion | null> {
+async function selectOutput(registrationNumber: string, outputId: number): Promise<OutputVersion | null> {
   const row = await queryOne<OutputRow>(
     `SELECT ov.id, ov.source_qa_id, ov.version::text AS output_version,
             ov.trace_id, ov.book_id, ov.status, ov.created_at,
@@ -170,13 +170,13 @@ async function selectOutput(studentId: string, outputId: number): Promise<Output
        JOIN qa_log q ON q.id = ov.source_qa_id
        JOIN books b ON b.id = ov.book_id
       WHERE ov.id = $1 AND ov.student_id = $2`,
-    [outputId, studentId],
+    [outputId, registrationNumber],
   );
   return row ? toOutput(row) : null;
 }
 
 export async function getLatestLectureOutput(
-  studentId: string,
+  registrationNumber: string,
   lectureId: string,
 ): Promise<OutputVersion | null> {
   await ensureFeedbackSchema();
@@ -189,7 +189,7 @@ export async function getLatestLectureOutput(
       WHERE q.student_id = $1 AND l.public_id = $2::uuid
       ORDER BY q.id DESC
       LIMIT 1`,
-    [studentId, lectureId],
+    [registrationNumber, lectureId],
   );
   if (!source?.book_id) return null;
 
@@ -198,20 +198,20 @@ export async function getLatestLectureOutput(
        (student_id, source_qa_id, book_id, version, trace_id, status)
      VALUES ($1, $2, $3, 1, $4, 'ready')
      ON CONFLICT (student_id, source_qa_id, version) DO NOTHING`,
-    [studentId, source.source_qa_id, source.book_id, randomUUID()],
+    [registrationNumber, source.source_qa_id, source.book_id, randomUUID()],
   );
 
   const latest = await queryOne<{ id: number }>(
     `SELECT id FROM output_versions
       WHERE student_id = $1 AND source_qa_id = $2
       ORDER BY version DESC LIMIT 1`,
-    [studentId, source.source_qa_id],
+    [registrationNumber, source.source_qa_id],
   );
-  return latest ? selectOutput(studentId, latest.id) : null;
+  return latest ? selectOutput(registrationNumber, latest.id) : null;
 }
 
 export async function submitFeedback(
-  studentId: string,
+  registrationNumber: string,
   input: FeedbackInput,
 ): Promise<FeedbackResult> {
   const validationMessage = validateFeedback(input);
@@ -228,7 +228,7 @@ export async function submitFeedback(
      RETURNING id, student_id, output_id, output_version, trace_id,
                rating, issue, note, created_at`,
     [
-      studentId,
+      registrationNumber,
       input.output_id,
       input.output_version,
       input.trace_id,
@@ -247,7 +247,7 @@ export type RetryResult =
   | { ok: false; error: string; status: 404 | 409 };
 
 export async function createRetryVersion(
-  studentId: string,
+  registrationNumber: string,
   outputId: number,
 ): Promise<RetryResult> {
   await ensureFeedbackSchema();
@@ -265,7 +265,7 @@ export async function createRetryVersion(
          JOIN books b ON b.id = ov.book_id AND b.student_id = ov.student_id
         WHERE ov.id = $1 AND ov.student_id = $2
         FOR UPDATE OF b`,
-      [outputId, studentId],
+      [outputId, registrationNumber],
     );
     const source = selected.rows[0];
     if (!source) {
@@ -281,7 +281,7 @@ export async function createRetryVersion(
       `SELECT COALESCE(MAX(version), 0)::integer + 1 AS version
          FROM output_versions
         WHERE student_id = $1 AND source_qa_id = $2`,
-      [studentId, source.source_qa_id],
+      [registrationNumber, source.source_qa_id],
     );
     const version = versionResult.rows[0].version;
     const inserted = await client.query<{ id: number }>(
@@ -289,16 +289,16 @@ export async function createRetryVersion(
          (student_id, source_qa_id, book_id, version, trace_id, status)
        VALUES ($1, $2, $3, $4, $5, 'generating')
        RETURNING id`,
-      [studentId, source.source_qa_id, source.book_id, version, randomUUID()],
+      [registrationNumber, source.source_qa_id, source.book_id, version, randomUUID()],
     );
     await client.query(
       `UPDATE books SET status = 'generating', error = NULL,
           progress = $1 WHERE id = $2 AND student_id = $3`,
-      ["Retrying generation — previous output retained", source.book_id, studentId],
+      ["Retrying generation — previous output retained", source.book_id, registrationNumber],
     );
     await client.query("COMMIT");
 
-    const output = await selectOutput(studentId, inserted.rows[0].id);
+    const output = await selectOutput(registrationNumber, inserted.rows[0].id);
     if (!output) throw new Error("Retry output was not persisted.");
     return { ok: true, output, filename: source.filename };
   } catch (error) {
@@ -310,7 +310,7 @@ export async function createRetryVersion(
 }
 
 export async function markRetryFailed(
-  studentId: string,
+  registrationNumber: string,
   outputId: number,
   message: string,
 ): Promise<void> {
@@ -324,6 +324,6 @@ export async function markRetryFailed(
      UPDATE books
         SET status = 'failed', error = $3, progress = 'Retry failed'
       WHERE id IN (SELECT book_id FROM failed_output) AND student_id = $2`,
-    [outputId, studentId, message.slice(0, 1000)],
+    [outputId, registrationNumber, message.slice(0, 1000)],
   );
 }

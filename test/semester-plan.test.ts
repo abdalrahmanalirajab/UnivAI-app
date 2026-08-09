@@ -26,10 +26,7 @@ function coursePlan(chapterCount: number, semesterWeeks: number[]) {
       starts_at_week: startsAtWeek,
       ends_at_week: globalWeek - 1,
       quiz_count: weekCount,
-      midterms: Array.from({ length: Math.floor(weekCount / 4) }, (_, midtermIndex) => ({
-        number: midtermIndex + 1,
-        after_week: (midtermIndex + 1) * 4,
-      })),
+      midterms: [{ number: 1, after_week: Math.ceil(weekCount / 2) }],
       final_after_week: weekCount,
     };
   });

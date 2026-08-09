@@ -16,7 +16,7 @@ export async function POST(
 ) {
   // Authorization comes ONLY from the server session (auth.api.getSession via
   // requireUserApi). Nothing client-sent is ever trusted for authorization:
-  // the session's studentId scopes every query, and the client-sent
+  // the session's registrationNumber scopes every query, and the client-sent
   // planVersion is used solely as the optimistic-concurrency check required
   // for exact-version approval — never as an authorization signal. Any other
   // client-sent user id, name, or status field in the body is ignored.
@@ -45,7 +45,7 @@ export async function POST(
     );
   }
 
-  const result = await approveProgramme(programmeId, gate.studentId, planVersion);
+  const result = await approveProgramme(programmeId, gate.registrationNumber, planVersion);
 
   if (!result.ok) {
     // Conflicts carry the newest version's data (result.current includes the
@@ -62,7 +62,7 @@ export async function POST(
   // already generating and starts nothing.
   const started = await startApprovedCourseBuild(
     result.programme.collection_id,
-    gate.studentId,
+    gate.registrationNumber,
   );
 
   // Names the exact approved version alongside the full programme so callers

@@ -72,12 +72,12 @@ export function spawnGeneration(
 
 /** Stop only the process attached to this learner-owned source, if still alive. */
 export async function cancelGenerationForSource(
-  studentId: string,
+  registrationNumber: string,
   storageKey: string,
 ): Promise<void> {
   const book = await queryOne<{ id: number; generation_pid: number | null }>(
     `SELECT id, generation_pid FROM books WHERE student_id = $1 AND filename = $2`,
-    [studentId, storageKey],
+    [registrationNumber, storageKey],
   );
   const pid = book?.generation_pid;
   if (!pid || !Number.isInteger(pid) || pid < 1) return;
@@ -88,7 +88,7 @@ export async function cancelGenerationForSource(
   }
   await query(
     "UPDATE books SET generation_pid = NULL WHERE id = $1 AND student_id = $2",
-    [book.id, studentId],
+    [book.id, registrationNumber],
   );
 }
 
@@ -104,14 +104,14 @@ export async function cancelGenerationForSource(
  */
 export async function startApprovedCourseBuild(
   collectionId: number,
-  studentId: string,
+  registrationNumber: string,
 ): Promise<number[]> {
   const books = await query<{ id: number; filename: string }>(
     `SELECT id, filename FROM books
       WHERE student_id = $1
         AND filename LIKE 'collections/' || $2::text || '/%'
         AND status IN ('awaiting_approval', 'failed', 'partial_failed', 'partial')`,
-    [studentId, collectionId],
+    [registrationNumber, collectionId],
   );
 
   for (const book of books) {
@@ -120,10 +120,10 @@ export async function startApprovedCourseBuild(
           error = NULL, progress = 'Building your approved course…',
           heartbeat_at = CURRENT_TIMESTAMP
         WHERE id = $1 AND student_id = $2`,
-      [book.id, studentId],
+      [book.id, registrationNumber],
     );
     spawnGeneration(
-      path.join(REPO_ROOT, "uploads", studentId, ...book.filename.split("/")),
+      path.join(REPO_ROOT, "uploads", registrationNumber, ...book.filename.split("/")),
       book.id,
       "full",
     );

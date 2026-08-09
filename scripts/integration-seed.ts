@@ -5,8 +5,8 @@ import { Pool } from "pg";
 
 import { STANDALONE_SID, STANDALONE_USER } from "../lib/runtime";
 
-const USER_ID = "integration-demo-user-000042";
-const ACCOUNT_ID = "integration-demo-account-000042";
+const USER_ID = "00000000-0000-4000-8000-000000000042";
+const ACCOUNT_ID = "00000000-0000-4000-9000-000000000042";
 
 function safeDatabaseUrl(): string {
   const value =
@@ -31,7 +31,7 @@ async function main(): Promise<void> {
     await client.query(
       `INSERT INTO "user"
         ("id", "name", "email", "emailVerified", "createdAt", "updatedAt",
-         "role", "phone", "studentId")
+         "role", "phone", "registrationNumber")
        VALUES ($1, $2, $3, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP,
                'student', $4, $5)
        ON CONFLICT ("email") DO UPDATE SET
@@ -40,7 +40,7 @@ async function main(): Promise<void> {
          "updatedAt" = CURRENT_TIMESTAMP,
          "role" = 'student',
          "phone" = EXCLUDED."phone",
-         "studentId" = EXCLUDED."studentId"`,
+         "registrationNumber" = EXCLUDED."registrationNumber"`,
       [
         USER_ID,
         STANDALONE_USER.name,

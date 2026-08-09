@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { betterAuth } from "better-auth";
 import { admin } from "better-auth/plugins";
 import { createAuthMiddleware } from "better-auth/api";
@@ -16,13 +17,19 @@ import { normalizePhone } from "./validators";
  *
  * Reuses the app's existing pg Pool (lib/db.ts) — no second connection, no ORM.
  * `role` and `banned/banReason/banExpires` come from the admin plugin; `phone`
- * and `studentId` are our additional fields. `studentId` and the super_admin
+ * and `registrationNumber` are our additional fields. `registrationNumber` and the super_admin
  * bootstrap are assigned server-side in the create hook, never from the client.
  */
 export const auth = betterAuth({
   secret: env.BETTER_AUTH_SECRET,
   baseURL: env.BETTER_AUTH_URL,
   database: pool,
+  advanced: {
+    database: {
+      // Generate in the app so UUIDs work both before and after migration 014.
+      generateId: () => randomUUID(),
+    },
+  },
 
   // Browsers send an Origin header and Better Auth rejects any origin it does
   // not trust (baseURL is trusted by default). Local dev may run on :3000 or
@@ -96,7 +103,7 @@ export const auth = betterAuth({
       // starts with an empty phone the learner fills in on /profile.
       phone: { type: "string", required: false, input: true },
       // The RAG / LiveKit namespace key. Server-generated; client can't set it.
-      studentId: { type: "string", required: false, input: false },
+      registrationNumber: { type: "string", required: false, input: false },
     },
     changeEmail: {
       enabled: true,
@@ -121,7 +128,7 @@ export const auth = betterAuth({
   databaseHooks: {
     user: {
       create: {
-        // Assign studentId + bootstrap the super_admin here so neither can ever
+        // Assign registrationNumber + bootstrap the super_admin here so neither can ever
         // arrive from the client. defaultRole ("student") from the admin plugin
         // applies unless we override for the configured owner email.
         before: async (user) => {
@@ -129,7 +136,7 @@ export const auth = betterAuth({
             "SELECT nextval('student_id_seq') AS n"
           );
           const serial = String(seq.rows[0].n).padStart(6, "0");
-          const studentId = `S-${new Date().getFullYear()}-${serial}`;
+          const registrationNumber = `S-${new Date().getFullYear()}-${serial}`;
 
           const isOwner =
             !!env.SUPER_ADMIN_EMAIL &&
@@ -138,7 +145,7 @@ export const auth = betterAuth({
           return {
             data: {
               ...user,
-              studentId,
+              registrationNumber,
               // NULL means "not given". Google sends no phone number, and the
               // register form no longer insists on one, so a blank arrives here
               // as "" and is normalised — one absent value, one representation.

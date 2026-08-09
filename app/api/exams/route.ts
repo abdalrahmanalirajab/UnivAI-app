@@ -30,7 +30,7 @@ export async function GET() {
   // (populated only by verified callbacks), so the state it returns can never
   // be influenced by anything the URL claims.
 
-  const statuses = await getExamStatuses(gate.studentId);
+  const statuses = await getExamStatuses(gate.registrationNumber);
   return Response.json({
     exams: statuses.map((status) => ({
       ...status,
@@ -39,7 +39,7 @@ export async function GET() {
     })),
     // The final's last status as reported by the Exam service (session-scoped
     // cache); null when the service has never reported one for this learner.
-    final: await getFinalExamStatus(gate.studentId),
+    final: await getFinalExamStatus(gate.registrationNumber),
   });
 }
 
@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const url = await startExam(
-      gate.studentId,
+      gate.registrationNumber,
       gate.name,
       kind,
       assessmentWeek,
@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
  */
 async function startFinalExam(gate: SessionUser): Promise<Response> {
   try {
-    const availability = await getFinalExamAvailability(gate.studentId);
+    const availability = await getFinalExamAvailability(gate.registrationNumber);
     if (!availability.available) {
       return Response.json(
         {
@@ -109,7 +109,7 @@ async function startFinalExam(gate: SessionUser): Promise<Response> {
         { status: 409 },
       );
     }
-    const link = await ensureExamWorld(gate.studentId, gate.name);
+    const link = await ensureExamWorld(gate.registrationNumber, gate.name);
 
     const res = await fetch(`${EXAM_SYSTEM_URL}/api/exams/final/start`, {
       method: "POST",
@@ -122,7 +122,7 @@ async function startFinalExam(gate: SessionUser): Promise<Response> {
         curriculum_id: link.curriculum_id,
         // Carried through so the exam system can echo it in the result webhook,
         // routing the grade back to this owner (see /api/exams/callback).
-        student_sid: gate.studentId,
+        student_sid: gate.registrationNumber,
       }),
     });
 
@@ -147,7 +147,7 @@ async function startFinalExam(gate: SessionUser): Promise<Response> {
     // Remember the status the service reported (session-scoped) so the /exams
     // page can render it. Denials are deliberately NOT persisted: they are
     // relayed to the caller as-is and never made to outlive a later change.
-    await saveFinalExamStatus(gate.studentId, toFinalExamStatus(payload as FinalExamAttemptView));
+    await saveFinalExamStatus(gate.registrationNumber, toFinalExamStatus(payload as FinalExamAttemptView));
     return Response.json({ url });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not start the final exam.";

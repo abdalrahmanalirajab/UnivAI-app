@@ -70,17 +70,17 @@ function toProgramme(row: Record<string, unknown>): Programme {
 
 export async function getProgramme(
   programmeId: number,
-  studentId: string,
+  registrationNumber: string,
 ): Promise<Programme | null> {
   const row = await queryOne<Record<string, unknown>>(
     `SELECT ${COLUMNS} FROM programmes WHERE id = $1 AND student_id = $2`,
-    [programmeId, studentId],
+    [programmeId, registrationNumber],
   );
   return row ? toProgramme(row) : null;
 }
 
 export async function createProgramme(
-  studentId: string,
+  registrationNumber: string,
   collectionId: number,
   name: string,
   plan: ProgrammePlanV1,
@@ -88,26 +88,26 @@ export async function createProgramme(
   const row = await queryOne<Record<string, unknown>>(
     `INSERT INTO programmes (student_id, collection_id, name, plan, plan_version)
      VALUES ($1, $2, $3, $4::jsonb, 1) RETURNING ${COLUMNS}`,
-    [studentId, collectionId, name, JSON.stringify(plan)],
+    [registrationNumber, collectionId, name, JSON.stringify(plan)],
   );
   return toProgramme(row!);
 }
 
 export async function getProgrammeForCollection(
   collectionId: number,
-  studentId: string,
+  registrationNumber: string,
 ): Promise<Programme | null> {
   const row = await queryOne<Record<string, unknown>>(
     `SELECT ${COLUMNS} FROM programmes
      WHERE collection_id = $1 AND student_id = $2
      ORDER BY created_at ASC, id ASC LIMIT 1`,
-    [collectionId, studentId],
+    [collectionId, registrationNumber],
   );
   return row ? toProgramme(row) : null;
 }
 
 export async function createProgrammeIfMissing(
-  studentId: string,
+  registrationNumber: string,
   collectionId: number,
   name: string,
   plan: ProgrammePlanV1,
@@ -130,18 +130,18 @@ export async function createProgrammeIfMissing(
      SELECT * FROM inserted
      UNION ALL SELECT * FROM existing
      LIMIT 1`,
-    [studentId, collectionId, name, JSON.stringify(plan)],
+    [registrationNumber, collectionId, name, JSON.stringify(plan)],
   );
   return toProgramme(row!);
 }
 
 export async function updateProgrammePlan(
   programmeId: number,
-  studentId: string,
+  registrationNumber: string,
   plan: ProgrammePlanV1,
   expectedVersion: number,
 ): Promise<ProgrammeResult> {
-  const current = await getProgramme(programmeId, studentId);
+  const current = await getProgramme(programmeId, registrationNumber);
   if (!current) {
     return { ok: false, error: "Programme not found.", current: null };
   }
@@ -156,10 +156,10 @@ export async function updateProgrammePlan(
      SET plan = $1::jsonb, plan_version = plan_version + 1, updated_at = NOW()
      WHERE id = $2 AND student_id = $3 AND plan_version = $4
      RETURNING ${COLUMNS}`,
-    [JSON.stringify(plan), programmeId, studentId, expectedVersion],
+    [JSON.stringify(plan), programmeId, registrationNumber, expectedVersion],
   );
   if (!row) {
-    const refreshed = await getProgramme(programmeId, studentId);
+    const refreshed = await getProgramme(programmeId, registrationNumber);
     return { ok: false, error: "Stale plan version. Refresh and try again.", current: refreshed };
   }
   return { ok: true, programme: toProgramme(row) };
@@ -167,10 +167,10 @@ export async function updateProgrammePlan(
 
 export async function approveProgramme(
   programmeId: number,
-  studentId: string,
+  registrationNumber: string,
   planVersion: number,
 ): Promise<ProgrammeResult> {
-  const current = await getProgramme(programmeId, studentId);
+  const current = await getProgramme(programmeId, registrationNumber);
   if (!current) {
     return { ok: false, error: "Programme not found.", current: null };
   }
@@ -207,10 +207,10 @@ export async function approveProgramme(
      SET status = 'approved', approved_at = NOW(), updated_at = NOW()
      WHERE id = $1 AND student_id = $2 AND plan_version = $3 AND status = 'proposed'
      RETURNING ${COLUMNS}`,
-    [programmeId, studentId, planVersion],
+    [programmeId, registrationNumber, planVersion],
   );
   if (!row) {
-    const refreshed = await getProgramme(programmeId, studentId);
+    const refreshed = await getProgramme(programmeId, registrationNumber);
     return { ok: false, error: "Stale plan version. Refresh and try again.", current: refreshed };
   }
   return { ok: true, programme: toProgramme(row) };

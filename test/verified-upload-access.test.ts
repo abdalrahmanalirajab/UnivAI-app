@@ -119,7 +119,7 @@ describe("POST /api/upload verified-session boundary", () => {
 
   it("lets a verified learner continue into normal upload validation", async () => {
     mocks.gate.mockResolvedValue({
-      studentId: "S-2026-000022",
+      registrationNumber: "S-2026-000022",
       emailVerified: true,
     });
     mocks.formData.mockResolvedValue({ get: () => null });

@@ -235,9 +235,9 @@ describe("tamper test — session-derived authorization wins", () => {
     }));
   });
 
-  it("rejects tampered ownership: the session's studentId scopes the query, not the body's", async () => {
+  it("rejects tampered ownership: the session's registrationNumber scopes the query, not the body's", async () => {
     const { POST } = await import("@/app/api/programmes/[programmeId]/approve/route");
-    mockGate.mockResolvedValue({ studentId: "S-OWNER-1" });
+    mockGate.mockResolvedValue({ registrationNumber: "S-OWNER-1" });
     mockApproveProgramme.mockResolvedValue({ ok: true, programme: { plan_version: 2 } });
 
     const response = await POST(
@@ -246,7 +246,7 @@ describe("tamper test — session-derived authorization wins", () => {
         body: JSON.stringify({
           planVersion: 2,
           userId: "S-ATTACKER-99",
-          studentId: "S-ATTACKER-99",
+          registrationNumber: "S-ATTACKER-99",
           name: "attacker",
           status: "approved",
         }),
@@ -263,7 +263,7 @@ describe("tamper test — session-derived authorization wins", () => {
 
   it("a tampered superseded version cannot claim to be current", async () => {
     const { POST } = await import("@/app/api/programmes/[programmeId]/approve/route");
-    mockGate.mockResolvedValue({ studentId: "S-OWNER-1" });
+    mockGate.mockResolvedValue({ registrationNumber: "S-OWNER-1" });
     // The server's real state: latest version is 5.
     mockApproveProgramme.mockResolvedValue({
       ok: false,
@@ -305,7 +305,7 @@ describe("tamper test — session-derived authorization wins", () => {
 
   it("tampered edge-count/eligibility fields in the body are ignored — only planVersion is read", async () => {
     const { POST } = await import("@/app/api/programmes/[programmeId]/approve/route");
-    mockGate.mockResolvedValue({ studentId: "S-OWNER-1" });
+    mockGate.mockResolvedValue({ registrationNumber: "S-OWNER-1" });
     mockApproveProgramme.mockResolvedValue({ ok: true, programme: { plan_version: 2 } });
 
     const response = await POST(
@@ -326,7 +326,7 @@ describe("tamper test — session-derived authorization wins", () => {
 
     expect(response.status).toBe(200);
     // The persistence layer was reached exactly once, scoped to the session's
-    // studentId with only the body's planVersion forwarded — the smuggled
+    // registrationNumber with only the body's planVersion forwarded — the smuggled
     // fields never influenced the check or the outcome.
     expect(mockApproveProgramme).toHaveBeenCalledTimes(1);
     expect(mockApproveProgramme).toHaveBeenCalledWith(1, "S-OWNER-1", 2);

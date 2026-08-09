@@ -7,10 +7,10 @@ export async function GET() {
   const gate = await requireVerifiedUserApi();
   if (gate instanceof Response) return gate;
 
-  let transcripts = await getTranscripts(gate.studentId);
+  let transcripts = await getTranscripts(gate.registrationNumber);
   if (transcripts.length === 0) {
-    await upsertCourseTranscript(gate.studentId, new Date());
-    transcripts = await getTranscripts(gate.studentId);
+    await upsertCourseTranscript(gate.registrationNumber, new Date());
+    transcripts = await getTranscripts(gate.registrationNumber);
   }
   return Response.json({ transcripts });
 }

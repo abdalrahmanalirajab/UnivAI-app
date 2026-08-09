@@ -18,7 +18,7 @@ vi.mock("@/lib/use-sign-out", () => ({ useSignOut: () => mocks.shared }));
 vi.mock("@/lib/auth-client", () => ({ signOut: mocks.auth.signOut }));
 vi.mock("@/lib/use-hydrated-session", () => ({
   useHydratedSession: () => ({
-    data: { user: { id: "7", name: "Amina", studentId: "S-1", role: "student" } },
+    data: { user: { id: "7", name: "Amina", registrationNumber: "S-1", role: "student" } },
     isPending: false,
   }),
 }));

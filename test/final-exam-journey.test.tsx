@@ -123,7 +123,7 @@ vi.mock("@/lib/session", () => ({
     emailVerified: true,
     phone: null,
     role: "student",
-    studentId: "S-2026-000042",
+    registrationNumber: "S-2026-000042",
     image: null,
   }),
 }));
@@ -368,7 +368,7 @@ describe("final exam journey — launch (acceptance criteria 1 & 2)", () => {
       // ignore it and enforce the real Exam service response.
       eligible: true,
       programme: "premium-plan",
-      studentId: "S-2026-000001",
+      registrationNumber: "S-2026-000001",
       status: "graded",
       examId: "forged-exam",
     });

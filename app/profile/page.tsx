@@ -81,7 +81,7 @@ function ProfileForm({ user }: { user: SessionUser }) {
     <>
       <Typography>Email: {user.email}</Typography>
       <Typography>Role: {user.role}</Typography>
-      <Typography>Student ID: {user.studentId}</Typography>
+      <Typography>Registration number: {user.registrationNumber}</Typography>
       <Divider />
       <TextField
         label="Name"

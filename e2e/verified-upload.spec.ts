@@ -25,11 +25,11 @@ test("unverified learners cannot reach or forge uploads, while verified learners
 
   const pool = new Pool({ connectionString: databaseURL });
   try {
-    const learner = await pool.query<{ studentId: string }>(
-      'SELECT "studentId" FROM "user" WHERE email = $1',
+    const learner = await pool.query<{ registrationNumber: string }>(
+      'SELECT "registrationNumber" FROM "user" WHERE email = $1',
       [email],
     );
-    const sid = learner.rows[0]?.studentId;
+    const sid = learner.rows[0]?.registrationNumber;
     expect(sid).toBeTruthy();
 
     await page.goto("/upload");

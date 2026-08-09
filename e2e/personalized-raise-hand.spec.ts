@@ -241,20 +241,20 @@ async function withPool<T>(run: (pool: Pool) => Promise<T>): Promise<T> {
 /** Fetch the learner, verify their email, and prepare a ready book. */
 async function seedLearner(email: string): Promise<string> {
   return withPool(async (pool) => {
-    const user = await pool.query<{ id: string; studentId: string }>(
-      `SELECT "id", "studentId" FROM "user" WHERE "email" = $1`,
+    const user = await pool.query<{ id: string; registrationNumber: string }>(
+      `SELECT "id", "registrationNumber" FROM "user" WHERE "email" = $1`,
       [email],
     );
     expect(user.rows.length).toBe(1);
-    const { id, studentId } = user.rows[0];
+    const { id, registrationNumber } = user.rows[0];
 
     await pool.query(`UPDATE "user" SET "emailVerified" = true WHERE "id" = $1`, [id]);
     await pool.query(
       `INSERT INTO books (filename, title, pages, status, uploaded_at, student_id)
        VALUES ($1, $2, 2, 'ready', NOW(), $3)`,
-      ["personalized-source.pdf", "Personalized Source", studentId],
+      ["personalized-source.pdf", "Personalized Source", registrationNumber],
     );
-    return studentId;
+    return registrationNumber;
   });
 }
 

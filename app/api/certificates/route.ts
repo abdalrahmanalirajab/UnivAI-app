@@ -12,14 +12,14 @@ export async function POST(request: Request) {
   if (!body?.transcriptId) {
     return Response.json({ error: "transcriptId is required." }, { status: 400 });
   }
-  const transcript = await getTranscript(gate.studentId, body.transcriptId);
+  const transcript = await getTranscript(gate.registrationNumber, body.transcriptId);
   if (!transcript) return Response.json({ error: "Transcript not found." }, { status: 404 });
   if (!transcript.passed) {
     return Response.json({ error: "Certificates require a passing grade." }, { status: 403 });
   }
 
   const certificate = await ensureCertificate({
-    studentId: gate.studentId,
+    registrationNumber: gate.registrationNumber,
     recipientName: gate.name,
     transcript,
   });

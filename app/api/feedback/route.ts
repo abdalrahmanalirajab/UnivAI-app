@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(lectureId)) {
     return Response.json({ error: "lectureId must be a UUID." }, { status: 400 });
   }
-  const output = await getLatestLectureOutput(gate.studentId, lectureId);
+  const output = await getLatestLectureOutput(gate.registrationNumber, lectureId);
   return output
     ? Response.json({ output })
     : Response.json({ error: "No recorded output exists for this lecture yet." }, { status: 404 });
@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: validationMessage }, { status: 400 });
   }
 
-  const result = await submitFeedback(gate.studentId, input);
+  const result = await submitFeedback(gate.registrationNumber, input);
   return result.ok
     ? Response.json({ feedback: result.feedback }, { status: 201 })
     : Response.json({ error: result.error }, { status: 404 });

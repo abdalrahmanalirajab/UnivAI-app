@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
   if (gate instanceof Response) return gate;
 
   // A restart is per-student — wiping globally would destroy every learner's
-  // progress. The admin panel must say which student (their studentId), and
+  // progress. The admin panel must say which student (their registrationNumber), and
   // the id is re-verified against the user table server-side: an admin action
   // never wipes rows for a client-supplied id that does not exist here.
   const body = await request.json().catch(() => ({}));
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
   }
 
   const target = await queryOne<{ exists: boolean }>(
-    `SELECT EXISTS(SELECT 1 FROM "user" WHERE "studentId" = $1) AS exists`,
+    `SELECT EXISTS(SELECT 1 FROM "user" WHERE "registrationNumber" = $1) AS exists`,
     [sid]
   );
   if (!target?.exists) {

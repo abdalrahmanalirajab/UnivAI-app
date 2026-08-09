@@ -40,7 +40,7 @@ function post(outputId = "7") {
 describe("POST /api/outputs/[outputId]/retry", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGate.mockResolvedValue({ studentId: STUDENT_ID });
+    mockGate.mockResolvedValue({ registrationNumber: STUDENT_ID });
     mockCreateRetryVersion.mockResolvedValue({
       ok: true,
       output: OUTPUT,

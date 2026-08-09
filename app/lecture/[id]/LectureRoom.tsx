@@ -164,7 +164,7 @@ export default function LectureRoom({ lectureId }: Props) {
       if (!res.ok) throw new Error(data.error ?? "Could not join the lecture.");
 
       setWeek(data.lecture.week);
-      setSid(data.studentId);
+      setSid(data.registrationNumber);
       setTitle(data.lecture.title);
       setAttendance(data.attendance);
 

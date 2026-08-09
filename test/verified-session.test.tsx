@@ -28,7 +28,7 @@ const user = {
   emailVerified: false,
   phone: null,
   role: "student",
-  studentId: "S-2026-000022",
+  registrationNumber: "S-2026-000022",
   image: null,
   createdAt: "2026-08-04T00:00:00.000Z",
 };

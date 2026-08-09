@@ -205,7 +205,7 @@ CREATE INDEX IF NOT EXISTS output_feedback_student_output_idx
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 
 CREATE TABLE IF NOT EXISTS "user" (
-  "id" text NOT NULL PRIMARY KEY,
+  "id" uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
   "name" text NOT NULL,
   "email" text NOT NULL UNIQUE,
   "emailVerified" boolean NOT NULL,
@@ -218,28 +218,28 @@ CREATE TABLE IF NOT EXISTS "user" (
   "banExpires" timestamptz,
   -- NULL = not given; Google sign-in supplies no phone (infra/migrations/011).
   "phone" text,
-  "studentId" text
+  "registrationNumber" text
 );
-CREATE UNIQUE INDEX IF NOT EXISTS "user_studentId_key" ON "user"("studentId");
+CREATE UNIQUE INDEX IF NOT EXISTS "user_registrationNumber_key" ON "user"("registrationNumber");
 
 CREATE TABLE IF NOT EXISTS "session" (
-  "id" text NOT NULL PRIMARY KEY,
+  "id" uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
   "expiresAt" timestamptz NOT NULL,
   "token" text NOT NULL UNIQUE,
   "createdAt" timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" timestamptz NOT NULL,
   "ipAddress" text,
   "userAgent" text,
-  "userId" text NOT NULL REFERENCES "user"("id") ON DELETE CASCADE,
+  "userId" uuid NOT NULL REFERENCES "user"("id") ON DELETE CASCADE,
   "impersonatedBy" text
 );
 CREATE INDEX IF NOT EXISTS "session_userId_idx" ON "session"("userId");
 
 CREATE TABLE IF NOT EXISTS "account" (
-  "id" text NOT NULL PRIMARY KEY,
+  "id" uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
   "accountId" text NOT NULL,
   "providerId" text NOT NULL,
-  "userId" text NOT NULL REFERENCES "user"("id") ON DELETE CASCADE,
+  "userId" uuid NOT NULL REFERENCES "user"("id") ON DELETE CASCADE,
   "accessToken" text,
   "refreshToken" text,
   "idToken" text,
@@ -253,7 +253,7 @@ CREATE TABLE IF NOT EXISTS "account" (
 CREATE INDEX IF NOT EXISTS "account_userId_idx" ON "account"("userId");
 
 CREATE TABLE IF NOT EXISTS "verification" (
-  "id" text NOT NULL PRIMARY KEY,
+  "id" uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
   "identifier" text NOT NULL,
   "value" text NOT NULL,
   "expiresAt" timestamptz NOT NULL,
