@@ -298,6 +298,7 @@ function webhook(overrides: Record<string, unknown>): Record<string, unknown> {
     student_sid: SESSION_SID,
     chapter_id: null,
     total_questions: 10,
+    max_score: 10,
     passing_mark: 5,
     passed: false,
     integrity_status: "clean",
@@ -418,7 +419,7 @@ describe("final exam journey — callbacks (acceptance criterion 3)", () => {
     const graded = await postCallback(GRADED, sign(JSON.stringify(GRADED)));
     expect(graded.status).toBe(200);
     expect(state.grades).toHaveLength(1);
-    expect(state.grades[0]).toMatchObject({ score: 4, exam_id: EXAM_ID });
+    expect(state.grades[0]).toMatchObject({ kind: "final", week: null, score: 4, exam_id: EXAM_ID });
     expect(state.finalStatus[0]).toMatchObject({ state: "graded" });
     expect(state.ledger).toHaveLength(2);
 

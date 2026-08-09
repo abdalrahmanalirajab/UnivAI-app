@@ -1,9 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import { templateForGrade } from "@/lib/certificates";
-import { gradeForPercentage, scoreCourse } from "@/lib/transcripts";
+import { expectedMidtermCount, gradeForPercentage, scoreCourse } from "@/lib/transcripts";
 
 describe("course transcript scoring", () => {
+  it("expects one scheduled midterm per generated semester", () => {
+    expect(expectedMidtermCount(1)).toBe(1);
+    expect(expectedMidtermCount(2)).toBe(2);
+    expect(expectedMidtermCount(null)).toBe(1);
+  });
+
   it("uses the requested 30/10/20/40 weighting", () => {
     expect(
       scoreCourse({

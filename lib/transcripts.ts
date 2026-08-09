@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { query, queryOne } from "./db";
+import { readGeneratedSemesterPlan } from "./semester-plan";
 
 export const COURSE_WEIGHTS = {
   quizzes: 30,
@@ -125,6 +126,13 @@ function assessmentPercentage(rows: GradeRow[], expectedCount: number): number {
   return round2((Math.min(expectedCount, earnedRatios) / expectedCount) * 100);
 }
 
+/** The generated course contract schedules exactly one midterm per semester. */
+export function expectedMidtermCount(semesterCount: number | null | undefined): number {
+  return typeof semesterCount === "number" && Number.isInteger(semesterCount) && semesterCount > 0
+    ? semesterCount
+    : 1;
+}
+
 function transcriptId(registrationNumber: string, courseKey: string): string {
   return `tr_${createHash("sha256").update(`${registrationNumber}:${courseKey}`).digest("hex").slice(0, 24)}`;
 }
@@ -134,12 +142,68 @@ function cleanCourseTitle(title: string | null, filename: string | null, fallbac
   return source.replace(/\.pdf$/i, "").replace(/_/g, " ") || "Completed course";
 }
 
+/**
+ * Repair grades written by the old callback bug. The final status table binds
+ * the exam id to the same learner and a service-confirmed graded final, so this
+ * cannot promote an unrelated quiz or another learner's result.
+ */
+async function repairMisclassifiedFinalGrade(registrationNumber: string): Promise<Date | null> {
+  try {
+    const repaired = await query<{ taken_at: Date }>(
+      `WITH repaired AS (
+         UPDATE grades AS grade
+            SET kind = 'final', week = NULL, max_score = 100
+           FROM final_exam_status AS final_status
+          WHERE grade.student_id = $1
+            AND final_status.student_id = grade.student_id
+            AND final_status.exam_id = grade.exam_id
+            AND final_status.state = 'graded'
+            AND grade.kind <> 'final'
+        RETURNING grade.exam_id, grade.taken_at
+       ), repaired_status AS (
+         UPDATE final_exam_status AS final_status
+            SET result = jsonb_set(
+              final_status.result,
+              '{max_score}',
+              to_jsonb(100::integer),
+              true
+            )
+           FROM repaired
+          WHERE final_status.student_id = $1
+            AND final_status.exam_id = repaired.exam_id
+            AND final_status.result IS NOT NULL
+        RETURNING final_status.exam_id
+       )
+       SELECT taken_at FROM repaired`,
+      [registrationNumber],
+    );
+    return repaired[0]?.taken_at ?? null;
+  } catch (error) {
+    // Older databases may not have received a final callback yet, so the
+    // additive final-status table may not exist. There is then nothing to fix.
+    if ((error as { code?: string })?.code === "42P01") return null;
+    throw error;
+  }
+}
+
+/** Recover an old final even when the learner already has other transcripts. */
+export async function recoverMisclassifiedFinalTranscript(
+  registrationNumber: string,
+): Promise<CourseTranscript | null> {
+  const completedAt = await repairMisclassifiedFinalGrade(registrationNumber);
+  return completedAt
+    ? upsertCourseTranscript(registrationNumber, completedAt)
+    : null;
+}
+
 /** Build or refresh the stable transcript snapshot after a clean final result. */
 export async function upsertCourseTranscript(
   registrationNumber: string,
   completedAt: Date,
   fallbackTitle = "Completed course",
 ): Promise<CourseTranscript | null> {
+  await repairMisclassifiedFinalGrade(registrationNumber);
+
   const finalGrade = await queryOne<GradeRow>(
     `SELECT kind, week, score, max_score, flagged
        FROM grades
@@ -149,7 +213,7 @@ export async function upsertCourseTranscript(
   );
   if (!finalGrade || Number(finalGrade.max_score) <= 0) return null;
 
-  const [book, lectureCountRow, attendanceRow, grades] = await Promise.all([
+  const [book, lectureCountRow, attendanceRow, grades, semesterPlan] = await Promise.all([
     queryOne<{ id: number; title: string | null; filename: string }>(
       `SELECT id, title, filename FROM books
         WHERE student_id = $1 ORDER BY uploaded_at DESC, id DESC LIMIT 1`,
@@ -171,11 +235,12 @@ export async function upsertCourseTranscript(
         WHERE student_id = $1 AND kind IN ('quiz', 'midterm')`,
       [registrationNumber],
     ),
+    readGeneratedSemesterPlan(registrationNumber),
   ]);
 
   const lectureCount = Number(lectureCountRow?.total ?? 0);
   const attended = Number(attendanceRow?.attended ?? 0);
-  const expectedMidterms = Math.max(1, Math.floor(lectureCount / 4));
+  const expectedMidterms = expectedMidtermCount(semesterPlan?.semesterCount);
   const score = scoreCourse({
     quizPercentage: assessmentPercentage(
       grades.filter((grade) => grade.kind === "quiz"),

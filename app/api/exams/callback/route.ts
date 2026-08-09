@@ -5,12 +5,12 @@ import { query } from "@/lib/db";
 import { now } from "@/lib/clock";
 import {
   examCallbackFingerprint,
+  parseResultWebhook,
   recordExamCallback,
   resolveWeek,
   saveFinalExamStatus,
   wasExamCallbackProcessed,
   webhookToFinalExamStatus,
-  type ResultWebhook,
 } from "@/lib/exams";
 import { upsertCourseTranscript } from "@/lib/transcripts";
 
@@ -44,23 +44,22 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "Invalid callback signature." }, { status: 401 });
   }
 
-  let payload: ResultWebhook;
+  let parsed: unknown;
   try {
-    payload = JSON.parse(raw) as ResultWebhook;
+    parsed = JSON.parse(raw) as unknown;
   } catch {
     return Response.json({ error: "Malformed callback payload." }, { status: 400 });
   }
 
-  if (!payload?.exam_id) {
-    return Response.json({ error: "exam_id is required" }, { status: 400 });
+  const validated = parseResultWebhook(parsed);
+  if (!validated.ok) {
+    return Response.json({ error: validated.error }, { status: 400 });
   }
+  const payload = validated.payload;
 
   // The exam system echoes the owner it was handed at start time (student_sid).
-  // Without it we cannot route the grade to a student, so reject.
-  const sid = payload.student_sid as string | undefined;
-  if (!sid) {
-    return Response.json({ error: "student_sid is required" }, { status: 400 });
-  }
+  // Runtime validation above guarantees a non-empty tenant key.
+  const sid = payload.student_sid;
 
   // Idempotency: a re-delivered callback (same exam id + same event
   // fingerprint) is acknowledged but never re-applied — no duplicate grade
@@ -72,12 +71,17 @@ export async function POST(request: NextRequest) {
     return Response.json({ ok: true, idempotent: true });
   }
 
-  const { kind, week } = await resolveWeek({
-    type: payload.type,
-    chapter_id: payload.chapter_id,
-    exam_id: payload.exam_id,
-    student_sid: sid,
-  });
+  // Finals are course-level assessments and have no week to resolve. Keeping
+  // them out of resolveWeek prevents the non-quiz resolver from ever
+  // misclassifying a final as a midterm.
+  const { kind, week } = payload.type === "final"
+    ? { kind: "final" as const, week: null }
+    : await resolveWeek({
+        type: payload.type,
+        chapter_id: payload.chapter_id,
+        exam_id: payload.exam_id,
+        student_sid: sid,
+      });
   const takenAt = await now();
 
   const flagged =
@@ -96,9 +100,7 @@ export async function POST(request: NextRequest) {
     (payload.grading_status === "auto_graded" || payload.grading_status === "graded") &&
     payload.mark !== null &&
     payload.mark !== undefined &&
-    payload.total_questions !== null &&
-    payload.total_questions !== undefined &&
-    payload.total_questions > 0;
+    payload.max_score > 0;
 
   if (!isFinal || finalGradeConfirmed) {
     await query(
@@ -106,6 +108,8 @@ export async function POST(request: NextRequest) {
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        ON CONFLICT (exam_id) DO UPDATE SET
          student_id = EXCLUDED.student_id,
+         kind = EXCLUDED.kind,
+         week = EXCLUDED.week,
          score = EXCLUDED.score,
          max_score = EXCLUDED.max_score,
          feedback = EXCLUDED.feedback,
@@ -117,7 +121,7 @@ export async function POST(request: NextRequest) {
         kind,
         week,
         payload.mark ?? 0,
-        payload.total_questions ?? 0,
+        payload.max_score,
         feedback,
         takenAt,
         payload.exam_id,
@@ -141,7 +145,7 @@ export async function POST(request: NextRequest) {
 
   console.log(
     `[exams] result recorded: ${kind}${week ? ` week ${week}` : ""} ` +
-      `mark=${payload.mark}/${payload.total_questions} flagged=${flagged}`
+      `mark=${payload.mark}/${payload.max_score} flagged=${flagged}`
   );
   return Response.json({ ok: true });
 }

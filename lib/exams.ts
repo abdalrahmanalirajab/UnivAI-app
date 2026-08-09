@@ -322,21 +322,152 @@ export async function getFinalExamStatus(sid: string): Promise<ExamServiceStatus
  * (its resultWebhookSchema). Only the fields this app may rely on are listed;
  * anything else the service might send is treated as unsafe and dropped.
  */
+export type ResultWebhookAssessmentType = "quiz" | "mid" | "final";
+export type ResultWebhookGradingStatus = "auto_graded" | "pending_review" | "graded";
+export type ResultWebhookIntegrityStatus = "clean" | "invalidated";
+export type ResultWebhookReviewStatus = "not_required" | "pending" | "cleared" | "upheld";
+
+/** Accept only assessment kinds defined by the Exam service callback contract. */
+export function isResultWebhookAssessmentType(
+  value: unknown,
+): value is ResultWebhookAssessmentType {
+  return value === "quiz" || value === "mid" || value === "final";
+}
+
 export type ResultWebhook = {
   exam_id: string;
-  type: string;
+  type: ResultWebhookAssessmentType;
   title: string;
-  student_sid?: string | null;
+  student_sid: string;
   chapter_id: string | null;
-  mark?: number | null;
-  total_questions?: number | null;
-  passing_mark?: number | null;
-  passed?: boolean | null;
-  grading_status?: string | null;
-  integrity_status?: string | null;
-  review_status?: string | null;
-  report?: { flagged?: boolean } | null;
+  mark: number | null;
+  total_questions: number;
+  max_score: number;
+  passing_mark: number | null;
+  passed: boolean;
+  grading_status: ResultWebhookGradingStatus;
+  integrity_status: ResultWebhookIntegrityStatus;
+  review_status: ResultWebhookReviewStatus;
+  report: { flagged: boolean; [key: string]: unknown };
 };
+
+export type ResultWebhookParseResult =
+  | { ok: true; payload: ResultWebhook }
+  | { ok: false; error: string };
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function isNullableScore(value: unknown, maximum: number): value is number | null {
+  return value === null || (
+    typeof value === "number" &&
+    Number.isFinite(value) &&
+    value >= 0 &&
+    value <= maximum
+  );
+}
+
+/** Validate the signed callback at runtime against the fields this app consumes. */
+export function parseResultWebhook(value: unknown): ResultWebhookParseResult {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { ok: false, error: "Malformed callback payload." };
+  }
+
+  const payload = value as Record<string, unknown>;
+  if (!isResultWebhookAssessmentType(payload.type)) {
+    return { ok: false, error: "type must be one of: quiz, mid, final" };
+  }
+  if (!isNonEmptyString(payload.exam_id)) {
+    return { ok: false, error: "exam_id must be a non-empty string" };
+  }
+  if (!isNonEmptyString(payload.title)) {
+    return { ok: false, error: "title must be a non-empty string" };
+  }
+  if (!isNonEmptyString(payload.student_sid)) {
+    return { ok: false, error: "student_sid must be a non-empty string" };
+  }
+  if (!(payload.chapter_id === null || isNonEmptyString(payload.chapter_id))) {
+    return { ok: false, error: "chapter_id must be a non-empty string or null" };
+  }
+  if (
+    typeof payload.total_questions !== "number" ||
+    !Number.isSafeInteger(payload.total_questions) ||
+    payload.total_questions < 0
+  ) {
+    return { ok: false, error: "total_questions must be a non-negative safe integer" };
+  }
+  // Compatibility for callbacks already in flight during a rolling deploy.
+  // New producers always send max_score explicitly. Legacy manual-final marks
+  // use a percentage scale; objective results use one point per question.
+  const maxScore = payload.max_score === undefined
+    ? payload.type === "final" && payload.grading_status !== "auto_graded"
+      ? 100
+      : payload.total_questions
+    : payload.max_score;
+  if (
+    typeof maxScore !== "number" ||
+    !Number.isSafeInteger(maxScore) ||
+    maxScore < 0
+  ) {
+    return { ok: false, error: "max_score must be a non-negative safe integer" };
+  }
+  if (!isNullableScore(payload.mark, maxScore)) {
+    return { ok: false, error: "mark must be null or between 0 and max_score" };
+  }
+  if (!isNullableScore(payload.passing_mark, maxScore)) {
+    return { ok: false, error: "passing_mark must be null or between 0 and max_score" };
+  }
+  if (typeof payload.passed !== "boolean") {
+    return { ok: false, error: "passed must be a boolean" };
+  }
+  if (
+    payload.grading_status !== "auto_graded" &&
+    payload.grading_status !== "pending_review" &&
+    payload.grading_status !== "graded"
+  ) {
+    return { ok: false, error: "Invalid grading_status" };
+  }
+  if (payload.integrity_status !== "clean" && payload.integrity_status !== "invalidated") {
+    return { ok: false, error: "Invalid integrity_status" };
+  }
+  if (
+    payload.review_status !== "not_required" &&
+    payload.review_status !== "pending" &&
+    payload.review_status !== "cleared" &&
+    payload.review_status !== "upheld"
+  ) {
+    return { ok: false, error: "Invalid review_status" };
+  }
+  if (
+    !payload.report ||
+    typeof payload.report !== "object" ||
+    Array.isArray(payload.report) ||
+    typeof (payload.report as Record<string, unknown>).flagged !== "boolean"
+  ) {
+    return { ok: false, error: "report.flagged must be a boolean" };
+  }
+
+  return {
+    ok: true,
+    payload: {
+      exam_id: payload.exam_id,
+      type: payload.type,
+      title: payload.title,
+      student_sid: payload.student_sid,
+      chapter_id: payload.chapter_id,
+      mark: payload.mark,
+      total_questions: payload.total_questions,
+      max_score: maxScore,
+      passing_mark: payload.passing_mark,
+      passed: payload.passed,
+      grading_status: payload.grading_status,
+      integrity_status: payload.integrity_status,
+      review_status: payload.review_status,
+      report: payload.report as ResultWebhook["report"],
+    },
+  };
+}
 
 /**
  * Project a final exam's result callback onto ExamServiceStatusV1, the display
@@ -374,7 +505,7 @@ export function webhookToFinalExamStatus(payload: ResultWebhook): ExamServiceSta
       ...base,
       state: "graded",
       reason: null,
-      result: { mark: payload.mark, max_score: payload.total_questions, passed: payload.passed },
+      result: { mark: payload.mark, max_score: payload.max_score, passed: payload.passed },
     };
   }
 
@@ -413,22 +544,22 @@ function ensureExamCallbackEventsSchema(): Promise<void> {
 
 /**
  * The event fingerprint for a result callback, built ONLY from real payload
- * fields the exam system sends (grading_status, integrity_status,
- * review_status, mark). Re-delivering the same result reproduces the same
- * fingerprint; a genuinely different event (submit verdict vs manual grade vs
- * regrade) produces a different one, so later events are never deduped away.
+ * fields the app persists or projects. Re-delivering the same result reproduces
+ * the same fingerprint; a changed verdict, score scale, pass threshold, or
+ * proctoring flag produces a different one, so corrected events are never
+ * deduped away.
  */
-export function examCallbackFingerprint(payload: {
-  grading_status?: string | null;
-  integrity_status?: string | null;
-  review_status?: string | null;
-  mark?: number | null;
-}): string {
+export function examCallbackFingerprint(payload: ResultWebhook): string {
   return [
-    payload.grading_status ?? "",
-    payload.integrity_status ?? "",
-    payload.review_status ?? "",
+    payload.type,
+    payload.grading_status,
+    payload.integrity_status,
+    payload.review_status,
     payload.mark ?? "",
+    payload.max_score,
+    payload.passing_mark ?? "",
+    payload.passed,
+    payload.report.flagged,
   ].join("|");
 }
 
@@ -851,7 +982,7 @@ export async function startExam(
 
 /** Map a webhook payload back to (kind, week) using that owner's link doc. */
 export async function resolveWeek(payload: {
-  type: string;
+  type: Exclude<ResultWebhookAssessmentType, "final">;
   chapter_id: string | null;
   exam_id: string;
   student_sid?: string;
@@ -860,10 +991,18 @@ export async function resolveWeek(payload: {
   const link = await db
     .collection("univai_link")
     .findOne<ExamLink>(payload.student_sid ? { sid: payload.student_sid } : {});
-  if (payload.type === "quiz" && payload.chapter_id && link) {
-    const chapter = link.chapters.find((c) => c.chapter_id === payload.chapter_id);
+  if (payload.type === "quiz") {
+    const chapter = payload.chapter_id && link
+      ? link.chapters.find((candidate) => candidate.chapter_id === payload.chapter_id)
+      : null;
     return { kind: "quiz", week: chapter?.week ?? null };
   }
-  const midterm = link?.midterms?.find((candidate) => candidate.exam_id === payload.exam_id);
-  return { kind: "midterm", week: midterm?.after_week ?? null };
+  if (payload.type === "mid") {
+    const midterm = link?.midterms?.find((candidate) => candidate.exam_id === payload.exam_id);
+    return { kind: "midterm", week: midterm?.after_week ?? null };
+  }
+
+  // The input type is exhaustive at compile time and guarded at the callback
+  // boundary. Keep a runtime failure here as defense against untyped callers.
+  throw new Error(`Unsupported assessment type: ${String(payload.type)}`);
 }

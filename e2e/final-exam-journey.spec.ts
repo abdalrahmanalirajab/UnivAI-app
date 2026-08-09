@@ -163,6 +163,7 @@ function webhook(overrides: Record<string, unknown>): Record<string, unknown> {
     student_sid: scenario.studentSid,
     chapter_id: null,
     total_questions: 10,
+    max_score: 10,
     passing_mark: 5,
     passed: false,
     integrity_status: "clean",
