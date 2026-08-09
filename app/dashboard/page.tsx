@@ -23,6 +23,7 @@ import WorkspacePremiumOutlined from "@mui/icons-material/WorkspacePremiumOutlin
 import { formatDateTime, formatRelative, useVirtualClock } from "@/lib/time";
 import { useHydratedSession } from "@/lib/use-hydrated-session";
 import type { ExamServiceStatusV1 } from "@/lib/exams";
+import SubscriptionTeaser from "@/app/components/SubscriptionTeaser";
 
 type Attendance = {
   lectureId: string;
@@ -364,6 +365,8 @@ export default function DashboardPage() {
           </Card>
         </Grid>
       </Grid>
+
+      {endedLectures > 0 ? <SubscriptionTeaser milestone="course-progress" /> : null}
 
       <Stack spacing={1.5}>
         <Typography variant="h6">More when you need it</Typography>

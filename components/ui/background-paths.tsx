@@ -49,13 +49,13 @@ export default function BackgroundPaths() {
                 pathLength={1}
                 stroke="url(#journey-line-gradient)"
                 strokeLinecap="round"
-                strokeDasharray="1"
+                strokeDasharray="0.12 0.025"
               />
             ))}
           </g>
 
           <g className="journey-travellers">
-            {JOURNEY_PATHS.slice(0, 6).map((path, index) => (
+            {JOURNEY_PATHS.map((path, index) => (
               <path
                 key={`traveller-${index}`}
                 className={`journey-pulse journey-pulse-${index + 1}`}

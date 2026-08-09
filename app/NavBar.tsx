@@ -33,12 +33,14 @@ import MenuOutlined from "@mui/icons-material/MenuOutlined";
 import MenuBookOutlined from "@mui/icons-material/MenuBookOutlined";
 import SettingsOutlined from "@mui/icons-material/SettingsOutlined";
 import UploadFileOutlined from "@mui/icons-material/UploadFileOutlined";
+import TollOutlined from "@mui/icons-material/TollOutlined";
 import ThemeModeMenu from "./ThemeModeMenu";
 import BrandMark from "./components/BrandMark";
 import { useHydratedSession } from "@/lib/use-hydrated-session";
 import { useSignOut } from "@/lib/use-sign-out";
 import { getStudentNavItems } from "@/lib/onboarding-flow";
 import { useOnboarding } from "./OnboardingProvider";
+import CoinBalance from "./components/CoinBalance";
 
 type NavItem = {
   href: string;
@@ -177,6 +179,7 @@ export default function NavBar() {
                   spacing={1}
                   className="desktop-nav align-center"
                 >
+                  <CoinBalance />
                   <Typography variant="body2" color="text.secondary">
                     {user.name}
                   </Typography>
@@ -220,6 +223,13 @@ export default function NavBar() {
                         {user.registrationNumber}
                       </Typography>
                     </Stack>
+                  </MenuItem>
+                  <MenuItem
+                    component={Link}
+                    href="/subscribe"
+                    onClick={() => setAnchorEl(null)}
+                  >
+                    Plan and coins
                   </MenuItem>
                   <MenuItem
                     component={Link}
@@ -293,6 +303,16 @@ export default function NavBar() {
               <Typography variant="body2" color="text.secondary">
                 {user.registrationNumber}
               </Typography>
+              <CoinBalance />
+              <Button
+                variant="outlined"
+                component={Link}
+                href="/subscribe"
+                startIcon={<TollOutlined />}
+                onClick={() => setDrawerOpen(false)}
+              >
+                Plan and coins
+              </Button>
               <Button
                 variant="outlined"
                 component={Link}

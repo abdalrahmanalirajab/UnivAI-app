@@ -75,4 +75,16 @@ export const env = {
   // of emailed (dev fallback); see lib/email.ts.
   RESEND_API_KEY: read("RESEND_API_KEY"),
   EMAIL_FROM: read("EMAIL_FROM", "UnivAI <onboarding@resend.dev>"),
+  NOTIFICATION_DISPATCH_SECRET: read("NOTIFICATION_DISPATCH_SECRET"),
+
+  // PayPal Subscriptions. Sandbox is the safe default. Product/plan IDs are
+  // created once with scripts/setup-paypal-plans.ts and are not secrets.
+  PAYPAL_CLIENT_ID: read("PAYPAL_CLIENT_ID"),
+  PAYPAL_CLIENT_SECRET: read("PAYPAL_CLIENT_SECRET") || read("PAYPAL_SECRET"),
+  PAYPAL_API_BASE: read("PAYPAL_API_BASE", "https://api-m.sandbox.paypal.com"),
+  PAYPAL_WEBHOOK_ID: read("PAYPAL_WEBHOOK_ID"),
+  PAYPAL_WEBHOOK_URL: read("PAYPAL_WEBHOOK_URL"),
+  PAYPAL_PRODUCT_ID: read("PAYPAL_PRODUCT_ID"),
+  PAYPAL_SUPPORTER_PLAN_ID: read("PAYPAL_SUPPORTER_PLAN_ID"),
+  PAYPAL_PATRON_PLAN_ID: read("PAYPAL_PATRON_PLAN_ID"),
 };

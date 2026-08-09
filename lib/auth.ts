@@ -8,6 +8,7 @@ import { sendEmail } from "./email";
 import { ac, roles } from "./auth-ac";
 import { recordAudit } from "./auth-audit";
 import { sendBanNotification } from "./auth-notify";
+import { queueAuthSecurityNotification } from "./auth-security-notifications";
 import { guardHook } from "./auth-guards";
 import { normalizePhone } from "./validators";
 
@@ -167,6 +168,7 @@ export const auth = betterAuth({
     after: createAuthMiddleware(async (ctx) => {
       await recordAudit(ctx);
       await sendBanNotification(ctx);
+      await queueAuthSecurityNotification(ctx);
     }),
   },
 

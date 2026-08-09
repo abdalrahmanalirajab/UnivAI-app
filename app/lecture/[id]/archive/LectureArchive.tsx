@@ -12,6 +12,7 @@ import Typography from "@mui/material/Typography";
 import ArrowBackRounded from "@mui/icons-material/ArrowBackRounded";
 import ArrowForwardRounded from "@mui/icons-material/ArrowForwardRounded";
 import type { SlideDeck } from "@/lib/lectures";
+import SubscriptionTeaser from "@/app/components/SubscriptionTeaser";
 
 export default function LectureArchive({ deck }: { deck: SlideDeck }) {
   const [index, setIndex] = useState(0);
@@ -70,6 +71,8 @@ export default function LectureArchive({ deck }: { deck: SlideDeck }) {
           Next
         </Button>
       </Stack>
+
+      <SubscriptionTeaser milestone="lecture-finished" />
     </Stack>
   );
 }

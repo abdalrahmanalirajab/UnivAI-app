@@ -17,6 +17,7 @@ import List from "@mui/material/List";
 import ListItem from "@mui/material/ListItem";
 import ListItemText from "@mui/material/ListItemText";
 import Chip from "@mui/material/Chip";
+import NotificationPreferences from "@/app/components/NotificationPreferences";
 
 type SessionUser = NonNullable<ReturnType<typeof useSession>["data"]>["user"];
 
@@ -152,6 +153,8 @@ function ProfileForm({ user }: { user: SessionUser }) {
       </Button>
       {changeEmailSuccess && <FormSuccess message={changeEmailSuccess} />}
       {changeEmailError && <FormError message={changeEmailError} />}
+      <Divider />
+      <NotificationPreferences />
       <Divider />
       <Typography>Change password</Typography>
       <PasswordField

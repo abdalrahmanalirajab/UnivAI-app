@@ -32,9 +32,9 @@ export default function Hero() {
             className="eyebrow-chip hero-eyebrow"
           />
           <Typography id="hero-heading" variant="h1" component="h1">
-            Your textbook becomes a course that{" "}
+            Books become{" "}
             <Box component="span" className="hero-headline-accent">
-              knows what comes next.
+              journeys.
             </Box>
           </Typography>
           <Typography variant="body1" color="text.secondary" className="hero-subhead">

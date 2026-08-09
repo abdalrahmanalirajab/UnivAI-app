@@ -16,6 +16,7 @@ import TableCell from "@mui/material/TableCell";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
+import SubscriptionTeaser from "@/app/components/SubscriptionTeaser";
 
 type Transcript = {
   id: string;
@@ -178,6 +179,7 @@ export default function TranscriptPage() {
           </Card>
         ))
       )}
+      {transcripts.length > 0 ? <SubscriptionTeaser milestone="course-finished" /> : null}
     </Stack>
   );
 }

@@ -13,6 +13,7 @@ import {
   webhookToFinalExamStatus,
 } from "@/lib/exams";
 import { upsertCourseTranscript } from "@/lib/transcripts";
+import { enqueueStudentEmailNotification } from "@/lib/notification-outbox";
 
 export const dynamic = "force-dynamic";
 
@@ -137,8 +138,36 @@ export async function POST(request: NextRequest) {
   if (isFinal) {
     await saveFinalExamStatus(sid, webhookToFinalExamStatus(payload));
     if (finalGradeConfirmed) {
-      await upsertCourseTranscript(sid, takenAt, payload.title);
+      const transcript = await upsertCourseTranscript(sid, takenAt, payload.title);
+      if (transcript) {
+        await enqueueStudentEmailNotification({
+          registrationNumber: sid,
+          eventId: `transcript:${transcript.id}`,
+          event: {
+            type: "transcript.ready",
+            courseTitle: transcript.courseTitle,
+            grade: transcript.letterGrade,
+          },
+        });
+      }
     }
+  } else if (
+    !flagged &&
+    payload.mark !== null &&
+    payload.mark !== undefined &&
+    (payload.grading_status === "auto_graded" || payload.grading_status === "graded")
+  ) {
+    await enqueueStudentEmailNotification({
+      registrationNumber: sid,
+      eventId: `exam:${payload.exam_id}:graded`,
+      event: {
+        type: "assessment.result",
+        assessmentTitle: payload.title,
+        score: payload.mark,
+        maxScore: payload.max_score,
+        passed: payload.passed,
+      },
+    });
   }
 
   await recordExamCallback(payload.exam_id, fingerprint);

@@ -3,10 +3,8 @@ import { env } from "./env";
 /**
  * Transactional email for auth (reset + verification links).
  *
- * Production uses Resend (set RESEND_API_KEY). With no key we fall back to
- * printing the message — and, crucially, the link — to the server console, so
- * the whole auth flow is testable locally without an email account. Watch the
- * app window; the banner is loud on purpose.
+ * Production uses Resend (set RESEND_API_KEY). With no key, delivery is skipped
+ * without printing the recipient, message, or one-time auth links to logs.
  *
  * We call Resend over plain fetch to avoid pulling in another dependency.
  */
@@ -14,23 +12,23 @@ export async function sendEmail(opts: {
   to: string;
   subject: string;
   text: string;
+  /** Stable per message; Resend deduplicates retries for 24 hours. */
+  idempotencyKey?: string;
+  /** Durable jobs must fail and retry rather than pretending a skipped send succeeded. */
+  requireDelivery?: boolean;
 }): Promise<void> {
-  const { to, subject, text } = opts;
+  const { to, subject, text, idempotencyKey, requireDelivery = false } = opts;
+
+  if (
+    idempotencyKey &&
+    (idempotencyKey.length > 256 || !/^[\x21-\x7e]+$/.test(idempotencyKey))
+  ) {
+    throw new Error("Email idempotency key is invalid.");
+  }
 
   if (!env.RESEND_API_KEY) {
-    console.log(
-      [
-        "",
-        "┌─────────────────────────────────────────────────────────────",
-        "│  ✉  DEV EMAIL (no RESEND_API_KEY — not actually sent)",
-        `│  to:      ${to}`,
-        `│  subject: ${subject}`,
-        "│  ---",
-        ...text.split("\n").map((line) => `│  ${line}`),
-        "└─────────────────────────────────────────────────────────────",
-        "",
-      ].join("\n")
-    );
+    if (requireDelivery) throw new Error("Email provider is not configured.");
+    console.info("[email:dev] Delivery skipped because RESEND_API_KEY is not configured.");
     return;
   }
 
@@ -39,13 +37,13 @@ export async function sendEmail(opts: {
     headers: {
       Authorization: `Bearer ${env.RESEND_API_KEY}`,
       "Content-Type": "application/json",
+      ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
     },
     body: JSON.stringify({ from: env.EMAIL_FROM, to, subject, text }),
   });
 
   if (!res.ok) {
-    // Don't leak the body to the client; surface enough to debug server-side.
-    const detail = await res.text().catch(() => "");
-    throw new Error(`Resend failed (${res.status}): ${detail.slice(0, 300)}`);
+    // Provider bodies may echo recipient details; never put them in errors/logs.
+    throw new Error(`Email provider request failed (${res.status}).`);
   }
 }

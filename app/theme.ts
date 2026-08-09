@@ -254,6 +254,10 @@ const theme = createTheme({
           flexWrap: "wrap",
           gap: 8,
         },
+        ".spread-row": {
+          width: "100%",
+          justifyContent: "space-between",
+        },
         ".align-center": {
           alignItems: "center",
         },
@@ -280,20 +284,100 @@ const theme = createTheme({
         ".drawer-content": {
           height: "100%",
         },
+        ".signup-plan-intro": {
+          marginTop: 12,
+        },
+        ".signup-plan-grid": {
+          marginBlock: 12,
+        },
+        ".signup-plan-option": {
+          width: "100%",
+          height: "100%",
+          margin: "0 !important",
+          padding: 16,
+          alignItems: "flex-start",
+          border: "1px solid var(--univai-palette-divider)",
+          borderRadius: 16,
+          backgroundColor: "var(--univai-palette-background-paper)",
+          transition: "border-color 160ms ease, background-color 160ms ease",
+        },
+        ".signup-plan-option .MuiFormControlLabel-label": {
+          width: "100%",
+        },
+        ".signup-plan-selected": {
+          borderColor: "var(--univai-palette-primary-main)",
+          backgroundColor:
+            "color-mix(in srgb, var(--univai-palette-primary-main) 7%, var(--univai-palette-background-paper))",
+        },
+        ".signup-plan-copy": {
+          width: "100%",
+          paddingTop: 6,
+        },
+        ".plan-coin-allowance": {
+          fontWeight: "700 !important",
+        },
+        ".subscription-workspace": {
+          width: "100%",
+          maxWidth: 1180,
+          marginInline: "auto",
+        },
+        ".subscription-lede": {
+          maxWidth: 780,
+        },
+        ".subscription-plan-card": {
+          height: "100%",
+          display: "flex",
+          flexDirection: "column",
+          borderRadius: 20,
+        },
+        ".subscription-plan-card .MuiCardContent-root": {
+          flex: 1,
+        },
+        ".subscription-plan-card .MuiCardActions-root": {
+          padding: 16,
+        },
+        ".subscription-plan-requested": {
+          borderColor: "var(--univai-palette-primary-main)",
+          backgroundColor:
+            "color-mix(in srgb, var(--univai-palette-primary-main) 5%, var(--univai-palette-background-paper))",
+        },
+        ".coin-wallet-card": {
+          borderRadius: 20,
+          background:
+            "linear-gradient(120deg, color-mix(in srgb, var(--univai-palette-primary-main) 9%, var(--univai-palette-background-paper)), color-mix(in srgb, var(--univai-palette-secondary-main) 7%, var(--univai-palette-background-paper)))",
+        },
+        ".subscription-cancel-row": {
+          maxWidth: 560,
+          alignItems: "flex-start",
+        },
+        ".subscription-teaser": {
+          borderRadius: 18,
+          borderColor:
+            "color-mix(in srgb, var(--univai-palette-secondary-main) 45%, var(--univai-palette-divider))",
+          backgroundColor:
+            "color-mix(in srgb, var(--univai-palette-secondary-main) 5%, var(--univai-palette-background-paper))",
+        },
+        ".subscription-teaser-icon": {
+          flexShrink: 0,
+        },
+        ".subscription-teaser-copy": {
+          flex: 1,
+        },
+        ".paypal-return-card": {
+          width: "100%",
+          maxWidth: 680,
+          marginInline: "auto",
+          padding: 32,
+          border: "1px solid var(--univai-palette-divider)",
+          borderRadius: 20,
+          backgroundColor: "var(--univai-palette-background-paper)",
+        },
         ".landing-main": {
           overflow: "hidden",
         },
-        "@keyframes journeyFieldDrift": {
-          "0%, 100%": {
-            transform: "translate3d(-0.7%, 0.35%, 0) scale(1.018)",
-          },
-          "50%": {
-            transform: "translate3d(0.7%, -0.35%, 0) scale(1.028)",
-          },
-        },
-        "@keyframes journeyDraw": {
-          "0%": { strokeDashoffset: 1, opacity: 0 },
-          "100%": { strokeDashoffset: 0, opacity: 1 },
+        "@keyframes journeyLineFlow": {
+          "0%": { strokeDashoffset: 0 },
+          "100%": { strokeDashoffset: -0.145 },
         },
         "@keyframes journeyTravel": {
           "0%": { strokeDashoffset: 0, opacity: 0.18 },
@@ -333,59 +417,69 @@ const theme = createTheme({
         },
         ".journey-field": {
           transformOrigin: "center",
-          animation: "journeyFieldDrift 19s ease-in-out infinite",
+          transform: "translate3d(0, 0, 0)",
         },
         ".journey-base-path": {
-          strokeWidth: 1.05,
-          opacity: 0.21,
-          animation: "journeyDraw 1.7s ease-out both",
+          strokeWidth: 1.15,
+          opacity: 0.29,
+          animation: "journeyLineFlow 4.8s linear infinite normal both",
         },
         ".journey-base-path-2, .journey-base-path-6": {
-          animationDelay: "90ms",
+          animationDuration: "7.2s",
+          animationDelay: "-1.3s",
         },
         ".journey-base-path-3, .journey-base-path-7": {
-          animationDelay: "180ms",
+          animationDuration: "6.4s",
+          animationDelay: "-2.5s",
         },
         ".journey-base-path-4, .journey-base-path-8": {
-          animationDelay: "270ms",
+          animationDuration: "8.1s",
+          animationDelay: "-3.8s",
         },
         ".journey-base-path-5": {
-          animationDelay: "360ms",
+          animationDuration: "6.9s",
+          animationDelay: "-4.6s",
         },
         ".journey-pulse": {
           strokeWidth: 2.15,
           opacity: 0,
           animationName: "journeyTravel",
-          animationTimingFunction: "cubic-bezier(0.45, 0, 0.55, 1)",
+          animationTimingFunction: "linear",
           animationIterationCount: "infinite",
-          animationDirection: "alternate",
+          animationDirection: "normal",
           animationFillMode: "both",
         },
         ".journey-pulse-1": {
           animationDuration: "10.5s",
-          animationDelay: "1.1s",
+          animationDelay: "-1.1s",
         },
         ".journey-pulse-2": {
           animationDuration: "13s",
-          animationDelay: "2.4s",
+          animationDelay: "-2.4s",
         },
         ".journey-pulse-3": {
           animationDuration: "11.5s",
-          animationDelay: "3.2s",
-          animationDirection: "alternate-reverse",
+          animationDelay: "-3.2s",
         },
         ".journey-pulse-4": {
           animationDuration: "15s",
-          animationDelay: "1.8s",
+          animationDelay: "-1.8s",
         },
         ".journey-pulse-5": {
           animationDuration: "12.5s",
-          animationDelay: "4s",
-          animationDirection: "alternate-reverse",
+          animationDelay: "-4s",
         },
         ".journey-pulse-6": {
           animationDuration: "14s",
-          animationDelay: "2.8s",
+          animationDelay: "-2.8s",
+        },
+        ".journey-pulse-7": {
+          animationDuration: "11.8s",
+          animationDelay: "-5.1s",
+        },
+        ".journey-pulse-8": {
+          animationDuration: "13.6s",
+          animationDelay: "-6.2s",
         },
         ".journey-waypoints": {
           color: "var(--univai-palette-secondary-main)",

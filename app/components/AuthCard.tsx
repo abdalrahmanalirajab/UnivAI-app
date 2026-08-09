@@ -8,12 +8,14 @@ import Typography from "@mui/material/Typography";
 export default function AuthCard({
   title,
   children,
+  maxWidth = "xs",
 }: {
   title: string;
   children: React.ReactNode;
+  maxWidth?: "xs" | "sm" | "md";
 }) {
   return (
-    <Container maxWidth="xs">
+    <Container maxWidth={maxWidth}>
       <Card elevation={3}>
         <CardContent>
           <Typography variant="h5" component="h1" gutterBottom>

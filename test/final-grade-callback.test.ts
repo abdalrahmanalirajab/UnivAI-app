@@ -47,6 +47,7 @@ const state = vi.hoisted(() => ({
 const mongoConnect = vi.hoisted(() => vi.fn(async () => {
   throw new Error("Final callbacks must not resolve a week through MongoDB.");
 }));
+const enqueueStudentEmailNotification = vi.hoisted(() => vi.fn(async () => ({ queued: true })));
 
 vi.mock("@/lib/env", () => ({
   env: {
@@ -63,6 +64,7 @@ vi.mock("@/lib/clock", () => ({
 }));
 
 vi.mock("mongodb", () => ({ MongoClient: { connect: mongoConnect } }));
+vi.mock("@/lib/notification-outbox", () => ({ enqueueStudentEmailNotification }));
 
 vi.mock("@/lib/db", () => {
   async function query(text: string, params: unknown[] = []): Promise<unknown[]> {
@@ -232,6 +234,7 @@ afterEach(() => {
     weeks: [{ week: 1 }],
   };
   mongoConnect.mockClear();
+  enqueueStudentEmailNotification.mockClear();
 });
 
 describe("final result callback transcript handoff", () => {
@@ -255,6 +258,15 @@ describe("final result callback transcript handoff", () => {
       letter_grade: "A-",
     });
     expect(mongoConnect).not.toHaveBeenCalled();
+    expect(enqueueStudentEmailNotification).toHaveBeenCalledWith({
+      registrationNumber: STUDENT_SID,
+      eventId: expect.stringMatching(/^transcript:tr_/),
+      event: {
+        type: "transcript.ready",
+        courseTitle: "Callback Course",
+        grade: "A-",
+      },
+    });
   });
 
   it("uses the producer's explicit score scale for a manually graded final", async () => {
