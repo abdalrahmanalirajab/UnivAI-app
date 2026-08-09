@@ -1,6 +1,6 @@
 import path from "node:path";
 import { readFile } from "node:fs/promises";
-import { queryOne } from "@/lib/db";
+import { getPresentationMaterialAccess } from "@/lib/lecture-materials";
 import { REPO_ROOT } from "@/lib/python";
 import { requireLearningActionApi } from "@/lib/session";
 
@@ -31,14 +31,16 @@ export async function GET(
     return new Response("Not found", { status: 404 });
   }
 
-  const owned = await queryOne<{ ok: number }>(
-    `SELECT 1 AS ok
-       FROM lecture_artifacts la
-       JOIN lectures l ON l.lecture_artifact_id = la.artifact_id
-      WHERE la.artifact_id = $1::uuid AND l.student_id = $2`,
-    [id, gate.registrationNumber],
-  );
-  if (!owned) return new Response("Not found", { status: 404 });
+  const access = await getPresentationMaterialAccess(gate.registrationNumber, id);
+  if (!access) return new Response("Not found", { status: 404 });
+  if (!access.available) {
+    return new Response(
+      access.blockedReason === "not_started"
+        ? "The presentation unlocks after the lecture ends."
+        : "Join the live lecture to view its presentation.",
+      { status: 403 },
+    );
+  }
 
   const base = path.resolve(REPO_ROOT, ".cache", "slidev", id);
   const requested = asset?.length === 1 && /^\d+$/.test(asset[0])
@@ -57,6 +59,9 @@ export async function GET(
       headers: {
         "Content-Type": CONTENT_TYPES[path.extname(target).toLowerCase()] ?? "application/octet-stream",
         "Cache-Control": target.endsWith("index.html") ? "private, no-store" : "private, max-age=31536000, immutable",
+        "Cross-Origin-Resource-Policy": "same-origin",
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "SAMEORIGIN",
       },
     });
   } catch {

@@ -17,6 +17,8 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
 import DeleteIcon from "@mui/icons-material/Delete";
+import MenuBookRounded from "@mui/icons-material/MenuBookRounded";
+import Link from "next/link";
 import { formatDateTime, formatRelative, useVirtualClock } from "@/lib/time";
 
 type Document = {
@@ -571,6 +573,16 @@ export default function SourceLibrary({
                     </TableCell>
                     <TableCell align="right">
                       <Stack direction="row" spacing={1}>
+                        {doc.status === "ready" ? (
+                          <Button
+                            size="small"
+                            component={Link}
+                            href={`/library/read/${doc.id}`}
+                            startIcon={<MenuBookRounded />}
+                          >
+                            Read book
+                          </Button>
+                        ) : null}
                         {doc.status === "failed" ||
                         doc.generation_stalled ||
                         ["failed", "partial_failed", "partial"].includes(

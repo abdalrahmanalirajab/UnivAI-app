@@ -44,6 +44,7 @@ type Lecture = {
   state: "upcoming" | "live" | "done";
   joinable: boolean;
   completed: boolean;
+  archiveAvailable: boolean;
   blockedMessage: string | null;
   slides: number;
   attendance: { status: string; joinedAt: string | null; lateMinutes: number } | null;
@@ -138,6 +139,7 @@ export default function SchedulePage() {
       setRejected({ status: 500, error: "The schedule response is missing its session records." });
       return;
     }
+    const loadedRecords = data.lectures;
     setRejected(null);
     const version: number | null = data.planVersion ?? null;
     const viewed = planVersionRef.current;
@@ -146,7 +148,13 @@ export default function SchedulePage() {
     }
     planVersionRef.current = version;
     setGeneration(data.generation ?? null);
-    setRecords(data.lectures);
+    setRecords(loadedRecords);
+    setSelected((current) => {
+      if (!current) return null;
+      return loadedRecords.find(
+        (record): record is Lecture => !isSection(record) && record.id === current.id,
+      ) ?? null;
+    });
   }, []);
 
   useEffect(() => {
@@ -302,6 +310,11 @@ export default function SchedulePage() {
                       <Chip size="small" color="success" variant="outlined" label="finished" />
                     </Grid>
                   ) : null}
+                  {lecture.archiveAvailable && lecture.slides > 0 ? (
+                    <Grid>
+                      <Chip size="small" color="primary" variant="outlined" label="slides open" />
+                    </Grid>
+                  ) : null}
                   {lecture.attendance ? (
                     <Grid>
                       <Chip
@@ -419,7 +432,15 @@ export default function SchedulePage() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setSelected(null)}>Close</Button>
-          {selected ? (
+          {selected?.archiveAvailable && selected.slides > 0 ? (
+            <Button
+              variant="contained"
+              component={Link}
+              href={`/lecture/${selected.id}/archive`}
+            >
+              Review presentation
+            </Button>
+          ) : selected ? (
             <Button
               variant="contained"
               component={Link}
