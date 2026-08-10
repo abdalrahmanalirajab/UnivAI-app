@@ -4,6 +4,7 @@ import { createRetryVersion, markRetryFailed } from "@/lib/feedback";
 import { spawnGeneration } from "@/lib/generation";
 import { REPO_ROOT } from "@/lib/python";
 import { requirePreparedSourceApi } from "@/lib/session";
+import { enforceUserRateLimit } from "@/lib/rate-limits";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,8 @@ export async function POST(
 ) {
   const gate = await requirePreparedSourceApi();
   if (gate instanceof Response) return gate;
+  const limited = await enforceUserRateLimit(gate.id, "generation");
+  if (limited) return limited;
 
   const { outputId: rawOutputId } = await context.params;
   const outputId = Number(rawOutputId);

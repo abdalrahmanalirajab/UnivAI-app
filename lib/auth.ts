@@ -25,6 +25,14 @@ export const auth = betterAuth({
   secret: env.BETTER_AUTH_SECRET,
   baseURL: env.BETTER_AUTH_URL,
   database: pool,
+  // Keep abuse protection active in local demos as well as production.
+  // Better Auth applies stricter built-in rules to sensitive sign-in paths;
+  // authenticated product actions also use the admin-managed per-user limits.
+  rateLimit: {
+    enabled: true,
+    window: 60,
+    max: 100,
+  },
   advanced: {
     database: {
       // Generate in the app so UUIDs work both before and after migration 014.

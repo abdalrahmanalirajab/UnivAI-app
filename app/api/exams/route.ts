@@ -14,6 +14,7 @@ import {
 import { requireTrustedExamLaunchUrl } from "@/lib/exam-launch";
 import { requireLearningActionApi } from "@/lib/session";
 import type { SessionUser } from "@/lib/auth-types";
+import { enforceUserRateLimit } from "@/lib/rate-limits";
 
 export const dynamic = "force-dynamic";
 
@@ -52,6 +53,8 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const gate = await requireLearningActionApi();
   if (gate instanceof Response) return gate;
+  const limited = await enforceUserRateLimit(gate.id, "assessment");
+  if (limited) return limited;
 
   const body = await request.json().catch(() => ({}));
   const kind = body?.kind as "quiz" | "mid" | "final" | undefined;

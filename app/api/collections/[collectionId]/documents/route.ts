@@ -14,6 +14,7 @@ import {
   validateFilename,
 } from "@/lib/collections";
 import { cancelGenerationForSource } from "@/lib/generation";
+import { enforceUserRateLimit } from "@/lib/rate-limits";
 
 export const dynamic = "force-dynamic";
 
@@ -56,6 +57,8 @@ export async function POST(
 ) {
   const gate = await requireUserApi();
   if (gate instanceof Response) return gate;
+  const limited = await enforceUserRateLimit(gate.id, "upload");
+  if (limited) return limited;
 
   const { collectionId: raw } = await params;
   const collectionId = parseCollectionId({ collectionId: raw });
@@ -138,6 +141,8 @@ export async function DELETE(
 ) {
   const gate = await requireUserApi();
   if (gate instanceof Response) return gate;
+  const limited = await enforceUserRateLimit(gate.id, "upload");
+  if (limited) return limited;
 
   const { collectionId: raw } = await params;
   const collectionId = parseCollectionId({ collectionId: raw });

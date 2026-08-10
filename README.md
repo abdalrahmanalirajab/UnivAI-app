@@ -75,7 +75,6 @@ npx next dev -p 3100      # or: make app  (from the parent repo)
 | `lectures.ts` | the 4-week schedule, join windows, reschedule |
 | `attendance.ts` | on-time / late / absent, derived from the clock |
 | `exams.ts` | exam-system integration: seeding its world, question-bank sync, windows, starting exams |
-| `course-size.ts` | the XS–XL assessment-paper sizes used by the Exam integration |
 | `generation.ts` | spawns the course builder detached |
 | `python.ts` | how TS shells out to the venv's Python |
 | `settings.ts` | the key/value admin settings table |

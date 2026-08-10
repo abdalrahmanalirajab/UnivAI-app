@@ -6,6 +6,8 @@ import { File as NodeFile } from "buffer";
 import MultiBookUploader from "@/app/library/MultiBookUploader";
 import SourceLibrary from "@/app/library/SourceLibrary";
 
+vi.mock("@/lib/rate-limits", () => ({ enforceUserRateLimit: vi.fn(async () => null) }));
+
 /* ------------------------------------------------------------------ */
 /*  Mock db for programme plan tests (hoisted — vitest runs this first)*/
 /* ------------------------------------------------------------------ */

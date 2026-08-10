@@ -9,6 +9,7 @@ import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import SendIcon from "@mui/icons-material/Send";
+import ReplayIcon from "@mui/icons-material/Replay";
 
 /**
  * What we heard, before it is asked.
@@ -21,21 +22,24 @@ import SendIcon from "@mui/icons-material/Send";
 
 type Props = {
   transcript: string | null;
-  onSend: (question: string) => void;
-  onCancel: () => void;
+  onSend: (question: string) => Promise<void> | void;
+  onRetry: () => Promise<void> | void;
+  onCancel: () => Promise<void> | void;
 };
 
-export default function TranscriptReview({ transcript, onSend, onCancel }: Props) {
+export default function TranscriptReview({ transcript, onSend, onRetry, onCancel }: Props) {
   const [text, setText] = useState("");
+  const [pending, setPending] = useState<"send" | "retry" | "cancel" | null>(null);
 
   useEffect(() => {
     setText(transcript ?? "");
+    setPending(null);
   }, [transcript]);
 
   if (transcript === null) return null;
 
   return (
-    <Card variant="outlined">
+    <Card variant="outlined" aria-busy={pending !== null}>
       <CardContent>
         <Stack spacing={2}>
           <Typography variant="overline" color="text.secondary">
@@ -47,13 +51,17 @@ export default function TranscriptReview({ transcript, onSend, onCancel }: Props
             multiline
             minRows={2}
             autoFocus
+            disabled={pending !== null}
             value={text}
             onChange={(event) => setText(event.target.value)}
             onKeyDown={(event) => {
               // Enter sends; Shift+Enter starts a new line.
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
-                if (text.trim()) onSend(text.trim());
+                if (text.trim() && pending === null) {
+                  setPending("send");
+                  Promise.resolve(onSend(text.trim())).catch(() => setPending(null));
+                }
               }
             }}
             label="Your question"
@@ -69,15 +77,39 @@ export default function TranscriptReview({ transcript, onSend, onCancel }: Props
               <Button
                 variant="contained"
                 startIcon={<SendIcon />}
-                disabled={!text.trim()}
-                onClick={() => onSend(text.trim())}
+                disabled={!text.trim() || pending !== null}
+                onClick={() => {
+                  setPending("send");
+                  Promise.resolve(onSend(text.trim())).catch(() => setPending(null));
+                }}
               >
-                Ask the lecturer
+                {pending === "send" ? "Sending…" : "Ask the lecturer"}
               </Button>
             </Grid>
             <Grid>
-              <Button variant="outlined" color="secondary" onClick={onCancel}>
-                Discard
+              <Button
+                variant="outlined"
+                startIcon={<ReplayIcon />}
+                disabled={pending !== null}
+                onClick={() => {
+                  setPending("retry");
+                  Promise.resolve(onRetry()).catch(() => setPending(null));
+                }}
+              >
+                {pending === "retry" ? "Restarting…" : "Try microphone again"}
+              </Button>
+            </Grid>
+            <Grid>
+              <Button
+                variant="outlined"
+                color="secondary"
+                disabled={pending !== null}
+                onClick={() => {
+                  setPending("cancel");
+                  Promise.resolve(onCancel()).catch(() => setPending(null));
+                }}
+              >
+                {pending === "cancel" ? "Discarding…" : "Discard"}
               </Button>
             </Grid>
           </Grid>

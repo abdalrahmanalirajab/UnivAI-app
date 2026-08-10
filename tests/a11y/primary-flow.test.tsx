@@ -44,7 +44,12 @@ describe("primary lecture-viewing + citation flow", () => {
     // (AppMain.tsx), so the harness mirrors that real containment.
     render(
       <main>
-        <TranscriptReview transcript="What is a covalent bond?" onSend={() => undefined} onCancel={() => undefined} />
+        <TranscriptReview
+          transcript="What is a covalent bond?"
+          onSend={() => undefined}
+          onRetry={() => undefined}
+          onCancel={() => undefined}
+        />
       </main>
     );
 

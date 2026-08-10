@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { NextRequest } from "next/server";
 
+vi.mock("@/lib/rate-limits", () => ({ enforceUserRateLimit: vi.fn(async () => null) }));
+
 const mocks = vi.hoisted(() => ({
   gate: vi.fn(),
   formData: vi.fn(),

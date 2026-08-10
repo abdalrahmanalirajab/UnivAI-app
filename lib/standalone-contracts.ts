@@ -4,13 +4,32 @@ export const LIVE_STATES = [
   "lecturing",
   "asking",
   "listening",
+  "processing",
   "review",
   "answering",
   "ended",
 ] as const;
 
-export const LIVE_INBOUND = ["slide", "state", "answer", "transcript", "progress", "hand"] as const;
-export const LIVE_OUTBOUND = ["raise_hand", "mic", "question", "cancel"] as const;
+export const LIVE_SPEECH_STATES = [
+  "waiting",
+  "detected",
+  "processing",
+  "received",
+  "no_speech",
+  "error",
+] as const;
+
+export const LIVE_INBOUND = [
+  "slide",
+  "state",
+  "answer",
+  "transcript",
+  "progress",
+  "hand",
+  "speech",
+  "fallback",
+] as const;
+export const LIVE_OUTBOUND = ["raise_hand", "mic", "question", "retry", "cancel"] as const;
 
 export type ScriptContract = {
   lectureId: string;

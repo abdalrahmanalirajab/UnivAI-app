@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { query } from "@/lib/db";
 import { now } from "@/lib/clock";
 import { requireLearningActionApi } from "@/lib/session";
+import { enforceUserRateLimit } from "@/lib/rate-limits";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,8 @@ export const dynamic = "force-dynamic";
 export async function POST(_request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const gate = await requireLearningActionApi();
   if (gate instanceof Response) return gate;
+  const limited = await enforceUserRateLimit(gate.id, "live");
+  if (limited) return limited;
   const sid = gate.registrationNumber;
 
   const { id } = await context.params;

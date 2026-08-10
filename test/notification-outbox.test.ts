@@ -19,6 +19,7 @@ import {
   enqueueCourseBuildNotifications,
   enqueueDueLectureReminders,
   enqueueEmailNotification,
+  enqueueReleasedTranscriptNotifications,
   getNotificationPreferences,
   parseNotificationPreferencePatch,
 } from "@/lib/notification-outbox";
@@ -138,6 +139,28 @@ describe("notification outbox", () => {
     expect(mocks.query.mock.calls[0][0]).toContain("generation_audio_ready_weeks");
     expect(mocks.queryOne.mock.calls[0][1][3]).toBe("course.ready");
     expect(mocks.queryOne.mock.calls[1][1][3]).toBe("course.failed");
+  });
+
+  it("queues the transcript email only after the review window releases", async () => {
+    mocks.query
+      .mockResolvedValueOnce([{ id: "tr_1" }])
+      .mockResolvedValueOnce([
+        {
+          id: "tr_1",
+          user_id: "55cbe793-8a4b-4518-88ea-25b43f19e24a",
+          course_title: "Databases",
+          letter_grade: "A",
+        },
+      ]);
+    mocks.queryOne.mockResolvedValue({ id: "transcript-message" });
+    mocks.poolQuery.mockResolvedValue({ rowCount: 1 });
+
+    await expect(
+      enqueueReleasedTranscriptNotifications(new Date("2026-08-15T12:00:00.000Z")),
+    ).resolves.toBe(1);
+    expect(mocks.query.mock.calls[0][0]).toContain("review_status = 'pending'");
+    expect(mocks.queryOne.mock.calls[0][1][3]).toBe("transcript.ready");
+    expect(mocks.poolQuery.mock.calls[0][0]).toContain("notification_queued_at");
   });
 
   it("backs off failures without saving provider messages or recipient data", async () => {

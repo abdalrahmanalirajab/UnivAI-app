@@ -5,7 +5,9 @@ import {
   dispatchEmailNotifications,
   enqueueCourseBuildNotifications,
   enqueueDueLectureReminders,
+  enqueueReleasedTranscriptNotifications,
 } from "@/lib/notification-outbox";
+import { cleanupExpiredRateLimitUsage } from "@/lib/rate-limits";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -37,13 +39,15 @@ export async function POST(request: Request) {
     return Response.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  const [courseUpdatesQueued, remindersQueued] = await Promise.all([
+  const [courseUpdatesQueued, remindersQueued, transcriptsQueued, rateLimitRowsCleaned] = await Promise.all([
     enqueueCourseBuildNotifications(),
     enqueueDueLectureReminders(),
+    enqueueReleasedTranscriptNotifications(),
+    cleanupExpiredRateLimitUsage(),
   ]);
   const result = await dispatchEmailNotifications();
   return Response.json(
-    { courseUpdatesQueued, remindersQueued, ...result },
+    { courseUpdatesQueued, remindersQueued, transcriptsQueued, rateLimitRowsCleaned, ...result },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

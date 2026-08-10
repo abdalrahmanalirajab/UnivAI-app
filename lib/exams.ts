@@ -3,8 +3,6 @@ import { env } from "./env";
 import { query, queryOne } from "./db";
 import { now, HOUR_MS, DAY_MS } from "./clock";
 import { getLectures } from "./lectures";
-import { COURSE_SIZES, DEFAULT_SIZE, isCourseSize } from "./course-size";
-import { getSetting } from "./settings";
 import { isStandalone } from "./runtime";
 import { requireTrustedExamLaunchUrl } from "./exam-launch";
 import { readGeneratedSemesterPlan } from "./semester-plan";
@@ -943,10 +941,6 @@ export async function startExam(
   // assembles the exam — this is what makes the quiz be about the lecture.
   await syncQuestionBanks(link);
 
-  // Course-size dial decides how big the paper is (global default for now).
-  const sizeValue = await getSetting("course_size");
-  const paper = COURSE_SIZES[isCourseSize(sizeValue) ? sizeValue : DEFAULT_SIZE];
-
   if (kind === "quiz") {
     const chapter = link.chapters.find((c) => c.week === week);
     if (!chapter) throw new Error("No chapter for that week.");
@@ -959,7 +953,6 @@ export async function startExam(
         // routing the grade back to this owner (see /api/exams/callback).
         student_sid: sid,
         chapter_id: chapter.chapter_id,
-        question_count: paper.quizPaper,
       }),
     });
     const exam = await res.json();
@@ -973,7 +966,7 @@ export async function startExam(
   const res = await fetch(`${EXAM_SYSTEM_URL}/api/exams/mid/${midtermId}/start`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question_count: paper.midPaper, student_sid: sid }),
+    body: JSON.stringify({ student_sid: sid }),
   });
   const exam = await res.json();
   if (!res.ok) throw new Error(exam.error ?? "The exam system refused to start the midterm.");

@@ -7,6 +7,7 @@ import {
   type FeedbackInput,
   type FeedbackRating,
 } from "@/lib/feedback";
+import { enforceUserRateLimit } from "@/lib/rate-limits";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +28,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const gate = await requirePreparedSourceApi();
   if (gate instanceof Response) return gate;
+  const limited = await enforceUserRateLimit(gate.id, "feedback");
+  if (limited) return limited;
 
   const body: unknown = await request.json().catch(() => null);
   if (!body || typeof body !== "object" || Array.isArray(body)) {

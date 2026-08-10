@@ -6,6 +6,7 @@ import {
   payPalPlanId,
 } from "@/lib/paypal";
 import { requireUserApi } from "@/lib/session";
+import { enforceUserRateLimit } from "@/lib/rate-limits";
 import {
   isSubscriptionPlanCode,
   type SubscriptionPlanCode,
@@ -35,6 +36,8 @@ function paymentError(error: unknown): Response {
 export async function POST(request: Request) {
   const gate = await requireUserApi();
   if (gate instanceof Response) return gate;
+  const limited = await enforceUserRateLimit(gate.id, "account");
+  if (limited) return limited;
   const body = (await request.json().catch(() => null)) as { planCode?: unknown } | null;
   if (!isPaidPlan(body?.planCode)) {
     return Response.json({ error: "Choose the Supporter or Patron plan." }, { status: 400 });

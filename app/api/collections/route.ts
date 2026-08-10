@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { requireUserApi } from "@/lib/session";
+import { enforceUserRateLimit } from "@/lib/rate-limits";
 import {
   getOrCreateCollection,
   listCollections,
@@ -19,6 +20,8 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const gate = await requireUserApi();
   if (gate instanceof Response) return gate;
+  const limited = await enforceUserRateLimit(gate.id, "upload");
+  if (limited) return limited;
 
   let body: { name?: unknown };
   try {

@@ -10,10 +10,13 @@ import {
   reconcilePayPalSubscription,
 } from "@/lib/subscriptions";
 import { enqueueEmailNotification } from "@/lib/notification-outbox";
+import { enforceUserRateLimit } from "@/lib/rate-limits";
 
 export async function POST(request: Request) {
   const gate = await requireUserApi();
   if (gate instanceof Response) return gate;
+  const limited = await enforceUserRateLimit(gate.id, "account");
+  if (limited) return limited;
   const body = (await request.json().catch(() => null)) as {
     subscriptionId?: unknown;
   } | null;

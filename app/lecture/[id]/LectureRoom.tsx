@@ -35,6 +35,7 @@ import type { CitationV1 } from "@/test/fixtures/citation-v1";
 import { formatLateness } from "@/lib/time";
 import LectureSlides from "./LectureSlides";
 import VoiceStateCard from "@/components/ui/voice-state-card";
+import { LIVE_SPEECH_STATES, LIVE_STATES } from "@/lib/standalone-contracts";
 
 /**
  * The live lecture room.
@@ -47,15 +48,8 @@ import VoiceStateCard from "@/components/ui/voice-state-card";
  *   Listener — hears the student, and interrupts the Lecturer when they speak
  */
 
-type AgentState =
-  | "connecting"
-  | "preparing"
-  | "lecturing"
-  | "asking"
-  | "listening"
-  | "review"
-  | "answering"
-  | "ended";
+type AgentState = (typeof LIVE_STATES)[number];
+type SpeechState = (typeof LIVE_SPEECH_STATES)[number];
 
 const STATE_LABEL: Record<AgentState, string> = {
   connecting: "Connecting…",
@@ -63,6 +57,7 @@ const STATE_LABEL: Record<AgentState, string> = {
   lecturing: "Lecturer speaking",
   asking: "Lecturer is asking you…",
   listening: "Listening to you…",
+  processing: "Turning speech into text…",
   review: "Paused — check your question",
   answering: "Answering your question",
   ended: "Lecture finished",
@@ -74,10 +69,19 @@ const STATE_COLOR: Record<AgentState, "default" | "primary" | "secondary" | "suc
   lecturing: "primary",
   asking: "secondary",
   listening: "secondary",
+  processing: "secondary",
   review: "secondary",
   answering: "secondary",
   ended: "success",
 };
+
+function isAgentState(value: unknown): value is AgentState {
+  return typeof value === "string" && (LIVE_STATES as readonly string[]).includes(value);
+}
+
+function isSpeechState(value: unknown): value is SpeechState {
+  return typeof value === "string" && (LIVE_SPEECH_STATES as readonly string[]).includes(value);
+}
 
 type Props = { lectureId: string };
 
@@ -105,6 +109,8 @@ export default function LectureRoom({ lectureId }: Props) {
   // What Whisper heard, waiting for the student to confirm or correct it.
   const [transcript, setTranscript] = useState<string | null>(null);
   const [voiceFallback, setVoiceFallback] = useState<string | null>(null);
+  const [speechState, setSpeechState] = useState<SpeechState | null>(null);
+  const [speechDetail, setSpeechDetail] = useState<string | null>(null);
   // The raise-hand protocol: nobody unmutes unannounced. Raise your hand, the
   // lecturer finishes the sentence and asks you by name, THEN the mic unlocks.
   const [hand, setHand] = useState<"idle" | "raised" | "acked">("idle");
@@ -120,21 +126,36 @@ export default function LectureRoom({ lectureId }: Props) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const startupStartedAt = useRef(0);
   const startupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const turnTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const firstAudioReported = useRef(false);
   const startupComplete = useRef(false);
   const micRef = useRef<LocalAudioTrack | null>(null);
   const [mic, setMic] = useState<LocalAudioTrack | null>(null);
 
   const reply = useCallback(async (message: Record<string, unknown>) => {
-    await room.localParticipant.publishData(
-      new TextEncoder().encode(JSON.stringify(message)),
-      { reliable: true },
-    );
-    if (message.type === "question" || message.type === "cancel") {
-      setTranscript(null);
-      setVoiceFallback(null);
+    try {
+      await room.localParticipant.publishData(
+        new TextEncoder().encode(JSON.stringify(message)),
+        { reliable: true },
+      );
+      if (message.type === "question" || message.type === "retry" || message.type === "cancel") {
+        setTranscript(null);
+        setVoiceFallback(null);
+      }
+    } catch (publishError) {
+      setVoiceFallback("The voice connection did not receive that action. Check your connection and try again.");
+      throw publishError;
     }
   }, [room]);
+
+  const muteMicrophone = useCallback(async () => {
+    const track = micRef.current;
+    if (!track) return;
+    const alreadyMuted = track.isMuted;
+    if (!alreadyMuted) await track.mute();
+    setMuted(true);
+    if (!alreadyMuted) await reply({ type: "mic", muted: true });
+  }, [reply]);
 
   const connect = useCallback(async () => {
     setError(null);
@@ -174,10 +195,24 @@ export default function LectureRoom({ lectureId }: Props) {
           try {
             const message = JSON.parse(new TextDecoder().decode(payload));
             if (message.type === "slide" && typeof message.n === "number") setSlide(message.n);
-            if (message.type === "state") {
-              setAgentState(message.state as AgentState);
+            if (message.type === "state" && isAgentState(message.state)) {
+              setAgentState(message.state);
               if (message.state === "answering") setSteps([]);
-              if (message.state === "listening") setVoiceFallback(null);
+              if (message.state === "listening") {
+                setVoiceFallback(null);
+                setSteps([]);
+              }
+              if (
+                message.state === "processing" ||
+                message.state === "review" ||
+                message.state === "answering"
+              ) {
+                muteMicrophone().catch(() => undefined);
+              }
+              if (message.state === "lecturing" || message.state === "ended") {
+                setSpeechState(null);
+                setSpeechDetail(null);
+              }
               // Reaching the end closes the lecture: it cannot be reopened.
               if (message.state === "ended") {
                 fetch(`/api/lecture/${lectureId}/complete`, { method: "POST" });
@@ -185,6 +220,18 @@ export default function LectureRoom({ lectureId }: Props) {
             }
             if (message.type === "answer") setLastAnswer(message.payload);
             if (message.type === "transcript") setTranscript(message.text ?? null);
+            if (message.type === "speech" && isSpeechState(message.state)) {
+              const detail = typeof message.detail === "string" ? message.detail : null;
+              setSpeechState(message.state);
+              setSpeechDetail(detail);
+              if (message.state === "waiting" || message.state === "detected") {
+                setVoiceFallback(null);
+              }
+              if (message.state === "no_speech" || message.state === "error") {
+                setVoiceFallback(detail ?? "Voice recognition did not finish.");
+              }
+              if (message.state === "received") setVoiceFallback(null);
+            }
             if (message.type === "fallback") {
               setVoiceFallback(
                 message.payload?.detail ??
@@ -214,13 +261,12 @@ export default function LectureRoom({ lectureId }: Props) {
               if (message.state === "acked") setHand("acked");
               if (message.state === "lowered") {
                 setHand("idle");
+                setSpeechState(null);
+                setSpeechDetail(null);
                 // Hand time is over: whatever happened, the room goes quiet again.
                 const track = micRef.current;
                 if (track && !track.isMuted) {
-                  track.mute().then(() => {
-                    setMuted(true);
-                    reply({ type: "mic", muted: true });
-                  });
+                  muteMicrophone().catch(() => undefined);
                 }
               }
             }
@@ -258,15 +304,32 @@ export default function LectureRoom({ lectureId }: Props) {
       if (startupTimer.current) clearTimeout(startupTimer.current);
       setError(err instanceof Error ? err.message : "Could not join the lecture.");
     }
-  }, [lectureId, reply, room]);
+  }, [lectureId, muteMicrophone, room]);
 
   useEffect(() => {
     connect();
     return () => {
       if (startupTimer.current) clearTimeout(startupTimer.current);
+      if (turnTimer.current) clearTimeout(turnTimer.current);
       room.disconnect();
     };
   }, [connect, room]);
+
+  useEffect(() => {
+    if (turnTimer.current) clearTimeout(turnTimer.current);
+    if (agentState === "listening") {
+      turnTimer.current = setTimeout(() => {
+        setVoiceFallback("Still waiting for speech. Finish the turn or cancel and try again.");
+      }, 18_000);
+    } else if (agentState === "processing") {
+      turnTimer.current = setTimeout(() => {
+        setVoiceFallback("Recognition is taking longer than expected. You can cancel without losing your lecture place.");
+      }, 15_000);
+    }
+    return () => {
+      if (turnTimer.current) clearTimeout(turnTimer.current);
+    };
+  }, [agentState]);
 
   useEffect(() => {
     if (!lastAnswer) {
@@ -304,24 +367,40 @@ export default function LectureRoom({ lectureId }: Props) {
 
   async function raiseHand() {
     setHand("raised");
-    await room.localParticipant.publishData(
-      new TextEncoder().encode(JSON.stringify({ type: "raise_hand" })),
-      { reliable: true }
-    );
+    try {
+      await reply({ type: "raise_hand" });
+    } catch {
+      setHand("idle");
+    }
   }
 
   async function toggleMute() {
     const track = micRef.current;
     if (!track) return;
-    if (muted) {
+    if (track.isMuted) {
       await track.unmute();
       setMuted(false);
-      reply({ type: "mic", muted: false });
+      await reply({ type: "mic", muted: false });
     } else {
-      await track.mute();
-      setMuted(true);
-      reply({ type: "mic", muted: true });
+      await muteMicrophone();
     }
+  }
+
+  async function retrySpeech() {
+    const track = micRef.current;
+    if (!track) {
+      setVoiceFallback("No microphone is available. You can still type your question.");
+      return;
+    }
+    if (track.isMuted) await track.unmute();
+    setMuted(false);
+    await reply({ type: "mic", muted: false }).catch(() => undefined);
+    await reply({ type: "retry" });
+  }
+
+  async function cancelQuestion() {
+    await muteMicrophone().catch(() => undefined);
+    await reply({ type: "cancel" });
   }
 
   if (error) {
@@ -418,7 +497,9 @@ export default function LectureRoom({ lectureId }: Props) {
 
       {(hand !== "idle" ||
         transcript !== null ||
+        speechState !== null ||
         agentState === "listening" ||
+        agentState === "processing" ||
         agentState === "review" ||
         agentState === "asking" ||
         agentState === "answering") &&
@@ -438,28 +519,52 @@ export default function LectureRoom({ lectureId }: Props) {
             );
           }
 
-          if (agentState === "review" || transcript !== null) {
+          if (agentState === "processing" || speechState === "processing") {
             return (
               <VoiceStateCard
-                label="Your question"
-                title={voiceFallback ? "Type your question" : "Check what I heard"}
-                detail={
-                  voiceFallback
-                    ? "Speech recognition did not finish, but the lecture is still paused. Type below and send."
-                    : "Edit the transcript below if needed, then send it to the lecturer."
-                }
+                label="Speech received"
+                title="Turning your speech into text"
+                detail={speechDetail || "Keep this page open. Your lecture remains paused while recognition finishes."}
+                active={!voiceFallback}
                 problem={voiceFallback}
               />
             );
           }
 
-          if (hand === "acked" || agentState === "listening") {
+          if (agentState === "review" || transcript !== null) {
+            const recognitionProblem = speechState === "no_speech" || speechState === "error";
             return (
               <VoiceStateCard
-                label="Microphone is live"
-                title="Speak now"
-                detail="Ask one clear question. When you stop talking, the transcript appears for review."
-                active
+                label={speechState === "received" ? "Transcript received" : "Your question"}
+                title={
+                  speechState === "error"
+                    ? "Voice recognition needs help"
+                    : speechState === "no_speech"
+                      ? "No clear speech detected"
+                      : "Check what I heard"
+                }
+                detail={
+                  speechDetail ||
+                  (recognitionProblem
+                    ? "The lecture is still paused. Type below, retry the microphone, or discard the turn."
+                    : "Edit the transcript below if needed, then send it to the lecturer.")
+                }
+                problem={recognitionProblem ? voiceFallback : null}
+              />
+            );
+          }
+
+          if (hand === "acked" || agentState === "listening") {
+            const heardSpeech = speechState === "detected";
+            return (
+              <VoiceStateCard
+                label={heardSpeech ? "Speech detected" : "Listening"}
+                title={heardSpeech ? "I can hear you" : muted ? "Start your microphone" : "Speak now"}
+                detail={
+                  speechDetail ||
+                  "Ask one clear question. Pause or finish speaking, and the transcript will appear for review."
+                }
+                active={!voiceFallback}
                 problem={voiceFallback}
               />
             );
@@ -495,13 +600,26 @@ export default function LectureRoom({ lectureId }: Props) {
       <TranscriptReview
         transcript={transcript}
         onSend={(question) => reply({ type: "question", text: question })}
-        onCancel={() => reply({ type: "cancel" })}
+        onRetry={retrySpeech}
+        onCancel={cancelQuestion}
       />
 
       <Card variant="outlined">
         <CardContent>
           <Stack spacing={2}>
-            <MicMeter track={mic} muted={muted} />
+            <MicMeter
+              track={mic}
+              muted={muted}
+              phase={
+                agentState === "processing"
+                  ? "processing"
+                  : agentState === "review"
+                    ? "review"
+                    : agentState === "listening"
+                      ? "listening"
+                      : "idle"
+              }
+            />
 
             <Grid container spacing={2}>
               <Grid>
@@ -524,12 +642,33 @@ export default function LectureRoom({ lectureId }: Props) {
                   variant="contained"
                   color={muted ? "error" : "primary"}
                   startIcon={muted ? <MicOffIcon /> : <MicIcon />}
-                  onClick={toggleMute}
-                  disabled={!connected || micBlocked || (muted && hand !== "acked")}
+                  onClick={() => void toggleMute().catch(() => undefined)}
+                  disabled={
+                    !connected ||
+                    micBlocked ||
+                    (muted
+                      ? hand !== "acked" || agentState !== "listening"
+                      : agentState !== "listening")
+                  }
                 >
-                  {muted ? "Unmute microphone" : "Mute microphone"}
+                  {muted
+                    ? agentState === "listening"
+                      ? "Start microphone"
+                      : "Microphone paused"
+                    : "Finish speaking"}
                 </Button>
               </Grid>
+              {hand !== "idle" && transcript === null && agentState !== "answering" ? (
+                <Grid>
+                  <Button
+                    variant="outlined"
+                    color="secondary"
+                    onClick={() => void cancelQuestion().catch(() => undefined)}
+                  >
+                    Cancel question
+                  </Button>
+                </Grid>
+              ) : null}
               <Grid>
                 <Button
                   variant="outlined"
@@ -544,8 +683,12 @@ export default function LectureRoom({ lectureId }: Props) {
             <Typography variant="body2" color="text.secondary">
               {micBlocked
                 ? "Listening only — no microphone is available, so you can watch and hear the lecture but not ask aloud. Allow microphone access and rejoin to raise your hand."
-                : hand === "acked"
-                  ? "The lecturer asked for you — unmute and ask your question."
+                : agentState === "processing"
+                  ? "Speech received. The microphone is paused while recognition finishes."
+                  : agentState === "review"
+                    ? "Check the transcript, retry the microphone, type the question, or discard it."
+                    : hand === "acked"
+                      ? "The lecturer asked for you — start the microphone and ask your question."
                   : hand === "raised"
                     ? "Hand raised. The lecturer will finish the sentence and ask you."
                     : muted

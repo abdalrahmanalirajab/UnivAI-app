@@ -105,6 +105,10 @@ async function main(): Promise<void> {
       ...score,
       completedAt: COMPLETED_AT.toISOString(),
       certificateId: null,
+      reviewStatus: "released",
+      releaseAt: COMPLETED_AT.toISOString(),
+      reviewedAt: COMPLETED_AT.toISOString(),
+      reviewNote: "Demo transcript",
     };
     const certificateId = `cert_demo_${demo.registrationNumber.slice(-6)}`;
     const image = await renderCertificate({
@@ -123,8 +127,10 @@ async function main(): Promise<void> {
         `INSERT INTO course_transcripts
           (id, student_id, course_key, course_title, quiz_percentage, attendance_percentage,
            midterm_percentage, final_percentage, coursework_points, total_percentage,
-           letter_grade, gpa, passed, completed_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+           letter_grade, gpa, passed, completed_at, review_status, release_at,
+           reviewed_at, review_note, notification_queued_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'released',$14,$14,
+                 'Demo transcript',$14)
          ON CONFLICT (student_id, course_key) DO UPDATE SET
            course_title = EXCLUDED.course_title,
            quiz_percentage = EXCLUDED.quiz_percentage,
@@ -137,6 +143,11 @@ async function main(): Promise<void> {
            gpa = EXCLUDED.gpa,
            passed = EXCLUDED.passed,
            completed_at = EXCLUDED.completed_at,
+           review_status = 'released',
+           release_at = EXCLUDED.release_at,
+           reviewed_at = EXCLUDED.reviewed_at,
+           review_note = EXCLUDED.review_note,
+           notification_queued_at = EXCLUDED.notification_queued_at,
            updated_at = CURRENT_TIMESTAMP`,
         [
           transcript.id,

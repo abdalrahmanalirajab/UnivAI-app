@@ -23,6 +23,7 @@ import { getProgrammeForCollection } from "@/lib/programmes";
 import { requireUserApi, requireVerifiedUserApi } from "@/lib/session";
 import { env } from "@/lib/env";
 import { isStandalone } from "@/lib/runtime";
+import { enforceUserRateLimit } from "@/lib/rate-limits";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 600;
@@ -130,6 +131,8 @@ async function runUpload(request: NextRequest, claim: UploadClaim) {
   // Authorization must run before multipart parsing or any upload side effect.
   const gate = await requireVerifiedUserApi();
   if (gate instanceof Response) return gate;
+  const limited = await enforceUserRateLimit(gate.id, "upload");
+  if (limited) return limited;
   const sid = gate.registrationNumber;
 
   const form = await request.formData().catch(() => null);

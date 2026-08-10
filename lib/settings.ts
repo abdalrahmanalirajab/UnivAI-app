@@ -1,6 +1,6 @@
 import { query, queryOne } from "./db";
 
-/** Tiny key/value admin settings (course_size and friends). */
+/** Tiny key/value settings used by schedules and operational controls. */
 
 export async function getSetting(key: string): Promise<string | null> {
   const row = await queryOne<{ value: string }>("SELECT value FROM settings WHERE key = $1", [key]);

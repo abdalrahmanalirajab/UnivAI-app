@@ -3,6 +3,7 @@ import { AccessToken, RoomServiceClient } from "livekit-server-sdk";
 import { env } from "@/lib/env";
 import { getSectionPack } from "@/lib/lectures";
 import { requireLearningActionApi } from "@/lib/session";
+import { enforceUserRateLimit } from "@/lib/rate-limits";
 
 export const dynamic = "force-dynamic";
 const TOKEN_TTL_SECONDS = 600;
@@ -16,6 +17,8 @@ function httpUrl(url: string): string {
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const gate = await requireLearningActionApi();
   if (gate instanceof Response) return gate;
+  const limited = await enforceUserRateLimit(gate.id, "live");
+  if (limited) return limited;
   const { id } = await params;
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
     return Response.json({ error: "No such section." }, { status: 404 });

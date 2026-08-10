@@ -15,6 +15,8 @@ import { NextRequest } from "next/server";
 import { cleanup, render, screen } from "@testing-library/react";
 import ExamsPage from "@/app/exams/page";
 
+vi.mock("@/lib/rate-limits", () => ({ enforceUserRateLimit: vi.fn(async () => null) }));
+
 /* ------------------------------------------------------------------ */
 /*  Shared in-memory state + module mocks                              */
 /* ------------------------------------------------------------------ */

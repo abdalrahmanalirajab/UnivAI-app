@@ -8,6 +8,7 @@ import CardContent from "@mui/material/CardContent";
 import Chip from "@mui/material/Chip";
 import Drawer from "@mui/material/Drawer";
 import Grid from "@mui/material/Grid";
+import LinearProgress from "@mui/material/LinearProgress";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
@@ -30,6 +31,7 @@ type State =
   | "lecturing"
   | "asking"
   | "listening"
+  | "processing"
   | "review"
   | "answering"
   | "ended";
@@ -64,9 +66,11 @@ export default function StandaloneLectureRoom({ lectureId }: { lectureId: number
   }
 
   function reviewQuestion() {
-    const heard = question.trim() || "What protects each learner's material?";
-    setTranscript(heard);
-    setState("review");
+    setState("processing");
+    setTimeout(() => {
+      setTranscript(question.trim());
+      setState("review");
+    }, 350);
   }
 
   function sendQuestion() {
@@ -138,6 +142,12 @@ export default function StandaloneLectureRoom({ lectureId }: { lectureId: number
                 <Button variant="outlined" onClick={reviewQuestion}>Finish speaking</Button>
               </>
             ) : null}
+            {state === "processing" ? (
+              <Stack spacing={1} aria-live="polite">
+                <Typography variant="subtitle2">Speech received — turning it into text</Typography>
+                <LinearProgress />
+              </Stack>
+            ) : null}
             {state === "review" ? (
               <>
                 <TextField
@@ -145,7 +155,43 @@ export default function StandaloneLectureRoom({ lectureId }: { lectureId: number
                   value={transcript ?? ""}
                   onChange={(event) => setTranscript(event.target.value)}
                 />
-                <Button variant="contained" onClick={sendQuestion}>Send question</Button>
+                {!transcript ? (
+                  <Alert severity="warning">
+                    No clear speech was detected. Type the question or try again.
+                  </Alert>
+                ) : null}
+                <Grid container spacing={1}>
+                  <Grid>
+                    <Button variant="contained" disabled={!transcript?.trim()} onClick={sendQuestion}>
+                      Send question
+                    </Button>
+                  </Grid>
+                  <Grid>
+                    <Button
+                      variant="outlined"
+                      onClick={() => {
+                        setTranscript(null);
+                        setQuestion("");
+                        setState("listening");
+                      }}
+                    >
+                      Try microphone again
+                    </Button>
+                  </Grid>
+                  <Grid>
+                    <Button
+                      variant="outlined"
+                      color="secondary"
+                      onClick={() => {
+                        setTranscript(null);
+                        setHand(false);
+                        setState("lecturing");
+                      }}
+                    >
+                      Discard
+                    </Button>
+                  </Grid>
+                </Grid>
               </>
             ) : null}
             {answer ? (

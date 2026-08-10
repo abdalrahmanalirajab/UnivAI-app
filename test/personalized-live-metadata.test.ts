@@ -9,6 +9,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { AccessToken, RoomServiceClient, TokenVerifier } from "livekit-server-sdk";
 
+vi.mock("@/lib/rate-limits", () => ({ enforceUserRateLimit: vi.fn(async () => null) }));
+
 const {
   mockGate,
   mockQueryOne,

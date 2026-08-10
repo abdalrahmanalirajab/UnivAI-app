@@ -6,7 +6,9 @@ const mocks = vi.hoisted(() => ({
   setPreferences: vi.fn(),
   enqueueCourses: vi.fn(),
   enqueueReminders: vi.fn(),
+  enqueueTranscripts: vi.fn(),
   dispatch: vi.fn(),
+  cleanupRateLimits: vi.fn(),
 }));
 
 vi.mock("@/lib/session", () => ({ requireUserApi: mocks.requireUserApi }));
@@ -20,9 +22,14 @@ vi.mock("@/lib/notification-outbox", async () => {
     setNotificationPreferences: mocks.setPreferences,
     enqueueCourseBuildNotifications: mocks.enqueueCourses,
     enqueueDueLectureReminders: mocks.enqueueReminders,
+    enqueueReleasedTranscriptNotifications: mocks.enqueueTranscripts,
     dispatchEmailNotifications: mocks.dispatch,
   };
 });
+vi.mock("@/lib/rate-limits", () => ({
+  enforceUserRateLimit: vi.fn(async () => null),
+  cleanupExpiredRateLimitUsage: mocks.cleanupRateLimits,
+}));
 vi.mock("@/lib/env", () => ({
   env: {
     BETTER_AUTH_SECRET: "local-notification-secret-32-characters",
@@ -41,6 +48,8 @@ describe("notification APIs", () => {
     vi.clearAllMocks();
     mocks.enqueueCourses.mockResolvedValue(0);
     mocks.enqueueReminders.mockResolvedValue(0);
+    mocks.enqueueTranscripts.mockResolvedValue(0);
+    mocks.cleanupRateLimits.mockResolvedValue(0);
   });
 
   it("requires authentication for preferences", async () => {
@@ -103,6 +112,8 @@ describe("notification APIs", () => {
     await expect(authorized.json()).resolves.toEqual({
       courseUpdatesQueued: 2,
       remindersQueued: 1,
+      transcriptsQueued: 0,
+      rateLimitRowsCleaned: 0,
       claimed: 2,
       sent: 2,
       retrying: 0,

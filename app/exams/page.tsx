@@ -337,7 +337,9 @@ export default function ExamsPage() {
                   </Typography>
                 ) : null}
                 {final.state === "submitted" ? (
-                  <Typography variant="body1">Submitted — your result is not final yet.</Typography>
+                  <Alert severity="info">
+                    Exam received. Scoring is processing and this page updates automatically.
+                  </Alert>
                 ) : null}
                 {final.state === "awaiting-grade" ? (
                   <Alert severity="warning">
@@ -354,7 +356,7 @@ export default function ExamsPage() {
                         : "Graded."}
                     </Alert>
                     <Button component={Link} href="/transcript" variant="contained">
-                      View final course grade and GPA
+                      Track transcript release
                     </Button>
                   </Stack>
                 ) : null}

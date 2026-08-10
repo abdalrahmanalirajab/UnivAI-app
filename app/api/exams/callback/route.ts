@@ -138,18 +138,10 @@ export async function POST(request: NextRequest) {
   if (isFinal) {
     await saveFinalExamStatus(sid, webhookToFinalExamStatus(payload));
     if (finalGradeConfirmed) {
-      const transcript = await upsertCourseTranscript(sid, takenAt, payload.title);
-      if (transcript) {
-        await enqueueStudentEmailNotification({
-          registrationNumber: sid,
-          eventId: `transcript:${transcript.id}`,
-          event: {
-            type: "transcript.ready",
-            courseTitle: transcript.courseTitle,
-            grade: transcript.letterGrade,
-          },
-        });
-      }
+      // The score is immediate, but the official transcript waits through its
+      // seven-day admin review window. The dispatcher sends the ready email
+      // only when that window releases it.
+      await upsertCourseTranscript(sid, takenAt, payload.title);
     }
   } else if (
     !flagged &&

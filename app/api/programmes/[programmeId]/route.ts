@@ -10,6 +10,7 @@ import {
   excludeCourse,
 } from "@/lib/programmes";
 import type { ProgrammePlanV1 } from "@/test/fixtures/programme-plan-v1";
+import { enforceUserRateLimit } from "@/lib/rate-limits";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +46,8 @@ export async function PATCH(
 ) {
   const gate = await requireUserApi();
   if (gate instanceof Response) return gate;
+  const limited = await enforceUserRateLimit(gate.id, "generation");
+  if (limited) return limited;
 
   const { programmeId: raw } = await params;
   const programmeId = parseProgrammeId({ programmeId: raw });

@@ -31,8 +31,6 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Tabs from "@mui/material/Tabs";
 import TextField from "@mui/material/TextField";
-import ToggleButton from "@mui/material/ToggleButton";
-import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Typography from "@mui/material/Typography";
 import AutoStoriesOutlined from "@mui/icons-material/AutoStoriesOutlined";
 import BuildOutlined from "@mui/icons-material/BuildOutlined";
@@ -45,9 +43,9 @@ import ScheduleOutlined from "@mui/icons-material/ScheduleOutlined";
 import ShieldOutlined from "@mui/icons-material/ShieldOutlined";
 import WarningAmberOutlined from "@mui/icons-material/WarningAmberOutlined";
 import { formatCountdown, formatDateTime, formatLateness } from "@/lib/time";
+import RateLimitManager from "./RateLimitManager";
+import TranscriptReviewManager from "./TranscriptReviewManager";
 
-type CourseSize = "XS" | "S" | "M" | "L" | "XL";
-type SizeInfo = { slides: number; quizPaper: number; midPaper: number; blurb: string };
 type Student = { sid: string; name: string; email: string; role: string };
 type Book = {
   id: number;
@@ -147,8 +145,6 @@ export default function AdminPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [isoInput, setIsoInput] = useState("");
-  const [size, setSize] = useState<CourseSize>("XS");
-  const [sizes, setSizes] = useState<Record<CourseSize, SizeInfo> | null>(null);
   const [selectedSid, setSelectedSid] = useState("");
   const [tab, setTab] = useState(0);
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null);
@@ -199,13 +195,6 @@ export default function AdminPage() {
 
   useEffect(() => {
     void loadAudit();
-    fetch("/api/admin/generate", { cache: "no-store" })
-      .then((response) => response.json())
-      .then((data) => {
-        setSize(data.size);
-        setSizes(data.sizes);
-      })
-      .catch(() => undefined);
   }, [loadAudit]);
 
   const building = state?.books.some(
@@ -250,7 +239,7 @@ export default function AdminPage() {
       const response = await fetch("/api/admin/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ size, mode: "full", sid: selectedSid }),
+        body: JSON.stringify({ mode: "full", sid: selectedSid }),
       });
       const body = await response.json().catch(() => null);
       if (!response.ok) throw new Error(body?.error ?? "Course rebuild could not start.");
@@ -538,6 +527,8 @@ export default function AdminPage() {
                   </Grid>
                 </CardContent>
               </Card>
+              <RateLimitManager registrationNumber={selectedSid} />
+              <TranscriptReviewManager registrationNumber={selectedSid} />
             </>
           )}
         </Stack>
@@ -625,27 +616,10 @@ export default function AdminPage() {
                     </Typography>
                   </Stack>
                 </Stack>
-                <ToggleButtonGroup
-                  exclusive
-                  color="primary"
-                  value={size}
-                  onChange={(_event, value) => value && setSize(value as CourseSize)}
-                  disabled={busy || building}
-                  aria-label="Assessment size"
-                >
-                  {(["XS", "S", "M", "L", "XL"] as CourseSize[]).map((option) => (
-                    <ToggleButton key={option} value={option}>
-                      {option}
-                    </ToggleButton>
-                  ))}
-                </ToggleButtonGroup>
-                {sizes ? (
-                  <Typography variant="body2" color="text.secondary">
-                    {size} · {sizes[size].blurb} · {sizes[size].slides} slides per lecture ·
-                    {" " + sizes[size].quizPaper} quiz questions ·
-                    {" " + sizes[size].midPaper} midterm questions
-                  </Typography>
-                ) : null}
+                <Typography variant="body2" color="text.secondary">
+                  Question counts follow the assessment contract. Rebuild is only a recovery
+                  action and no longer changes course size.
+                </Typography>
                 <Button
                   variant="contained"
                   color="warning"

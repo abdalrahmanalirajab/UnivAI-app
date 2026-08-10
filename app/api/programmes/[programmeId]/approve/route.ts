@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { requireUserApi } from "@/lib/session";
 import { approveProgramme } from "@/lib/programmes";
 import { startApprovedCourseBuild } from "@/lib/generation";
+import { enforceUserRateLimit } from "@/lib/rate-limits";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,8 @@ export async function POST(
   // client-sent user id, name, or status field in the body is ignored.
   const gate = await requireUserApi();
   if (gate instanceof Response) return gate;
+  const limited = await enforceUserRateLimit(gate.id, "generation");
+  if (limited) return limited;
 
   const { programmeId: raw } = await params;
   const programmeId = parseProgrammeId({ programmeId: raw });

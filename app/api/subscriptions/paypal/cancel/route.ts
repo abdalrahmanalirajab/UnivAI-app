@@ -9,10 +9,13 @@ import {
   getSubscriptionSnapshot,
 } from "@/lib/subscriptions";
 import { enqueueEmailNotification } from "@/lib/notification-outbox";
+import { enforceUserRateLimit } from "@/lib/rate-limits";
 
 export async function POST() {
   const gate = await requireUserApi();
   if (gate instanceof Response) return gate;
+  const limited = await enforceUserRateLimit(gate.id, "account");
+  if (limited) return limited;
 
   const current = await getSubscriptionSnapshot(gate.id);
   if (current.provider !== "paypal" || !current.providerSubscriptionId) {

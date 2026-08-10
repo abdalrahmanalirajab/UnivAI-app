@@ -10,6 +10,7 @@ import {
   type NotificationEvent,
   type OptionalNotificationCategory,
 } from "./notification-types";
+import { releaseDueTranscripts } from "./transcripts";
 
 const MAX_ATTEMPTS = 8;
 const MAX_BATCH_SIZE = 50;
@@ -243,6 +244,56 @@ export async function enqueueCourseBuildNotifications(): Promise<number> {
         ? { type: "course.failed", courseTitle: course.course_title }
         : { type: "course.ready", courseTitle: course.course_title },
     });
+    if (result.queued) queued += 1;
+  }
+  return queued;
+}
+
+/**
+ * Releases elapsed transcript review windows and queues each ready notice once.
+ * The durable outbox key also makes concurrent dispatchers harmless.
+ */
+export async function enqueueReleasedTranscriptNotifications(referenceTime?: Date): Promise<number> {
+  const currentTime = referenceTime ?? await now();
+  await releaseDueTranscripts(currentTime);
+  const transcripts = await query<{
+    id: string;
+    user_id: string;
+    course_title: string;
+    letter_grade: string;
+  }>(
+    `SELECT transcript.id,
+            learner."id"::text AS user_id,
+            transcript.course_title,
+            transcript.letter_grade
+       FROM course_transcripts AS transcript
+       JOIN "user" AS learner
+         ON learner."registrationNumber" = transcript.student_id
+      WHERE transcript.review_status = 'released'
+        AND transcript.notification_queued_at IS NULL
+      ORDER BY transcript.release_at ASC, transcript.id ASC
+      LIMIT 100`,
+  );
+  let queued = 0;
+  for (const transcript of transcripts) {
+    const result = await enqueueEmailNotification({
+      userId: transcript.user_id,
+      eventId: `transcript:${transcript.id}:released`,
+      event: {
+        type: "transcript.ready",
+        courseTitle: transcript.course_title,
+        grade: transcript.letter_grade,
+      },
+    });
+    await pool.query(
+      `UPDATE course_transcripts
+          SET notification_queued_at = CURRENT_TIMESTAMP,
+              updated_at = CURRENT_TIMESTAMP
+        WHERE id = $1
+          AND review_status = 'released'
+          AND notification_queued_at IS NULL`,
+      [transcript.id],
+    );
     if (result.queued) queued += 1;
   }
   return queued;

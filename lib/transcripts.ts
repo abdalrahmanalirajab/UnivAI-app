@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
-import { query, queryOne } from "./db";
+import { pool, query, queryOne } from "./db";
+import { DAY_MS } from "./clock";
 import { readGeneratedSemesterPlan } from "./semester-plan";
 
 export const COURSE_WEIGHTS = {
@@ -43,7 +44,20 @@ export type CourseTranscript = CourseScore & {
   courseTitle: string;
   completedAt: string;
   certificateId: string | null;
+  reviewStatus: TranscriptReviewStatus;
+  releaseAt: string;
+  reviewedAt: string | null;
+  reviewNote: string | null;
 };
+
+export type TranscriptReviewStatus = "pending" | "held" | "released";
+
+export type PendingTranscript = Pick<
+  CourseTranscript,
+  "id" | "courseTitle" | "completedAt" | "reviewStatus" | "releaseAt"
+>;
+
+export const TRANSCRIPT_REVIEW_DAYS = 7;
 
 const BANDS: Array<{ minimum: number; letter: LetterGrade; gpa: number }> = [
   { minimum: 95, letter: "A*", gpa: 4 },
@@ -257,12 +271,14 @@ export async function upsertCourseTranscript(
   const courseKey = book ? `book:${book.id}` : `final:${fallbackTitle}`;
   const id = transcriptId(registrationNumber, courseKey);
   const courseTitle = cleanCourseTitle(book?.title ?? null, book?.filename ?? null, fallbackTitle);
+  const releaseAt = new Date(completedAt.getTime() + TRANSCRIPT_REVIEW_DAYS * DAY_MS);
   await query(
     `INSERT INTO course_transcripts
       (id, student_id, course_key, course_title, quiz_percentage,
        attendance_percentage, midterm_percentage, final_percentage,
-       coursework_points, total_percentage, letter_grade, gpa, passed, completed_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+       coursework_points, total_percentage, letter_grade, gpa, passed, completed_at,
+       release_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
      ON CONFLICT (student_id, course_key) DO UPDATE SET
        course_title = EXCLUDED.course_title,
        quiz_percentage = EXCLUDED.quiz_percentage,
@@ -274,7 +290,8 @@ export async function upsertCourseTranscript(
        letter_grade = EXCLUDED.letter_grade,
        gpa = EXCLUDED.gpa,
        passed = EXCLUDED.passed,
-       completed_at = EXCLUDED.completed_at,
+       completed_at = LEAST(course_transcripts.completed_at, EXCLUDED.completed_at),
+       release_at = LEAST(course_transcripts.release_at, EXCLUDED.release_at),
        updated_at = CURRENT_TIMESTAMP`,
     [
       id,
@@ -291,6 +308,7 @@ export async function upsertCourseTranscript(
       score.gpa,
       score.passed,
       completedAt,
+      releaseAt,
     ],
   );
   return getTranscript(registrationNumber, id);
@@ -311,6 +329,10 @@ type TranscriptRow = {
   passed: boolean;
   completed_at: Date;
   certificate_id: string | null;
+  review_status: TranscriptReviewStatus;
+  release_at: Date;
+  reviewed_at: Date | null;
+  review_note: string | null;
 };
 
 function mapTranscript(row: TranscriptRow): CourseTranscript {
@@ -329,6 +351,10 @@ function mapTranscript(row: TranscriptRow): CourseTranscript {
     passed: row.passed,
     completedAt: row.completed_at.toISOString(),
     certificateId: row.certificate_id,
+    reviewStatus: row.review_status,
+    releaseAt: row.release_at.toISOString(),
+    reviewedAt: row.reviewed_at?.toISOString() ?? null,
+    reviewNote: row.review_note,
   };
 }
 
@@ -336,7 +362,8 @@ const TRANSCRIPT_SELECT = `
   SELECT t.id, t.course_key, t.course_title, t.quiz_percentage,
          t.attendance_percentage, t.midterm_percentage, t.final_percentage,
          t.coursework_points, t.total_percentage, t.letter_grade, t.gpa,
-         t.passed, t.completed_at, c.id AS certificate_id
+         t.passed, t.completed_at, t.review_status, t.release_at,
+         t.reviewed_at, t.review_note, c.id AS certificate_id
     FROM course_transcripts t
     LEFT JOIN certificate_artifacts c ON c.transcript_id = t.id`;
 
@@ -354,4 +381,117 @@ export async function getTranscripts(registrationNumber: string): Promise<Course
     [registrationNumber],
   );
   return rows.map(mapTranscript);
+}
+
+/** Release untouched review windows using the academic clock, not wall time. */
+export async function releaseDueTranscripts(
+  referenceTime: Date,
+  registrationNumber?: string,
+): Promise<number> {
+  const result = await query<{ id: string }>(
+    `UPDATE course_transcripts
+        SET review_status = 'released', updated_at = CURRENT_TIMESTAMP
+      WHERE review_status = 'pending'
+        AND release_at <= $1
+        AND ($2::text IS NULL OR student_id = $2)
+      RETURNING id`,
+    [referenceTime, registrationNumber ?? null],
+  );
+  return result.length;
+}
+
+export async function getStudentTranscriptAccess(
+  registrationNumber: string,
+  referenceTime: Date,
+): Promise<{ transcripts: CourseTranscript[]; pending: PendingTranscript[] }> {
+  await releaseDueTranscripts(referenceTime, registrationNumber);
+  const all = await getTranscripts(registrationNumber);
+  return {
+    transcripts: all.filter((transcript) => transcript.reviewStatus === "released"),
+    pending: all
+      .filter((transcript) => transcript.reviewStatus !== "released")
+      .map(({ id, courseTitle, completedAt, reviewStatus, releaseAt }) => ({
+        id,
+        courseTitle,
+        completedAt,
+        reviewStatus,
+        releaseAt,
+      })),
+  };
+}
+
+export type TranscriptReviewAction = "hold" | "release";
+
+export async function reviewTranscript(input: {
+  actorId: string;
+  actorEmail: string;
+  registrationNumber: string;
+  transcriptId: string;
+  action: TranscriptReviewAction;
+  note?: string;
+  reviewedAt: Date;
+}): Promise<CourseTranscript | null> {
+  const note = input.note?.trim() || null;
+  if (note && note.length > 500) throw new Error("Review note must be 500 characters or fewer.");
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const found = await client.query<{ id: string; review_status: TranscriptReviewStatus }>(
+      `SELECT id, review_status FROM course_transcripts
+        WHERE id = $1 AND student_id = $2
+        FOR UPDATE`,
+      [input.transcriptId, input.registrationNumber],
+    );
+    if (!found.rows[0]) {
+      await client.query("ROLLBACK");
+      return null;
+    }
+    if (input.action === "hold" && found.rows[0].review_status === "released") {
+      throw new Error("A released transcript cannot be hidden again.");
+    }
+    await client.query(
+      `UPDATE course_transcripts
+          SET review_status = $3,
+              release_at = CASE WHEN $3 = 'released' THEN LEAST(release_at, $4) ELSE release_at END,
+              reviewed_at = $4,
+              reviewed_by = $5::uuid,
+              review_note = $6,
+              notification_queued_at = CASE
+                WHEN $3 = 'released' THEN NULL
+                ELSE notification_queued_at
+              END,
+              updated_at = CURRENT_TIMESTAMP
+        WHERE id = $1 AND student_id = $2`,
+      [
+        input.transcriptId,
+        input.registrationNumber,
+        input.action === "release" ? "released" : "held",
+        input.reviewedAt,
+        input.actorId,
+        note,
+      ],
+    );
+    await client.query(
+      `INSERT INTO auth_audit (action, actor_id, actor_email, target_id, detail)
+       VALUES ('transcript.review', $1, $2, $3, $4::jsonb)`,
+      [
+        input.actorId,
+        input.actorEmail,
+        input.transcriptId,
+        JSON.stringify({
+          registrationNumber: input.registrationNumber,
+          decision: input.action,
+          note,
+        }),
+      ],
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+  return getTranscript(input.registrationNumber, input.transcriptId);
 }

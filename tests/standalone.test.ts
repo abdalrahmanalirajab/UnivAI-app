@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import { COURSE_SIZES } from "../lib/course-size";
 import {
   LIVE_INBOUND,
   LIVE_OUTBOUND,
+  LIVE_SPEECH_STATES,
   LIVE_STATES,
   validateScript,
 } from "../lib/standalone-contracts";
@@ -25,16 +25,14 @@ test("all canonical lecture scripts validate", async () => {
 });
 
 test("live vocabulary remains compatible", () => {
-  assert.deepEqual(LIVE_INBOUND, ["slide", "state", "answer", "transcript", "progress", "hand"]);
-  assert.deepEqual(LIVE_OUTBOUND, ["raise_hand", "mic", "question", "cancel"]);
+  assert.deepEqual(LIVE_INBOUND, ["slide", "state", "answer", "transcript", "progress", "hand", "speech", "fallback"]);
+  assert.deepEqual(LIVE_OUTBOUND, ["raise_hand", "mic", "question", "retry", "cancel"]);
+  assert.deepEqual(LIVE_SPEECH_STATES, ["waiting", "detected", "processing", "received", "no_speech", "error"]);
+  assert.equal(LIVE_STATES.includes("processing"), true);
   assert.equal(LIVE_STATES.includes("ended"), true);
 });
 
-test("scenario selection and assessment sizes are stable", () => {
+test("scenario selection is stable", () => {
   assert.equal(normalizeScenario("generation-error"), "generation-error");
   assert.equal(normalizeScenario("unknown"), "happy");
-  assert.deepEqual(
-    Object.fromEntries(Object.entries(COURSE_SIZES).map(([name, value]) => [name, value.quizPaper])),
-    { XS: 5, S: 6, M: 10, L: 12, XL: 15 }
-  );
 });

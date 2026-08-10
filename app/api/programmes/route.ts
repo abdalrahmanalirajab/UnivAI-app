@@ -20,6 +20,7 @@ import {
   type GeneratedSemesterPlan,
 } from "@/lib/semester-plan";
 import type { ProgrammePlanV1 } from "@/test/fixtures/programme-plan-v1";
+import { enforceUserRateLimit } from "@/lib/rate-limits";
 
 export const dynamic = "force-dynamic";
 
@@ -287,6 +288,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const gate = await requireUserApi();
   if (gate instanceof Response) return gate;
+  const limited = await enforceUserRateLimit(gate.id, "generation");
+  if (limited) return limited;
 
   let collectionId: number;
   // Set by the client only after the learner confirms replacing a curriculum

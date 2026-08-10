@@ -6,6 +6,7 @@ import { stampJoin } from "@/lib/attendance";
 import { getLectures, readScript, BLOCKED_MESSAGE } from "@/lib/lectures";
 import { requireLearningActionApi } from "@/lib/session";
 import { env } from "@/lib/env";
+import { enforceUserRateLimit } from "@/lib/rate-limits";
 
 export const dynamic = "force-dynamic";
 
@@ -134,6 +135,8 @@ export function buildLiveSessionMetadata(input: {
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const gate = await requireLearningActionApi();
   if (gate instanceof Response) return gate;
+  const limited = await enforceUserRateLimit(gate.id, "live");
+  if (limited) return limited;
   const sid = gate.registrationNumber;
 
   const { id } = await context.params;

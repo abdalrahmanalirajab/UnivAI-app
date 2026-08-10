@@ -2,6 +2,8 @@ import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
+vi.mock("@/lib/rate-limits", () => ({ enforceUserRateLimit: vi.fn(async () => null) }));
+
 const { mockCreateRetryVersion, mockMarkRetryFailed, mockSpawnGeneration, mockGate } = vi.hoisted(() => ({
   mockCreateRetryVersion: vi.fn(),
   mockMarkRetryFailed: vi.fn(),

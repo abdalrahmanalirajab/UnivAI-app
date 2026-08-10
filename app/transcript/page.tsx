@@ -34,8 +34,17 @@ type Transcript = {
   certificateId: string | null;
 };
 
+type PendingTranscript = {
+  id: string;
+  courseTitle: string;
+  completedAt: string;
+  releaseAt: string;
+  reviewStatus: "pending" | "held";
+};
+
 export default function TranscriptPage() {
   const [transcripts, setTranscripts] = useState<Transcript[] | null>(null);
+  const [pending, setPending] = useState<PendingTranscript[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [issuing, setIssuing] = useState<string | null>(null);
 
@@ -44,7 +53,8 @@ export default function TranscriptPage() {
       const response = await fetch("/api/transcript", { cache: "no-store" });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? "Could not load your transcript.");
-      setTranscripts(body.transcripts);
+      setTranscripts(body.transcripts ?? []);
+      setPending(body.pending ?? []);
       setError(null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not load your transcript.");
@@ -94,6 +104,30 @@ export default function TranscriptPage() {
         </Typography>
       </Stack>
       {error ? <Alert severity="error">{error}</Alert> : null}
+      {pending.map((transcript) => (
+        <Card key={transcript.id} variant="outlined">
+          <CardContent>
+            <Stack spacing={1}>
+              <Grid container spacing={1} className="align-center">
+                <Grid size="grow">
+                  <Typography variant="h6">{transcript.courseTitle}</Typography>
+                </Grid>
+                <Grid>
+                  <Chip
+                    color={transcript.reviewStatus === "held" ? "warning" : "info"}
+                    label={transcript.reviewStatus === "held" ? "Under review" : "Review window"}
+                  />
+                </Grid>
+              </Grid>
+              <Typography color="text.secondary">
+                {transcript.reviewStatus === "held"
+                  ? "An administrator is checking this result. Your exam score remains visible in Assessments."
+                  : `Your official transcript and certificate unlock automatically on ${new Date(transcript.releaseAt).toLocaleString()}.`}
+              </Typography>
+            </Stack>
+          </CardContent>
+        </Card>
+      ))}
       {transcripts.length ? (
         <Card variant="outlined">
           <CardContent>
@@ -110,8 +144,8 @@ export default function TranscriptPage() {
           </CardContent>
         </Card>
       ) : null}
-      {transcripts.length === 0 ? (
-        <Alert severity="info">Your transcript appears after your final exam is finished.</Alert>
+      {transcripts.length === 0 && pending.length === 0 ? (
+        <Alert severity="info">Your transcript review starts after your final exam is graded.</Alert>
       ) : (
         transcripts.map((transcript) => (
           <Card key={transcript.id} variant="outlined">

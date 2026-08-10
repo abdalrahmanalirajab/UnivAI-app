@@ -20,19 +20,23 @@ import type { LocalAudioTrack } from "livekit-client";
  * is the honest picture: the Listener agent genuinely cannot hear a word.
  */
 
-/** Matches the Listener agent's VAD: above this, speech interrupts the lecture. */
-const SPEECH_THRESHOLD = 0.02;
+/** Local feedback only; the worker uses probabilistic VAD for the real decision. */
+const SPEECH_THRESHOLD = 0.008;
 
-type Props = { track: LocalAudioTrack | null; muted: boolean };
+type Props = {
+  track: LocalAudioTrack | null;
+  muted: boolean;
+  phase?: "idle" | "listening" | "processing" | "review";
+};
 
-export default function MicMeter({ track, muted }: Props) {
+export default function MicMeter({ track, muted, phase = "idle" }: Props) {
   const [level, setLevel] = useState(0);
   const [hearing, setHearing] = useState(false);
   const frameRef = useRef<number | null>(null);
 
   useEffect(() => {
     const mediaTrack = track?.mediaStreamTrack;
-    if (!mediaTrack || muted) {
+    if (!mediaTrack || muted || phase === "processing" || phase === "review") {
       setLevel(0);
       setHearing(false);
       return;
@@ -45,10 +49,17 @@ export default function MicMeter({ track, muted }: Props) {
 
     const source = context.createMediaStreamSource(new MediaStream([mediaTrack]));
     source.connect(analyser);
+    context.resume().catch(() => undefined);
 
     const samples = new Float32Array(analyser.fftSize);
+    let lastUpdate = 0;
 
-    const tick = () => {
+    const tick = (now: number) => {
+      if (now - lastUpdate < 80) {
+        frameRef.current = requestAnimationFrame(tick);
+        return;
+      }
+      lastUpdate = now;
       analyser.getFloatTimeDomainData(samples);
 
       // Root-mean-square: the level the ear actually perceives.
@@ -56,8 +67,10 @@ export default function MicMeter({ track, muted }: Props) {
       for (const sample of samples) sum += sample * sample;
       const rms = Math.sqrt(sum / samples.length);
 
-      setHearing(rms > SPEECH_THRESHOLD);
-      setLevel(Math.min(100, rms * 800)); // scaled so ordinary speech fills most of the bar
+      const nextHearing = rms > SPEECH_THRESHOLD;
+      const nextLevel = Math.min(100, rms * 900);
+      setHearing((previous) => (previous === nextHearing ? previous : nextHearing));
+      setLevel((previous) => (Math.abs(previous - nextLevel) < 1 ? previous : nextLevel));
 
       frameRef.current = requestAnimationFrame(tick);
     };
@@ -65,11 +78,13 @@ export default function MicMeter({ track, muted }: Props) {
     frameRef.current = requestAnimationFrame(tick);
 
     return () => {
-      if (frameRef.current) cancelAnimationFrame(frameRef.current);
+      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
       source.disconnect();
-      context.close();
+      context.close().catch(() => undefined);
     };
-  }, [track, muted]);
+  }, [track, muted, phase]);
+
+  const paused = phase === "processing" || phase === "review";
 
   return (
     <Stack spacing={1}>
@@ -77,25 +92,41 @@ export default function MicMeter({ track, muted }: Props) {
         <Grid>
           <Chip
             size="small"
-            color={muted ? "default" : hearing ? "secondary" : "primary"}
-            variant={hearing ? "filled" : "outlined"}
-            label={muted ? "microphone off" : hearing ? "hearing you" : "microphone on"}
+            color={paused || muted ? "default" : hearing ? "secondary" : "primary"}
+            variant={!paused && hearing ? "filled" : "outlined"}
+            label={
+              phase === "processing"
+                ? "speech received"
+                : phase === "review"
+                  ? "microphone paused"
+                  : muted
+                    ? "microphone off"
+                    : hearing
+                      ? "hearing you"
+                      : "microphone on"
+            }
           />
         </Grid>
       </Grid>
 
       <LinearProgress
         variant="determinate"
-        value={muted ? 0 : level}
+        value={muted || paused ? 0 : level}
         color={hearing ? "secondary" : "primary"}
       />
 
       <Typography variant="caption" color="text.secondary">
-        {muted
-          ? "Unmute to ask a question. Nothing is being sent while the microphone is off."
+        {phase === "processing"
+          ? "Your microphone is paused while speech recognition finishes."
+          : phase === "review"
+            ? "Review the transcript below. Your microphone is not recording."
+            : muted
+              ? phase === "listening"
+                ? "Start the microphone when you are ready to speak."
+                : "Raise your hand first. Nothing is sent while the microphone is off."
           : hearing
             ? "Keep talking. When you stop, you will see what we heard before it is sent."
-            : "Speak up to interrupt the lecturer."}
+            : "Start speaking. The activity bar should move with your voice."}
       </Typography>
     </Stack>
   );

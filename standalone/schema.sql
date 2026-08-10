@@ -392,6 +392,80 @@ CREATE INDEX IF NOT EXISTS notification_email_outbox_dispatch_idx
 CREATE INDEX IF NOT EXISTS notification_email_outbox_user_idx
   ON notification_email_outbox (user_id, created_at DESC);
 
+CREATE TABLE IF NOT EXISTS user_rate_limit_policies (
+  user_id          uuid NOT NULL REFERENCES "user" ("id") ON DELETE CASCADE,
+  scope            text NOT NULL
+                     CHECK (scope IN ('upload', 'generation', 'assessment', 'live', 'feedback', 'account')),
+  enabled          boolean NOT NULL DEFAULT true,
+  blocked          boolean NOT NULL DEFAULT false,
+  max_requests     integer NOT NULL CHECK (max_requests BETWEEN 1 AND 10000),
+  window_seconds   integer NOT NULL CHECK (window_seconds BETWEEN 1 AND 86400),
+  updated_by       uuid REFERENCES "user" ("id") ON DELETE SET NULL,
+  updated_at       timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id, scope)
+);
+
+CREATE TABLE IF NOT EXISTS user_rate_limit_usage (
+  user_id          uuid NOT NULL REFERENCES "user" ("id") ON DELETE CASCADE,
+  scope            text NOT NULL
+                     CHECK (scope IN ('upload', 'generation', 'assessment', 'live', 'feedback', 'account')),
+  bucket_start     timestamptz NOT NULL,
+  request_count    integer NOT NULL DEFAULT 0 CHECK (request_count >= 0),
+  updated_at       timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id, scope, bucket_start)
+);
+
+CREATE INDEX IF NOT EXISTS user_rate_limit_usage_cleanup_idx
+  ON user_rate_limit_usage (bucket_start);
+
+CREATE TABLE IF NOT EXISTS course_transcripts (
+  id                    text PRIMARY KEY,
+  student_id            text NOT NULL,
+  course_key            text NOT NULL,
+  course_title          text NOT NULL,
+  quiz_percentage       numeric(5,2) NOT NULL CHECK (quiz_percentage BETWEEN 0 AND 100),
+  attendance_percentage numeric(5,2) NOT NULL CHECK (attendance_percentage BETWEEN 0 AND 100),
+  midterm_percentage    numeric(5,2) NOT NULL CHECK (midterm_percentage BETWEEN 0 AND 100),
+  final_percentage      numeric(5,2) NOT NULL CHECK (final_percentage BETWEEN 0 AND 100),
+  coursework_points     numeric(5,2) NOT NULL CHECK (coursework_points BETWEEN 0 AND 60),
+  total_percentage      numeric(5,2) NOT NULL CHECK (total_percentage BETWEEN 0 AND 100),
+  letter_grade          text NOT NULL CHECK (letter_grade IN ('F','D','D+','C-','C','C+','B-','B','B+','A-','A','A+','A*')),
+  gpa                   numeric(3,2) NOT NULL CHECK (gpa BETWEEN 0 AND 4),
+  passed                boolean NOT NULL,
+  completed_at          timestamptz NOT NULL,
+  review_status         text NOT NULL DEFAULT 'pending'
+                          CHECK (review_status IN ('pending', 'held', 'released')),
+  release_at            timestamptz NOT NULL,
+  reviewed_at           timestamptz,
+  reviewed_by           uuid REFERENCES "user" ("id") ON DELETE SET NULL,
+  review_note           text,
+  notification_queued_at timestamptz,
+  created_at            timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at            timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (student_id, course_key)
+);
+CREATE INDEX IF NOT EXISTS course_transcripts_student_idx
+  ON course_transcripts (student_id, completed_at DESC);
+CREATE INDEX IF NOT EXISTS course_transcripts_review_queue_idx
+  ON course_transcripts (review_status, release_at, completed_at DESC);
+CREATE INDEX IF NOT EXISTS course_transcripts_release_notification_idx
+  ON course_transcripts (notification_queued_at, completed_at)
+  WHERE review_status = 'released';
+
+CREATE TABLE IF NOT EXISTS certificate_artifacts (
+  id            text PRIMARY KEY,
+  transcript_id text NOT NULL REFERENCES course_transcripts(id) ON DELETE CASCADE,
+  student_id    text NOT NULL,
+  template_key  text NOT NULL CHECK (template_key IN ('d','c','b','a','a-star')),
+  filename      text NOT NULL,
+  mime_type     text NOT NULL DEFAULT 'image/png',
+  image_data    bytea NOT NULL,
+  issued_at     timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (transcript_id)
+);
+CREATE INDEX IF NOT EXISTS certificate_artifacts_student_idx
+  ON certificate_artifacts (student_id, issued_at DESC);
+
 CREATE TABLE IF NOT EXISTS auth_audit (
   id BIGSERIAL PRIMARY KEY,
   action TEXT NOT NULL,

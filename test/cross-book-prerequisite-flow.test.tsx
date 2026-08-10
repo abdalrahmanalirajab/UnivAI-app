@@ -15,6 +15,8 @@ import {
 import { SEVEN_WEEK_PLAN_V1 } from "@/test/fixtures/programme-plans-v1";
 import type { Programme } from "@/lib/programmes";
 
+vi.mock("@/lib/rate-limits", () => ({ enforceUserRateLimit: vi.fn(async () => null) }));
+
 const { mockQueryOne, mockApproveProgramme, mockGate, mockStartApprovedCourseBuild } =
   vi.hoisted(() => ({
     mockQueryOne: vi.fn(),

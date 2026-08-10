@@ -1,6 +1,7 @@
 import { getNotificationPreferences, parseNotificationPreferencePatch, setNotificationPreferences } from "@/lib/notification-outbox";
 import { REQUIRED_NOTIFICATION_CATEGORIES } from "@/lib/notification-types";
 import { requireUserApi } from "@/lib/session";
+import { enforceUserRateLimit } from "@/lib/rate-limits";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,8 @@ export async function GET() {
 export async function PATCH(request: Request) {
   const gate = await requireUserApi();
   if (gate instanceof Response) return gate;
+  const limited = await enforceUserRateLimit(gate.id, "account");
+  if (limited) return limited;
 
   const raw = await request.text();
   if (raw.length > 4096) {

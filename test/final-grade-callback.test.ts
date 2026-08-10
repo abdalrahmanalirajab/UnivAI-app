@@ -169,6 +169,10 @@ vi.mock("@/lib/db", () => {
         gpa: params[11],
         passed: params[12],
         completed_at: params[13],
+        release_at: params[14],
+        review_status: "pending",
+        reviewed_at: null,
+        review_note: null,
         certificate_id: null,
       });
       return [];
@@ -238,7 +242,7 @@ afterEach(() => {
 });
 
 describe("final result callback transcript handoff", () => {
-  it("stores a final grade and makes it available to transcript scoring", async () => {
+  it("stores the final score and starts the seven-day transcript review window", async () => {
     const response = await postCallback(webhook());
 
     expect(response.status).toBe(200);
@@ -256,17 +260,11 @@ describe("final result callback transcript handoff", () => {
       final_percentage: 80,
       total_percentage: 80,
       letter_grade: "A-",
+      review_status: "pending",
+      release_at: new Date("2026-08-15T12:00:00.000Z"),
     });
     expect(mongoConnect).not.toHaveBeenCalled();
-    expect(enqueueStudentEmailNotification).toHaveBeenCalledWith({
-      registrationNumber: STUDENT_SID,
-      eventId: expect.stringMatching(/^transcript:tr_/),
-      event: {
-        type: "transcript.ready",
-        courseTitle: "Callback Course",
-        grade: "A-",
-      },
-    });
+    expect(enqueueStudentEmailNotification).not.toHaveBeenCalled();
   });
 
   it("uses the producer's explicit score scale for a manually graded final", async () => {
