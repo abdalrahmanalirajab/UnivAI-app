@@ -38,7 +38,9 @@ export default function VerifyCertificatePage() {
               onChange={(event) => setCertificateId(event.target.value)}
               placeholder="cert_…"
               required
-              slotProps={{ htmlInput: { maxLength: 96 } }}
+              slotProps={{
+                htmlInput: { maxLength: 96, "data-no-ui-translate": "true", dir: "ltr" },
+              }}
             />
             <Button type="submit" variant="contained">
               Verify certificate

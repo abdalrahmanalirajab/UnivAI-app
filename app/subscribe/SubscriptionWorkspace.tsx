@@ -9,29 +9,70 @@ import CardActions from "@mui/material/CardActions";
 import CardContent from "@mui/material/CardContent";
 import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
+import Divider from "@mui/material/Divider";
 import Grid from "@mui/material/Grid";
 import Stack from "@mui/material/Stack";
+import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
+import ArrowForwardRounded from "@mui/icons-material/ArrowForwardRounded";
 import CheckCircleRounded from "@mui/icons-material/CheckCircleRounded";
-import TollOutlined from "@mui/icons-material/TollOutlined";
+import InfoOutlined from "@mui/icons-material/InfoOutlined";
+import UploadFileRounded from "@mui/icons-material/UploadFileRounded";
 import {
   SUBSCRIPTION_PLANS,
-  isSubscriptionPlanCode,
   type SubscriptionPlanCode,
 } from "@/lib/subscription-plans";
 import type { SubscriptionSnapshot } from "@/lib/subscriptions";
 
 type PaidPlan = Exclude<SubscriptionPlanCode, "free">;
+const NUMBER_FORMATTER = new Intl.NumberFormat("en-US");
+
+const PLAN_COPY: Record<
+  SubscriptionPlanCode,
+  { label: string; action: string; impact: string; features: string[] }
+> = {
+  free: {
+    label: "For every learner",
+    action: "Continue learning",
+    impact: "All learning features with no payment required.",
+    features: [
+      "Complete UnivAI learning experience",
+      "All assessments and certificates",
+      "100 personalization coins weekly",
+      "Coins roll over",
+    ],
+  },
+  supporter: {
+    label: "Support UnivAI",
+    action: "Become a Supporter",
+    impact: "Support the project and receive more personalization coins.",
+    features: [
+      "Everything in Free",
+      "300 personalization coins weekly",
+      "More room for visual customization",
+      "Help keep learning open",
+    ],
+  },
+  patron: {
+    label: "Highest support",
+    action: "Become a Patron",
+    impact: "Our highest contribution tier for committed supporters.",
+    features: [
+      "Everything in Supporter",
+      "1,000 personalization coins weekly",
+      "Largest customization allowance",
+      "Make the biggest monthly contribution",
+    ],
+  },
+};
 
 export default function SubscriptionWorkspace({
-  requestedPlan,
   checkoutCancelled,
 }: {
-  requestedPlan: string | null;
   checkoutCancelled: boolean;
 }) {
   const [subscription, setSubscription] = useState<SubscriptionSnapshot | null>(null);
-  const [loading, setLoading] = useState<PaidPlan | "cancel" | null>(null);
+  const [loading, setLoading] = useState<PaidPlan | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -47,10 +88,16 @@ export default function SubscriptionWorkspace({
   }, []);
 
   useEffect(() => {
-    void load().catch((caught) => {
+    void (async () => {
+      if (checkoutCancelled) {
+        const response = await fetch("/api/subscriptions/paypal/abort", { method: "POST" });
+        if (!response.ok) throw new Error("Could not restore your membership after cancellation.");
+      }
+      await load();
+    })().catch((caught) => {
       setError(caught instanceof Error ? caught.message : "Could not load your plan.");
     });
-  }, [load]);
+  }, [checkoutCancelled, load]);
 
   async function choosePaidPlan(planCode: PaidPlan) {
     setLoading(planCode);
@@ -61,10 +108,15 @@ export default function SubscriptionWorkspace({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ planCode }),
       });
-      const body = (await response.json()) as { approvalUrl?: string; error?: string };
+      const body = (await response.json()) as {
+        approvalUrl?: string;
+        subscription?: SubscriptionSnapshot;
+        error?: string;
+      };
       if (!response.ok || !body.approvalUrl) {
         throw new Error(body.error ?? "Could not start PayPal checkout.");
       }
+      if (body.subscription) setSubscription(body.subscription);
       window.location.assign(body.approvalUrl);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not start PayPal checkout.");
@@ -72,127 +124,172 @@ export default function SubscriptionWorkspace({
     }
   }
 
-  async function cancelPlan() {
-    setLoading("cancel");
-    setError(null);
-    try {
-      const response = await fetch("/api/subscriptions/paypal/cancel", { method: "POST" });
-      const body = (await response.json()) as {
-        subscription?: SubscriptionSnapshot;
-        error?: string;
-      };
-      if (!response.ok || !body.subscription) {
-        throw new Error(body.error ?? "Could not cancel your plan.");
-      }
-      setSubscription(body.subscription);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not cancel your plan.");
-    } finally {
-      setLoading(null);
-    }
-  }
-
-  const selectedRequest =
-    isSubscriptionPlanCode(requestedPlan) && requestedPlan !== "free"
-      ? requestedPlan
-      : null;
+  const paidMembershipActive =
+    subscription?.planCode !== "free" && subscription?.status === "active";
 
   return (
-    <Stack spacing={3} className="subscription-workspace">
-      <Stack spacing={1}>
-        <Typography variant="overline" color="primary.main">
-          Membership and coins
+    <Stack spacing={4} className="subscription-workspace">
+      <Stack spacing={0.75} className="subscription-hero">
+        <Typography variant="h3" component="h1">
+          Membership
         </Typography>
-        <Typography variant="h3">Support the platform, never pay to learn.</Typography>
         <Typography color="text.secondary" className="subscription-lede">
-          Every learner receives the same course, teaching, assessments, grades,
-          transcript, and certificate. A paid membership only adds coins for optional
-          visual and profile personalization we will release later.
+          Every plan includes the same learning, assessments, transcript, and certificate. Paid
+          plans support UnivAI and add weekly personalization coins.
         </Typography>
       </Stack>
 
+      <Stack direction="row" spacing={2} className="subscription-action-rail align-center">
+        <Stack spacing={0.15} className="subscription-action-copy">
+          <Typography variant="subtitle2">Continue with Free</Typography>
+          <Typography variant="caption" color="text.secondary">
+            Membership is optional. You can upload your book now.
+          </Typography>
+        </Stack>
+        <Stack direction="row" spacing={1} className="align-center subscription-action-buttons">
+          <span className="subscription-desktop-policy">
+            <Tooltip
+              arrow
+              placement="top"
+              title={
+                <Stack spacing={0.5}>
+                  <Typography variant="subtitle2">No refunds</Typography>
+                  <Typography variant="caption">
+                    Membership payments are final. Revoking stops paid benefits immediately;
+                    earned coins and Free learning access remain.
+                  </Typography>
+                </Stack>
+              }
+              slotProps={{ tooltip: { className: "subscription-refund-tooltip" } }}
+            >
+              <Chip icon={<InfoOutlined />} label="Payment policy" variant="outlined" clickable />
+            </Tooltip>
+          </span>
+          <Button
+            component={Link}
+            href="/start"
+            variant="contained"
+            startIcon={<UploadFileRounded />}
+            endIcon={<ArrowForwardRounded />}
+          >
+            Continue to upload
+          </Button>
+        </Stack>
+      </Stack>
+
+      <Alert severity="warning" icon={<InfoOutlined />} className="subscription-mobile-refund">
+        <strong>No refunds.</strong> Payments are final; coins and Free access remain after
+        revocation.
+      </Alert>
+
       {checkoutCancelled ? (
-        <Alert severity="info">PayPal checkout was cancelled. Your Free plan is still available.</Alert>
+        <Alert severity="info">PayPal checkout was cancelled. Your learning access is unchanged.</Alert>
       ) : null}
       {error ? <Alert severity="error">{error}</Alert> : null}
 
-      {subscription ? (
-        <Card variant="outlined" className="coin-wallet-card">
-          <CardContent>
-            <Grid container spacing={2} className="align-center">
-              <Grid size="grow">
-                <Typography variant="overline">Current plan</Typography>
-                <Typography variant="h5">{subscription.planName}</Typography>
-              </Grid>
-              <Grid>
-                <Chip
-                  color="primary"
-                  icon={<TollOutlined />}
-                  label={`${subscription.coins.balance.toLocaleString()} coins`}
-                />
-              </Grid>
-              <Grid>
-                <Typography variant="body2" color="text.secondary">
-                  +{subscription.coins.weeklyAllowance.toLocaleString()} every Monday
-                </Typography>
-              </Grid>
-            </Grid>
-          </CardContent>
-        </Card>
-      ) : (
-        <CircularProgress aria-label="Loading membership" />
-      )}
+      {!subscription ? (
+        <Stack className="subscription-loading">
+          <CircularProgress aria-label="Loading membership" />
+        </Stack>
+      ) : null}
 
-      <Grid container spacing={2}>
+      <Grid container spacing={2.5} className="subscription-pricing-grid">
         {SUBSCRIPTION_PLANS.map((plan) => {
-          const current = subscription?.planCode === plan.code && subscription.status === "active";
-          const requested = selectedRequest === plan.code;
+          const current =
+            subscription?.planCode === plan.code &&
+            (plan.code === "free" || subscription.status === "active");
+          const featured = plan.code === "supporter";
           const paidPlan = plan.code === "free" ? null : plan.code;
+          const copy = PLAN_COPY[plan.code];
           return (
             <Grid size={{ xs: 12, md: 4 }} key={plan.code}>
               <Card
                 variant="outlined"
-                className={`subscription-plan-card ${requested ? "subscription-plan-requested" : ""}`}
+                className={`subscription-plan-card subscription-plan-${plan.code} ${featured ? "subscription-plan-featured" : ""}`}
               >
                 <CardContent>
-                  <Stack spacing={1.25}>
-                    <Stack direction="row" className="spread-row align-center">
-                      <Typography variant="h5">{plan.name}</Typography>
-                      {current ? <Chip size="small" color="success" label="Current" /> : null}
+                  <Stack spacing={2.25}>
+                    <Stack direction="row" className="spread-row align-start">
+                      <Stack spacing={0.35}>
+                        <Typography variant="h4" component="h2">
+                          {plan.name}
+                        </Typography>
+                        <Typography variant="overline" className="subscription-plan-label">
+                          {copy.label}
+                        </Typography>
+                      </Stack>
+                      <Stack direction="row" spacing={0.75}>
+                        {featured ? <Chip size="small" variant="outlined" label="Popular" /> : null}
+                        {current ? <Chip size="small" color="success" label="Current" /> : null}
+                      </Stack>
                     </Stack>
-                    <Typography variant="h3">
-                      ${plan.monthlyPriceUsd}
-                      <Typography component="span" color="text.secondary">
-                        {plan.monthlyPriceUsd ? " / month" : " forever"}
+
+                    <Typography color="text.secondary" className="subscription-plan-impact">
+                      {copy.impact}
+                    </Typography>
+
+                    <Stack direction="row" spacing={0.75} className="align-end subscription-price-row">
+                      <Typography variant="h5" className="subscription-currency">
+                        $
                       </Typography>
-                    </Typography>
-                    <Typography color="primary.main" className="plan-coin-allowance">
-                      {plan.weeklyCoins.toLocaleString()} coins every week
-                    </Typography>
-                    <Typography color="text.secondary">{plan.description}</Typography>
-                    {["All learning included", "No paid grades or exam advantage", "Coins never expire"].map(
-                      (benefit) => (
-                        <Stack key={benefit} direction="row" spacing={1} className="align-center">
-                          <CheckCircleRounded color="success" fontSize="small" />
-                          <Typography variant="body2">{benefit}</Typography>
+                      <Typography variant="h2" className="subscription-price">
+                        {plan.monthlyPriceUsd}
+                      </Typography>
+                      <Typography color="text.secondary" className="subscription-price-period">
+                        {plan.monthlyPriceUsd ? "per month" : "forever"}
+                      </Typography>
+                    </Stack>
+
+                    <Stack direction="row" className="subscription-coin-allowance align-end">
+                      <Typography variant="h5">
+                        {NUMBER_FORMATTER.format(plan.weeklyCoins)}
+                      </Typography>
+                      <Stack spacing={0}>
+                        <Typography variant="body2">coins each week</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          For optional personalization
+                        </Typography>
+                      </Stack>
+                    </Stack>
+
+                    <Divider />
+
+                    <Stack spacing={1.15} className="subscription-feature-panel">
+                      {copy.features.map((feature) => (
+                        <Stack key={feature} direction="row" spacing={1} className="align-start">
+                          <CheckCircleRounded className="subscription-feature-check" fontSize="small" />
+                          <Typography variant="body2">{feature}</Typography>
                         </Stack>
-                      ),
-                    )}
+                      ))}
+                    </Stack>
                   </Stack>
                 </CardContent>
                 <CardActions>
                   {paidPlan === null ? (
-                    <Button component={Link} href="/start" fullWidth variant={current ? "outlined" : "text"}>
-                      Continue learning free
+                    <Button
+                      component={Link}
+                      href="/start"
+                      fullWidth
+                      variant={current ? "contained" : "outlined"}
+                      className="subscription-plan-action"
+                    >
+                      {copy.action}
                     </Button>
                   ) : (
                     <Button
                       fullWidth
-                      variant={requested ? "contained" : "outlined"}
-                      disabled={Boolean(loading) || current}
+                      variant={featured ? "contained" : "outlined"}
+                      className="subscription-plan-action"
+                      disabled={Boolean(loading) || current || paidMembershipActive}
                       onClick={() => void choosePaidPlan(paidPlan)}
                     >
-                      {loading === plan.code ? "Opening PayPal…" : current ? "Current plan" : `Choose ${plan.name}`}
+                      {loading === plan.code
+                        ? "Opening PayPal..."
+                        : current
+                          ? "Current plan"
+                          : paidMembershipActive
+                            ? "Current membership active"
+                            : copy.action}
                     </Button>
                   )}
                 </CardActions>
@@ -202,21 +299,6 @@ export default function SubscriptionWorkspace({
         })}
       </Grid>
 
-      {subscription?.provider === "paypal" && subscription.status === "active" ? (
-        <Stack spacing={1} className="subscription-cancel-row">
-          <Typography variant="body2" color="text.secondary">
-            Cancellation returns your future weekly allowance to Free. Coins already earned stay yours.
-          </Typography>
-          <Button
-            color="error"
-            variant="outlined"
-            disabled={Boolean(loading)}
-            onClick={() => void cancelPlan()}
-          >
-            {loading === "cancel" ? "Cancelling…" : "Cancel membership"}
-          </Button>
-        </Stack>
-      ) : null}
     </Stack>
   );
 }

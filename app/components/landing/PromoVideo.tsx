@@ -47,7 +47,9 @@ export default function PromoVideo() {
                   <Grid size={{ xs: 12, md: 8 }}>
                     <Stack spacing={1}>
                       <Chip size="small" color="success" label="Live now" className="preview-status-chip" />
-                      <Typography variant="h5">Week 3: Replication and partitioning</Typography>
+                      <Typography variant="h5" data-generated-content="true" lang="en" dir="ltr">
+                        Week 3: Replication and partitioning
+                      </Typography>
                       <Typography variant="body2" color="text.secondary">
                         Your lecturer is waiting on slide 19.
                       </Typography>

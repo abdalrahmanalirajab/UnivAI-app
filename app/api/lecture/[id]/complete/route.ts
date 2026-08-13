@@ -7,8 +7,9 @@ import { enforceUserRateLimit } from "@/lib/rate-limits";
 export const dynamic = "force-dynamic";
 
 /**
- * The Lecturer agent reached the end of the script and the student was there for
- * it. A finished lecture cannot be reopened, so this is what closes the door.
+ * Idempotent completion acknowledgement from the lecture UI. The trusted Live
+ * worker normally persists completion first; this endpoint can only close an
+ * attendance row whose durable checkpoint already reached every sentence.
  */
 export async function POST(_request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const gate = await requireLearningActionApi();
@@ -24,11 +25,14 @@ export async function POST(_request: NextRequest, context: { params: Promise<{ i
   const finishedAt = await now();
 
   const updated = await query(
-    `UPDATE attendance a SET completed_at = $1
+    `UPDATE attendance a
+        SET completed_at = $1, is_connected = FALSE
       FROM lectures l
       WHERE a.lecture_id = l.id AND l.public_id = $2::uuid
         AND a.student_id = $3 AND l.student_id = $3
         AND a.completed_at IS NULL
+        AND a.total_sentences > 0
+        AND a.last_sentence_index >= a.total_sentences
       RETURNING a.id`,
     [finishedAt, id, sid]
   );

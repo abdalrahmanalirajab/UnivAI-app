@@ -1,17 +1,12 @@
-import { requireUser } from "@/lib/session";
+import { requireVerifiedUser } from "@/lib/session";
 import SubscriptionWorkspace from "./SubscriptionWorkspace";
 
 export default async function SubscribePage({
   searchParams,
 }: {
-  searchParams: Promise<{ plan?: string; cancelled?: string }>;
+  searchParams: Promise<{ cancelled?: string }>;
 }) {
-  await requireUser("/subscribe");
+  await requireVerifiedUser("/subscribe");
   const query = await searchParams;
-  return (
-    <SubscriptionWorkspace
-      requestedPlan={query.plan ?? null}
-      checkoutCancelled={query.cancelled === "1"}
-    />
-  );
+  return <SubscriptionWorkspace checkoutCancelled={query.cancelled === "1"} />;
 }

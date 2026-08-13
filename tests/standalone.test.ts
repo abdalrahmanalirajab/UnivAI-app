@@ -26,9 +26,11 @@ test("all canonical lecture scripts validate", async () => {
 
 test("live vocabulary remains compatible", () => {
   assert.deepEqual(LIVE_INBOUND, ["slide", "state", "answer", "transcript", "progress", "hand", "speech", "fallback"]);
-  assert.deepEqual(LIVE_OUTBOUND, ["raise_hand", "mic", "question", "retry", "cancel"]);
+  assert.deepEqual(LIVE_OUTBOUND, ["raise_hand", "mic", "question", "retry", "cancel", "presence"]);
   assert.deepEqual(LIVE_SPEECH_STATES, ["waiting", "detected", "processing", "received", "no_speech", "error"]);
   assert.equal(LIVE_STATES.includes("processing"), true);
+  assert.equal(LIVE_STATES.includes("waiting"), true);
+  assert.equal(LIVE_STATES.includes("resuming"), true);
   assert.equal(LIVE_STATES.includes("ended"), true);
 });
 

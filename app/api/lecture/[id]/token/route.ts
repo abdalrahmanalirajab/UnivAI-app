@@ -2,11 +2,11 @@ import { randomUUID } from "node:crypto";
 import { NextRequest } from "next/server";
 import { AccessToken, RoomServiceClient } from "livekit-server-sdk";
 import { queryOne } from "@/lib/db";
-import { stampJoin } from "@/lib/attendance";
 import { getLectures, readScript, BLOCKED_MESSAGE } from "@/lib/lectures";
 import { requireLearningActionApi } from "@/lib/session";
 import { env } from "@/lib/env";
 import { enforceUserRateLimit } from "@/lib/rate-limits";
+import { hasOnlyNameLetters, normalizeName } from "@/lib/validators";
 
 export const dynamic = "force-dynamic";
 
@@ -85,33 +85,24 @@ async function configureRoom(
 /**
  * Turn a display name into a safe string for the voice worker to speak.
  *
- * - Unicode-normalizes (NFKC), removes control/format/lone-surrogate chars
- *   (zero-width joiners vanish, control chars become separators), collapses
- *   whitespace, trims, and caps the length in code points.
- * - Returns `null` (the generic-phrase fallback) when nothing speakable is
- *   left — an empty name, or a string with no letter or number at all. No
- *   global `STUDENT_NAME` constant is ever consulted.
+ * Uses the same letter-only Unicode rule as account writes. Legacy invalid
+ * database values fall back to the generic phrase instead of being spoken.
+ * Valid names are normalized, whitespace-collapsed and capped in code points.
  */
 export function safeSpokenName(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
-  const decomposed = raw
-    .normalize("NFKC")
-    .replace(/[\p{Cc}]/gu, " ") // control chars → separators
-    .replace(/[\p{Cf}\p{Cs}]/gu, ""); // zero-width/format/lone surrogates → removed
-  const collapsed = decomposed.replace(/\s+/gu, " ").trim();
-  if (collapsed.length === 0) return null;
+  const normalized = normalizeName(raw);
+  if (!hasOnlyNameLetters(normalized)) return null;
 
-  const codePoints = Array.from(collapsed);
-  if (!codePoints.some((char) => /\p{L}|\p{N}/u.test(char))) return null;
-
+  const codePoints = Array.from(normalized);
   if (codePoints.length > SPOKEN_NAME_MAX_LENGTH) {
     return codePoints
       .slice(0, SPOKEN_NAME_MAX_LENGTH)
       .join("")
       .replace(/\s+$/u, "")
-      .replace(/[\p{M}\u{FE0F}]$/u, ""); // never end on a dangling combining mark
+      .replace(/\p{M}+$/u, ""); // never end on dangling combining marks
   }
-  return collapsed;
+  return normalized;
 }
 
 export function buildLiveSessionMetadata(input: {
@@ -145,15 +136,26 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     return Response.json({ error: "No such lecture." }, { status: 404 });
   }
 
-  const lecture = await queryOne<{ id: number; public_id: string; week: number; title: string }>(
-    `SELECT id, public_id::text AS public_id, week, title
-       FROM lectures WHERE public_id = $1::uuid AND student_id = $2`,
+  const lecture = await queryOne<{
+    id: number;
+    public_id: string;
+    week: number;
+    title: string;
+    attendance_status: string | null;
+    late_minutes: number | null;
+  }>(
+    `SELECT l.id, l.public_id::text AS public_id, l.week, l.title,
+            a.status AS attendance_status, a.late_minutes
+       FROM lectures l
+       LEFT JOIN attendance a
+         ON a.lecture_id = l.id AND a.student_id = l.student_id
+      WHERE l.public_id = $1::uuid AND l.student_id = $2`,
     [lectureId, sid]
   );
   if (!lecture) return Response.json({ error: "No such lecture." }, { status: 404 });
 
-  // The doors close halfway through, and a finished lecture cannot be reopened.
-  // The UI disables the button; this makes the rule real.
+  // The halfway cutoff applies only to first admission. A learner already seen
+  // in this lecture may reconnect to the waiting worker; completion stays final.
   const schedule = await getLectures(sid);
   const entry = schedule.find((item) => item.id === lectureId);
   if (entry && !entry.joinable) {
@@ -245,10 +247,6 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   });
   token.addGrant({ room, roomJoin: true, canPublish: true, canSubscribe: true });
 
-  // Attendance is stamped only after the trusted room and token metadata are
-  // ready; an infrastructure failure must not mark a learner present.
-  const record = await stampJoin(sid, lecture.id);
-
   return Response.json({
     token: await token.toJwt(),
     url,
@@ -256,8 +254,10 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     // Used by the client for learner-scoped session display only.
     registrationNumber: sid,
     lecture: { id: lecture.public_id, week: lecture.week, title: lecture.title },
-    attendance: record
-      ? { status: record.status, lateMinutes: record.lateMinutes }
+    // Token issuance is not attendance. The trusted Live worker creates the
+    // first join only after this participant really appears in the room.
+    attendance: lecture.attendance_status
+      ? { status: lecture.attendance_status, lateMinutes: lecture.late_minutes ?? 0 }
       : null,
   });
 }

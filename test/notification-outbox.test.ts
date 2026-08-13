@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { PoolClient } from "pg";
 
 const mocks = vi.hoisted(() => ({
   query: vi.fn(),
@@ -19,6 +20,7 @@ import {
   enqueueCourseBuildNotifications,
   enqueueDueLectureReminders,
   enqueueEmailNotification,
+  enqueueEmailNotificationWithClient,
   enqueueReleasedTranscriptNotifications,
   getNotificationPreferences,
   parseNotificationPreferencePatch,
@@ -65,6 +67,44 @@ describe("notification outbox", () => {
     expect(firstKey).toMatch(/^notification:[a-f0-9]{64}$/);
     expect(firstKey).not.toContain("book:42");
     expect(mocks.queryOne.mock.calls[0][0]).toContain("ON CONFLICT (event_key) DO NOTHING");
+  });
+
+  it("keeps an opted-out event as a visible skipped delivery", async () => {
+    mocks.queryOne.mockResolvedValue({ id: "outbox-skipped", status: "skipped" });
+    await expect(enqueueEmailNotification({
+      userId: "55cbe793-8a4b-4518-88ea-25b43f19e24a",
+      eventId: "lecture:42:reminder",
+      event: {
+        type: "lecture.reminder",
+        lectureTitle: "Indexes",
+        startsAt: "2026-08-12T10:00:00.000Z",
+      },
+    })).resolves.toEqual({ queued: false });
+
+    expect(mocks.queryOne.mock.calls[0][0]).toContain("ELSE 'skipped'");
+    expect(mocks.queryOne.mock.calls[0][0]).toContain("RETURNING id, status");
+  });
+
+  it("can queue a required retake decision inside its domain transaction", async () => {
+    const clientQuery = vi.fn().mockResolvedValue({ rows: [{ id: "decision-email" }] });
+    const client = { query: clientQuery } as unknown as PoolClient;
+
+    await expect(
+      enqueueEmailNotificationWithClient(client, {
+        userId: "55cbe793-8a4b-4518-88ea-25b43f19e24a",
+        eventId: "final-retake:curriculum:declined",
+        event: {
+          type: "final.retake_declined",
+          reason: "The supplied evidence did not meet the published disruption rule.",
+        },
+      }),
+    ).resolves.toEqual({ queued: true });
+
+    expect(clientQuery.mock.calls[0][0]).toContain("$4 = 'final.retake_declined'");
+    expect(clientQuery.mock.calls[0][1]).toMatchObject({
+      2: "assessment",
+      3: "final.retake_declined",
+    });
   });
 
   it("claims, sends, and marks a message with provider idempotency", async () => {

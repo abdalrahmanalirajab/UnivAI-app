@@ -33,6 +33,8 @@ type Attendance = {
   status: "on_time" | "late" | "absent" | "upcoming";
   joinedAt: string | null;
   lateMinutes: number;
+  attendanceStatus: "attended" | "partially_attended" | "absent" | "upcoming";
+  attendancePercentage: number;
 };
 
 type DashboardData = {
@@ -44,6 +46,11 @@ type DashboardData = {
     upcomingCount: number;
     totalLateMinutes: number;
     averageLateMinutes: number;
+    attendedCount: number;
+    partiallyAttendedCount: number;
+    participationAbsentCount: number;
+    inProgressCount: number;
+    averageAttendancePercentage: number;
   };
   grades: Array<{
     id: number;
@@ -237,6 +244,9 @@ export default function DashboardPage() {
     : 0;
   const submittedAssessments = exams.filter((exam) => exam.state === "submitted").length;
   const openAssessments = exams.filter((exam) => exam.state === "open").length;
+  const officialFinalReady = data.grades.some(
+    (grade) => grade.kind === "final" && !grade.flagged,
+  );
   const learnerName = session?.user.name?.split(" ")[0] ?? "there";
 
   return (
@@ -268,7 +278,13 @@ export default function DashboardPage() {
             <Grid size={{ xs: 12, md: 8 }}>
               <Stack spacing={1.5}>
                 <Chip size="small" label={focus.eyebrow} className="focus-chip" />
-                <Typography variant="h4" component="h2">
+                <Typography
+                  variant="h4"
+                  component="h2"
+                  data-generated-content={focus.tone === "live" || focus.tone === "upcoming" ? "true" : undefined}
+                  lang={focus.tone === "live" || focus.tone === "upcoming" ? "en" : undefined}
+                  dir={focus.tone === "live" || focus.tone === "upcoming" ? "ltr" : undefined}
+                >
                   {focus.title}
                 </Typography>
                 <Typography color="text.secondary" className="today-focus-copy">
@@ -351,10 +367,10 @@ export default function DashboardPage() {
                 <Stack spacing={0.5}>
                   <Typography variant="h6">Attendance</Typography>
                   <Typography variant="h4">
-                    {data.summary.onTimeCount + data.summary.lateCount} attended
+                    {data.summary.attendedCount} attended
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    {data.summary.onTimeCount} on time · {data.summary.lateCount} late
+                    {data.summary.partiallyAttendedCount} partial · {data.summary.participationAbsentCount} absent · {data.summary.averageAttendancePercentage}% average coverage
                   </Typography>
                 </Stack>
                 <Button component={Link} href="/schedule" size="small">
@@ -377,7 +393,7 @@ export default function DashboardPage() {
           <Button component={Link} href="/library" startIcon={<FolderCopyOutlined />}>
             Books
           </Button>
-          {data.final?.state === "graded" ? (
+          {officialFinalReady ? (
             <>
               <Button
                 component={Link}

@@ -1,11 +1,14 @@
 "use client";
 
 import { ThemeProvider } from "@mui/material/styles";
-import theme from "./theme";
+import { createAppTheme } from "./theme";
+import { useMemo } from "react";
 
 export default function AppThemeProvider({
   children,
-}: Readonly<{ children: React.ReactNode }>) {
+  direction = "ltr",
+}: Readonly<{ children: React.ReactNode; direction?: "ltr" | "rtl" }>) {
+  const theme = useMemo(() => createAppTheme(direction), [direction]);
   return (
     <ThemeProvider
       theme={theme}

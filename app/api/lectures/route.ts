@@ -7,7 +7,6 @@ import {
   ScheduleIntegrityError,
 } from "@/lib/lectures";
 import { getAttendance } from "@/lib/attendance";
-import { now } from "@/lib/clock";
 import { query } from "@/lib/db";
 import { requirePreparedSourceApi } from "@/lib/session";
 
@@ -21,7 +20,7 @@ export async function GET() {
 
   try {
     const lectures = await getLectures(sid);
-    const [sections, attendance, planVersion, book, virtualNow] = await Promise.all([
+    const [sections, attendance, planVersion, book] = await Promise.all([
       getSections(sid),
       getAttendance(sid),
       approvedPlanVersion(sid),
@@ -29,7 +28,6 @@ export async function GET() {
         `SELECT status, error FROM books WHERE student_id = $1 ORDER BY id DESC LIMIT 1`,
         [sid],
       ),
-      now(),
     ]);
 
     const detailed = await Promise.all(
@@ -47,7 +45,7 @@ export async function GET() {
           state: lecture.state,
           joinable: lecture.joinable,
           completed: lecture.completed,
-          archiveAvailable: virtualNow >= lecture.endsAt,
+          archiveAvailable: lecture.state === "done",
           blockedMessage: lecture.blockedReason
             ? BLOCKED_MESSAGE[lecture.blockedReason]
             : null,
@@ -57,6 +55,13 @@ export async function GET() {
                 status: record.status,
                 joinedAt: record.joinedAt?.toISOString() ?? null,
                 lateMinutes: record.lateMinutes,
+                attendanceStatus: record.attendanceStatus,
+                attendancePercentage: record.attendancePercentage,
+                attendedLectureMinutes: record.attendedLectureMinutes,
+                connectedSeconds: record.connectedSeconds,
+                isConnected: record.isConnected,
+                inProgress: record.inProgress,
+                disconnectCount: record.disconnectCount,
               }
             : null,
         };

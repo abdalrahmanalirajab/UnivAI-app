@@ -14,8 +14,17 @@ import ListItemText from "@mui/material/ListItemText";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
+import OutputFeedback from "@/app/components/OutputFeedback";
+import type { AiOutputTarget } from "@/lib/ai-output-feedback-types";
 
-type SectionInfo = { id: string; week: number; title: string; totalMinutes: number; objectives: string[] };
+type SectionInfo = {
+  id: string;
+  week: number;
+  title: string;
+  totalMinutes: number;
+  objectives: string[];
+  feedbackTarget: AiOutputTarget;
+};
 type SectionEvent = { type: string; payload?: Record<string, unknown> };
 
 /** One step of the section, kept for the rest of the visit once it arrives. */
@@ -132,7 +141,9 @@ export default function SectionRoom({ sectionId }: { sectionId: string }) {
     <Stack spacing={3}>
       <Stack spacing={1}>
         <Typography variant="overline">Week {section.week} · {section.totalMinutes} min</Typography>
-        <Typography variant="h4">{section.title}</Typography>
+        <Typography variant="h4" data-generated-content="true" lang="en" dir="ltr">
+          {section.title}
+        </Typography>
         <Stack direction="row" spacing={1}>
           <Chip label={ready ? "Live" : "Connecting"} color={ready ? "success" : "default"} />
           <Button
@@ -150,7 +161,13 @@ export default function SectionRoom({ sectionId }: { sectionId: string }) {
 
       <Card variant="outlined"><CardContent>
         <Typography variant="h6">Objectives</Typography>
-        <List>{section.objectives.map((objective) => <ListItem key={objective}><ListItemText primary={objective} /></ListItem>)}</List>
+        <List data-generated-content="true" lang="en" dir="ltr">
+          {section.objectives.map((objective) => <ListItem key={objective}><ListItemText primary={objective} /></ListItem>)}
+        </List>
+      </CardContent></Card>
+
+      <Card variant="outlined"><CardContent>
+        <OutputFeedback target={section.feedbackTarget} />
       </CardContent></Card>
 
       {steps.map((step, index) => {
@@ -160,12 +177,20 @@ export default function SectionRoom({ sectionId }: { sectionId: string }) {
           <Card key={step.key} variant="outlined" ref={isLatest ? latestStep : undefined}>
             <CardContent><Stack spacing={2}>
               <Typography variant="overline" color="text.secondary">Step {index + 1}</Typography>
-              <Typography variant="h6">{step.title}</Typography>
-              {step.body ? <Typography>{step.body}</Typography> : null}
+              <Typography variant="h6" data-generated-content="true" lang="en" dir="ltr">
+                {step.title}
+              </Typography>
+              {step.body ? (
+                <Typography data-generated-content="true" lang="en" dir="ltr">
+                  {step.body}
+                </Typography>
+              ) : null}
               {step.answer ? (
                 <Alert severity="success" variant="outlined">
                   <Typography variant="subtitle2">Your answer</Typography>
-                  <Typography variant="body2">{step.answer}</Typography>
+                  <Typography variant="body2" data-no-ui-translate="true" dir="auto">
+                    {step.answer}
+                  </Typography>
                 </Alert>
               ) : null}
               {takesAnswer ? (
@@ -217,6 +242,9 @@ export default function SectionRoom({ sectionId }: { sectionId: string }) {
           return (
             <Button
               key={index}
+              data-generated-content="true"
+              lang="en"
+              dir="ltr"
               variant={done ? "contained" : "outlined"}
               color={done ? "success" : "primary"}
               disabled={completed || done}

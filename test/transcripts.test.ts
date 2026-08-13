@@ -27,6 +27,25 @@ describe("course transcript scoring", () => {
     });
   });
 
+  it("records an absent final as 0 (F) even when coursework alone would pass", () => {
+    expect(
+      scoreCourse({
+        quizPercentage: 100,
+        attendancePercentage: 100,
+        midtermPercentage: 100,
+        finalPercentage: 0,
+        finalAbsent: true,
+      }),
+    ).toMatchObject({
+      courseworkPoints: 60,
+      totalPercentage: 60,
+      finalPercentage: 0,
+      letterGrade: "F",
+      gpa: 0,
+      passed: false,
+    });
+  });
+
   it.each([
     [49.99, "F", 0], [50, "D", 1], [55, "D+", 1.3],
     [60, "C-", 1.7], [63, "C", 2], [67, "C+", 2.3],

@@ -15,6 +15,9 @@ export type SessionUser = {
   phone: string | null; // E.164, e.g. "+201234567890" — stored, NOT verified
   role: Role;
   registrationNumber: string; // server-generated, e.g. "S-2026-000042" (RAG/LiveKit key)
+  uiLocale: "en" | "ar";
+  eulaAcceptedAt: string | null;
+  privacyNoticeAcknowledgedAt: string | null;
   image: string | null;
   createdAt: string; // ISO 8601
 };

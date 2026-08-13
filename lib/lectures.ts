@@ -13,8 +13,9 @@ import { LEGACY_LECTURE_MINUTES, scriptDurationMinutes } from "./lecture-duratio
 /** How long a lecture is "on" for. */
 export const LECTURE_WINDOW_MINUTES = LEGACY_LECTURE_MINUTES;
 /**
- * You cannot walk into a lecture that is already half over — you would miss the
- * material the quiz is about. Turning up after this is an absence, not a late arrival.
+ * A first-time learner cannot walk into a lecture that is already half over.
+ * An admitted learner may always reconnect to the lecturer waiting at their
+ * durable checkpoint.
  */
 export const JOIN_CUTOFF_MINUTES = LECTURE_WINDOW_MINUTES / 2;
 
@@ -29,6 +30,22 @@ export type Script = {
 
 /** Why a lecture cannot be opened. `null` means it can. */
 export type BlockedReason = "not_started" | "too_late" | "completed" | "missed" | null;
+
+export function lectureJoinBlockReason(input: {
+  completed: boolean;
+  previouslyAdmitted: boolean;
+  virtualNow: Date;
+  startsAt: Date;
+  cutoffAt: Date;
+}): BlockedReason {
+  if (input.completed) return "completed";
+  // The cutoff applies to the first admission only. Once the worker has seen
+  // this learner in LiveKit, refreshes and reconnects remain legal.
+  if (input.previouslyAdmitted) return null;
+  if (input.virtualNow < input.startsAt) return "not_started";
+  if (input.virtualNow > input.cutoffAt) return "missed";
+  return null;
+}
 
 /**
  * Every record the schedule serves is explicitly one of these — a lecture and
@@ -547,6 +564,7 @@ export async function getLectures(sid: string): Promise<Lecture[]> {
     const cutoff = new Date(startsAt.getTime() + cutoffMinutes * MINUTE_MS);
     const endsAt = new Date(startsAt.getTime() + durationMinutes * MINUTE_MS);
     const completed = Boolean(row.completed_at);
+    const previouslyAdmitted = Boolean(row.joined_at);
 
     let state: Lecture["state"] = "upcoming";
     if (virtualNow >= endsAt) state = "done";
@@ -556,16 +574,18 @@ export async function getLectures(sid: string): Promise<Lecture[]> {
     // upcoming while refusing to open ("already finished"). A lecture you
     // completed is done, whatever the clock claims.
     if (completed) state = "done";
+    // Once admitted, a learner owns a resumable live session. The lecturer
+    // waits through disconnects, so the scheduled wall-clock end cannot turn a
+    // valid reconnect into an archive while the script is still unfinished.
+    else if (previouslyAdmitted) state = "live";
 
-    let blockedReason: BlockedReason = null;
-    if (completed) {
-      blockedReason = "completed";              // you have already sat through it
-    } else if (virtualNow < startsAt) {
-      blockedReason = "not_started";
-    } else if (virtualNow > cutoff) {
-      // More than half the lecture has gone. Too late to walk in.
-      blockedReason = row.joined_at ? "too_late" : "missed";
-    }
+    const blockedReason = lectureJoinBlockReason({
+      completed,
+      previouslyAdmitted,
+      virtualNow,
+      startsAt,
+      cutoffAt: cutoff,
+    });
 
     return {
       id: row.public_id,
@@ -586,7 +606,7 @@ export async function getLectures(sid: string): Promise<Lecture[]> {
 
 export const BLOCKED_MESSAGE: Record<NonNullable<BlockedReason>, string> = {
   not_started: "This lecture has not started yet.",
-  too_late: "You cannot rejoin after the lecture's halfway point.",
+  too_late: "You cannot join after the lecture's halfway point.",
   missed: "You missed this lecture. The doors close halfway through.",
   completed: "You have already finished this lecture.",
 };
@@ -640,6 +660,7 @@ export type StoredSectionPack = {
   programmeId: string;
   programmeTitle: string;
   planVersion: number;
+  payloadHash: string;
   payload: {
     schema_name: "univai.section.pack";
     schema_version: "1.0.0";
@@ -663,6 +684,7 @@ export async function getSectionPack(sid: string, sectionId: string): Promise<St
     week: number;
     programme_id: string;
     approved_plan_version: number;
+    payload_hash: string;
     pack_payload: StoredSectionPack["payload"];
     lecture_internal_id: number;
     lecture_public_id: string;
@@ -671,7 +693,7 @@ export async function getSectionPack(sid: string, sectionId: string): Promise<St
     programme_title: string;
   }>(
     `SELECT sp.section_pack_id, sp.week, sp.programme_id,
-            sp.approved_plan_version, sp.pack_payload,
+            sp.approved_plan_version, sp.payload_hash, sp.pack_payload,
             l.id AS lecture_internal_id, l.public_id::text AS lecture_public_id,
             l.starts_at AS lecture_starts_at,
             la.script_payload AS lecture_script,
@@ -703,6 +725,7 @@ export async function getSectionPack(sid: string, sectionId: string): Promise<St
     programmeId: row.programme_id,
     programmeTitle: row.programme_title,
     planVersion: row.approved_plan_version,
+    payloadHash: row.payload_hash,
     payload: row.pack_payload,
   };
 }

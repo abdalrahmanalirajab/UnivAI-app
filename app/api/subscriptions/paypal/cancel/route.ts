@@ -1,9 +1,10 @@
 import {
   cancelPayPalSubscription,
+  isPayPalFakeSubscriptionEnabled,
   PayPalConfigurationError,
   PayPalRequestError,
 } from "@/lib/paypal";
-import { requireUserApi } from "@/lib/session";
+import { requireVerifiedUserApi } from "@/lib/session";
 import {
   cancelLocalSubscription,
   getSubscriptionSnapshot,
@@ -12,25 +13,33 @@ import { enqueueEmailNotification } from "@/lib/notification-outbox";
 import { enforceUserRateLimit } from "@/lib/rate-limits";
 
 export async function POST() {
-  const gate = await requireUserApi();
+  const gate = await requireVerifiedUserApi();
   if (gate instanceof Response) return gate;
   const limited = await enforceUserRateLimit(gate.id, "account");
   if (limited) return limited;
 
   const current = await getSubscriptionSnapshot(gate.id);
-  if (current.provider !== "paypal" || !current.providerSubscriptionId) {
-    return Response.json({ error: "You do not have a PayPal subscription." }, { status: 409 });
+  if (current.planCode === "free" || current.status !== "active") {
+    return Response.json({ error: "You do not have an active paid membership." }, { status: 409 });
+  }
+  const localDemo = current.provider === "none" && isPayPalFakeSubscriptionEnabled();
+  if (!localDemo && (current.provider !== "paypal" || !current.providerSubscriptionId)) {
+    return Response.json({ error: "This membership cannot be revoked here." }, { status: 409 });
   }
 
   try {
-    await cancelPayPalSubscription(current.providerSubscriptionId);
+    if (!localDemo && current.providerSubscriptionId) {
+      await cancelPayPalSubscription(current.providerSubscriptionId);
+    }
     await cancelLocalSubscription({
       userId: gate.id,
-      subscriptionId: current.providerSubscriptionId,
+      subscriptionId: localDemo ? null : current.providerSubscriptionId,
     });
     await enqueueEmailNotification({
       userId: gate.id,
-      eventId: `paypal:${current.providerSubscriptionId}:cancelled`,
+      eventId: localDemo
+        ? `membership:${gate.id}:${current.subscribedAt ?? current.updatedAt}:cancelled`
+        : `paypal:${current.providerSubscriptionId}:cancelled`,
       event: {
         type: "billing.subscription_cancelled",
         planName: current.planName,

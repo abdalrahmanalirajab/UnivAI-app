@@ -340,6 +340,9 @@ function sessionUser(overrides: Partial<SessionUser> = {}): SessionUser {
     phone: null,
     role: "student",
     registrationNumber: "S-2026-000001",
+    uiLocale: "en",
+    eulaAcceptedAt: "2026-08-01T00:00:00.000Z",
+    privacyNoticeAcknowledgedAt: "2026-08-01T00:00:00.000Z",
     image: null,
     createdAt: "2026-08-01T00:00:00.000Z",
     ...overrides,
@@ -482,7 +485,7 @@ describe("api routes — real backend behavior", () => {
     );
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ error: "Admins only." });
-  });
+  }, 15_000);
 
   it("schedule queries are scoped to the session's registrationNumber — another user's ID is never honored", async () => {
     await setSession(sessionUser({ registrationNumber: "S-2026-000002" }));

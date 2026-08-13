@@ -1,6 +1,30 @@
+const USER_NAME_PATTERN =
+  /^\p{L}[\p{L}\p{Mn}\p{Mc}]*(?: \p{L}[\p{L}\p{Mn}\p{Mc}]*)*$/u;
+const NAME_VARIATION_SELECTOR = /[\uFE00-\uFE0F\u{E0100}-\u{E01EF}]/u;
+
+export const INVALID_USER_NAME_MESSAGE =
+  "Use letters from any language and spaces only. Numbers, symbols, and emoji are not allowed.";
+
+/** Store one canonical separator while preserving letters from every script. */
+export function normalizeName(name: string): string {
+  return name.normalize("NFC").trim().replace(/\s+/gu, " ");
+}
+
+/**
+ * A word starts with a Unicode letter and may contain combining marks needed
+ * by scripts such as Devanagari or decomposed accents. Only ordinary spaces
+ * may separate words; digits, punctuation, symbols and emoji never match.
+ */
+export function hasOnlyNameLetters(name: string): boolean {
+  const normalized = normalizeName(name);
+  return !NAME_VARIATION_SELECTOR.test(normalized) && USER_NAME_PATTERN.test(normalized);
+}
+
 export function validateName(name: string): string | null {
-  const trimmed = name.trim();
-  if (trimmed.length < 2 || trimmed.length > 80) return "Name must be between 2 and 80 characters.";
+  const normalized = normalizeName(name);
+  const length = Array.from(normalized).length;
+  if (normalized && !hasOnlyNameLetters(normalized)) return INVALID_USER_NAME_MESSAGE;
+  if (length < 2 || length > 80) return "Name must be between 2 and 80 characters.";
   return null;
 }
 

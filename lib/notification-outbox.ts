@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import type { PoolClient } from "pg";
 
 import { now } from "./clock";
 import { pool, query, queryOne } from "./db";
@@ -24,6 +25,12 @@ type OutboxRow = {
 };
 
 export type NotificationPreferences = Record<OptionalNotificationCategory, boolean>;
+
+type NotificationInput = {
+  userId: string;
+  eventId: string;
+  event: NotificationEvent;
+};
 
 function isOptionalCategory(value: string): value is OptionalNotificationCategory {
   return (OPTIONAL_NOTIFICATION_CATEGORIES as readonly string[]).includes(value);
@@ -104,22 +111,25 @@ export async function enqueueEmailNotification(input: {
 }): Promise<{ queued: boolean }> {
   const rendered = renderNotification(input.event);
   const eventKey = durableEventKey(input.userId, rendered.eventType, input.eventId);
-  const row = await queryOne<{ id: string }>(
+  const row = await queryOne<{ id: string; status: string }>(
     `INSERT INTO notification_email_outbox
-       (event_key, user_id, category, event_type, subject, text_body)
-     SELECT $1, $2::uuid, $3, $4, $5, $6
+       (event_key, user_id, category, event_type, subject, text_body, status)
+     SELECT $1, $2::uuid, $3, $4, $5, $6,
+            CASE
+              WHEN $3 IN ('security', 'billing')
+                OR $4 = 'final.retake_declined'
+                OR COALESCE(
+                  (SELECT email_enabled
+                     FROM notification_preferences
+                    WHERE user_id = $2::uuid AND category = $3),
+                  true
+                )
+              THEN 'pending'
+              ELSE 'skipped'
+            END
       WHERE EXISTS (SELECT 1 FROM "user" WHERE "id" = $2::uuid)
-        AND (
-          $3 IN ('security', 'billing')
-          OR COALESCE(
-            (SELECT email_enabled
-               FROM notification_preferences
-              WHERE user_id = $2::uuid AND category = $3),
-            true
-          )
-        )
      ON CONFLICT (event_key) DO NOTHING
-     RETURNING id`,
+     RETURNING id, status`,
     [
       eventKey,
       input.userId,
@@ -129,7 +139,48 @@ export async function enqueueEmailNotification(input: {
       rendered.text,
     ],
   );
-  return { queued: Boolean(row) };
+  return { queued: Boolean(row && row.status !== "skipped") };
+}
+
+/**
+ * Transactional variant for domain decisions that must not commit unless their
+ * required email is durably queued in the same PostgreSQL transaction.
+ */
+export async function enqueueEmailNotificationWithClient(
+  client: PoolClient,
+  input: NotificationInput,
+): Promise<{ queued: boolean }> {
+  const rendered = renderNotification(input.event);
+  const eventKey = durableEventKey(input.userId, rendered.eventType, input.eventId);
+  const result = await client.query<{ id: string; status: string }>(
+    `INSERT INTO notification_email_outbox
+       (event_key, user_id, category, event_type, subject, text_body, status)
+     SELECT $1, $2::uuid, $3, $4, $5, $6,
+            CASE
+              WHEN $3 IN ('security', 'billing')
+                OR $4 = 'final.retake_declined'
+                OR COALESCE(
+                  (SELECT email_enabled
+                     FROM notification_preferences
+                    WHERE user_id = $2::uuid AND category = $3),
+                  true
+                )
+              THEN 'pending'
+              ELSE 'skipped'
+            END
+      WHERE EXISTS (SELECT 1 FROM "user" WHERE "id" = $2::uuid)
+     ON CONFLICT (event_key) DO NOTHING
+     RETURNING id, status`,
+    [
+      eventKey,
+      input.userId,
+      rendered.category,
+      rendered.eventType,
+      rendered.subject,
+      rendered.text,
+    ],
+  );
+  return { queued: Boolean(result.rows[0] && result.rows[0].status !== "skipped") };
 }
 
 /** Convenience bridge for flows that still identify learners by registration number. */

@@ -13,6 +13,8 @@ import DialogTitle from "@mui/material/DialogTitle";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import type { Programme } from "@/lib/programmes";
+import OutputFeedback from "@/app/components/OutputFeedback";
+import { curriculumFeedbackTarget } from "@/lib/ai-output-feedback-types";
 import CurriculumWorkspace from "./CurriculumWorkspace";
 import type { ApprovalBlock } from "./ProgrammeGraph";
 
@@ -191,6 +193,11 @@ export default function CurriculumPage({ params }: Props) {
         programmeId={programmeId!}
         onProgrammeUpdated={handleProgrammeUpdated}
         onApprovalBlocksChange={setApprovalBlocks}
+      />
+
+      <OutputFeedback
+        key={`feedback:${programme.id}:${programme.plan_version}`}
+        target={curriculumFeedbackTarget(programme.id, programme.plan_version)}
       />
 
       <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)}>

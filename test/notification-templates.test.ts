@@ -58,6 +58,32 @@ describe("notification templates", () => {
     expect(result.text).toContain("UTC");
   });
 
+  it("encourages the learner and states the seven-day retake schedule", () => {
+    const result = renderNotification({
+      type: "final.retake_scheduled",
+      availableAt: "2026-08-17T15:30:00.000Z",
+    });
+
+    expect(result.category).toBe("assessment");
+    expect(result.subject).toContain("retake is scheduled");
+    expect(result.text).toContain("Aug 17, 2026");
+    expect(result.text).toContain("seven days");
+    expect(result.text).toContain("study hard");
+  });
+
+  it("explains a declined retake and the resulting official grade", () => {
+    const result = renderNotification({
+      type: "final.retake_declined",
+      reason: "The supplied reason did not establish a qualifying disruption.",
+    });
+
+    expect(result.category).toBe("assessment");
+    expect(result.subject).toContain("declined");
+    expect(result.text).toContain("qualifying disruption");
+    expect(result.text).toContain("official grade");
+    expect(result.text).toContain("Absent");
+  });
+
   it("marks security and billing notifications as required categories", () => {
     expect(renderNotification({ type: "security.sessions_revoked" }).category).toBe("security");
     expect(

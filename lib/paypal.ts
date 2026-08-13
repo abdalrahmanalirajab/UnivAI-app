@@ -6,6 +6,7 @@ const ALLOWED_API_BASES = new Set([
   "https://api-m.sandbox.paypal.com",
   "https://api-m.paypal.com",
 ]);
+const SANDBOX_API_BASE = "https://api-m.sandbox.paypal.com";
 
 type PayPalLink = {
   href?: string;
@@ -18,7 +19,28 @@ export type PayPalSubscription = {
   status: string;
   plan_id: string;
   custom_id?: string;
+  start_time?: string;
+  billing_info?: {
+    next_billing_time?: string;
+  };
   links?: PayPalLink[];
+};
+
+export type PayPalOrder = {
+  id: string;
+  status: string;
+  links?: PayPalLink[];
+  purchase_units?: Array<{
+    reference_id?: string;
+    custom_id?: string;
+    amount?: { currency_code?: string; value?: string };
+    payments?: {
+      captures?: Array<{
+        status?: string;
+        amount?: { currency_code?: string; value?: string };
+      }>;
+    };
+  }>;
 };
 
 type AccessTokenState = {
@@ -46,6 +68,17 @@ function apiBase(): string {
     throw new PayPalConfigurationError("PAYPAL_API_BASE must be an official PayPal API origin.");
   }
   return base;
+}
+
+export function isPayPalFakeSubscriptionEnabled(): boolean {
+  const enabled = ["1", "true", "yes", "on"].includes(
+    env.PAYPAL_FAKE_SUBSCRIPTION.trim().toLowerCase(),
+  );
+  return (
+    enabled &&
+    process.env.NODE_ENV !== "production" &&
+    apiBase() === SANDBOX_API_BASE
+  );
 }
 
 function requireCredentials(): { clientId: string; clientSecret: string } {
@@ -171,6 +204,76 @@ export async function createPayPalSubscription(input: {
     throw new PayPalRequestError("PayPal returned an incomplete subscription.", 502);
   }
   return { subscription, approvalUrl };
+}
+
+export async function createPayPalDemoOrder(input: {
+  userId: string;
+  planCode: Exclude<SubscriptionPlanCode, "free">;
+  amountUsd: number;
+}): Promise<{ order: PayPalOrder; approvalUrl: string }> {
+  if (!isPayPalFakeSubscriptionEnabled()) {
+    throw new PayPalConfigurationError("The PayPal demo checkout is disabled.");
+  }
+  const order = await payPalRequest<PayPalOrder>("/v2/checkout/orders", {
+    method: "POST",
+    headers: {
+      "PayPal-Request-Id": randomUUID(),
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify({
+      intent: "CAPTURE",
+      purchase_units: [
+        {
+          reference_id: input.planCode,
+          custom_id: input.userId,
+          description: `UnivAI ${input.planCode} presentation membership`,
+          amount: {
+            currency_code: "USD",
+            value: input.amountUsd.toFixed(2),
+          },
+        },
+      ],
+      payment_source: {
+        paypal: {
+          experience_context: {
+            brand_name: "UnivAI",
+            locale: "en-US",
+            user_action: "PAY_NOW",
+            shipping_preference: "NO_SHIPPING",
+            return_url: `${env.BETTER_AUTH_URL}/subscribe/paypal/return?demo_order=1`,
+            cancel_url: `${env.BETTER_AUTH_URL}/subscribe?cancelled=1`,
+          },
+        },
+      },
+    }),
+  });
+  const approvalUrl = order.links?.find((link) =>
+    ["payer-action", "approve"].includes(link.rel ?? ""),
+  )?.href;
+  if (!order.id || !approvalUrl) {
+    throw new PayPalRequestError("PayPal returned an incomplete demo order.", 502);
+  }
+  return { order, approvalUrl };
+}
+
+export async function capturePayPalDemoOrder(orderId: string): Promise<PayPalOrder> {
+  if (!isPayPalFakeSubscriptionEnabled()) {
+    throw new PayPalConfigurationError("The PayPal demo checkout is disabled.");
+  }
+  if (!/^[A-Z0-9-]{3,64}$/i.test(orderId)) {
+    throw new PayPalRequestError("Invalid PayPal order identifier.", 400);
+  }
+  return payPalRequest<PayPalOrder>(
+    `/v2/checkout/orders/${encodeURIComponent(orderId)}/capture`,
+    {
+      method: "POST",
+      headers: {
+        "PayPal-Request-Id": `capture-${orderId}`,
+        Prefer: "return=representation",
+      },
+      body: "{}",
+    },
+  );
 }
 
 export async function getPayPalSubscription(id: string): Promise<PayPalSubscription> {

@@ -71,6 +71,8 @@ export async function POST(request: Request) {
         planCode,
         providerPlanId: providerSubscription.plan_id,
         status: providerSubscription.status,
+        providerStartedAt: providerSubscription.start_time,
+        providerPeriodEndsAt: providerSubscription.billing_info?.next_billing_time,
       },
     });
     const planName = getSubscriptionPlan(planCode).name;

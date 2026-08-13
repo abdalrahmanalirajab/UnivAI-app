@@ -1,16 +1,26 @@
 import { randomUUID } from "node:crypto";
 import { betterAuth } from "better-auth";
 import { admin } from "better-auth/plugins";
-import { createAuthMiddleware } from "better-auth/api";
+import { APIError, createAuthMiddleware } from "better-auth/api";
 import { pool } from "./db";
 import { env } from "./env";
-import { sendEmail } from "./email";
+import { sendMonitoredEmail } from "./monitored-email";
 import { ac, roles } from "./auth-ac";
 import { recordAudit } from "./auth-audit";
 import { sendBanNotification } from "./auth-notify";
 import { queueAuthSecurityNotification } from "./auth-security-notifications";
-import { guardHook } from "./auth-guards";
+import { guardHook, validatedUserName } from "./auth-guards";
 import { normalizePhone } from "./validators";
+import {
+  CURRENT_EULA_VERSION,
+  CURRENT_PRIVACY_NOTICE_VERSION,
+  normalizeUiLocale,
+} from "./legal-documents";
+import {
+  recordLegalAcceptances,
+  validSignupAttestation,
+  verifyLegalSignupToken,
+} from "./legal";
 
 /**
  * Better Auth — the whole auth backend. See docs/auth-plan.md (Phase 1) and
@@ -56,10 +66,14 @@ export const auth = betterAuth({
     minPasswordLength: 8,
     maxPasswordLength: 128,
     sendResetPassword: async ({ user, url }) => {
-      await sendEmail({
+      await sendMonitoredEmail({
+        userId: user.id,
+        category: "security",
+        eventType: "auth.password_reset",
         to: user.email,
         subject: "Reset your UnivAI password",
         text: `Someone asked to reset the password for your UnivAI account.\n\nReset it here (link expires soon):\n${url}\n\nIf this wasn't you, you can safely ignore this email.`,
+        terminalPreview: true,
       });
     },
   },
@@ -68,10 +82,14 @@ export const auth = betterAuth({
     sendOnSignUp: true,
     autoSignInAfterVerification: true,
     sendVerificationEmail: async ({ user, url }) => {
-      await sendEmail({
+      await sendMonitoredEmail({
+        userId: user.id,
+        category: "security",
+        eventType: "auth.email_verification",
         to: user.email,
         subject: "Verify your UnivAI email",
         text: `Welcome to UnivAI.\n\nConfirm your email to activate your account:\n${url}\n\nIf you didn't create an account, you can ignore this email.`,
+        terminalPreview: true,
       });
     },
   },
@@ -113,6 +131,28 @@ export const auth = betterAuth({
       phone: { type: "string", required: false, input: true },
       // The RAG / LiveKit namespace key. Server-generated; client can't set it.
       registrationNumber: { type: "string", required: false, input: false },
+      // This preference localizes application chrome only. Generated learning
+      // and assessment content stays in English.
+      uiLocale: { type: "string", required: false, input: true, defaultValue: "en" },
+      // Signup assertions and current-version evidence. The create hook
+      // overwrites versions/timestamps server-side and also writes immutable
+      // events to legal_acceptances.
+      eulaAccepted: { type: "boolean", required: false, input: true, returned: false },
+      eulaVersion: { type: "string", required: false, input: true, returned: false },
+      eulaAcceptedAt: { type: "date", required: false, input: false },
+      privacyNoticeAcknowledged: {
+        type: "boolean",
+        required: false,
+        input: true,
+        returned: false,
+      },
+      privacyNoticeVersion: {
+        type: "string",
+        required: false,
+        input: true,
+        returned: false,
+      },
+      privacyNoticeAcknowledgedAt: { type: "date", required: false, input: false },
     },
     changeEmail: {
       enabled: true,
@@ -121,14 +161,18 @@ export const auth = betterAuth({
         newEmail,
         url,
       }: {
-        user: { email: string };
+        user: { id: string; email: string };
         newEmail: string;
         url: string;
       }) => {
-        await sendEmail({
+        await sendMonitoredEmail({
+          userId: user.id,
+          category: "security",
+          eventType: "auth.email_change_verification",
           to: newEmail,
           subject: "Confirm your new UnivAI email",
           text: `Confirm this address as the new email for your UnivAI account (${user.email}):\n${url}`,
+          terminalPreview: true,
         });
       },
     },
@@ -140,7 +184,26 @@ export const auth = betterAuth({
         // Assign registrationNumber + bootstrap the super_admin here so neither can ever
         // arrive from the client. defaultRole ("student") from the admin plugin
         // applies unless we override for the configured owner email.
-        before: async (user) => {
+        before: async (user, context) => {
+          const directAttestation = validSignupAttestation(user);
+          const oauthAttestation = verifyLegalSignupToken(
+            context?.headers instanceof Headers ? context.headers : null,
+          );
+          // Provisioning an account is not acceptance by the end user. Such an
+          // account stays unaccepted until the learner accepts at a covered
+          // action (uploads always enforce the current EULA independently).
+          const adminProvisioning = context?.path?.startsWith("/admin/create-user") ?? false;
+          const attestation = directAttestation
+            ? { uiLocale: normalizeUiLocale(user.uiLocale) }
+            : oauthAttestation;
+          if (!attestation && !adminProvisioning) {
+            throw new APIError("UNPROCESSABLE_ENTITY", {
+              code: "LEGAL_ACCEPTANCE_REQUIRED",
+              message:
+                "Accept the current EULA and acknowledge the current Privacy Notice before creating an account.",
+            });
+          }
+
           const seq = await pool.query<{ n: string }>(
             "SELECT nextval('student_id_seq') AS n"
           );
@@ -154,12 +217,48 @@ export const auth = betterAuth({
           return {
             data: {
               ...user,
+              name: validatedUserName(user.name),
               registrationNumber,
               // NULL means "not given". Google sends no phone number, and the
               // register form no longer insists on one, so a blank arrives here
               // as "" and is normalised — one absent value, one representation.
               phone: normalizePhone((user as { phone?: string | null }).phone),
+              uiLocale: normalizeUiLocale(attestation?.uiLocale ?? user.uiLocale),
+              eulaAccepted: Boolean(attestation),
+              eulaVersion: attestation ? CURRENT_EULA_VERSION : null,
+              eulaAcceptedAt: attestation ? new Date() : null,
+              privacyNoticeAcknowledged: Boolean(attestation),
+              privacyNoticeVersion: attestation ? CURRENT_PRIVACY_NOTICE_VERSION : null,
+              privacyNoticeAcknowledgedAt: attestation ? new Date() : null,
               ...(isOwner ? { role: "super_admin" } : {}),
+            },
+          };
+        },
+        after: async (user, context) => {
+          if (user.eulaAccepted !== true || user.privacyNoticeAcknowledged !== true) return;
+          await recordLegalAcceptances({
+            userId: user.id,
+            registrationNumber:
+              typeof user.registrationNumber === "string" ? user.registrationNumber : null,
+            locale: user.uiLocale,
+            context: context?.path?.includes("callback") ? "oauth_signup" : "email_signup",
+            documents: ["eula", "privacy_notice"],
+            headers: context?.headers instanceof Headers ? context.headers : null,
+            acceptedAt:
+              user.eulaAcceptedAt instanceof Date ? user.eulaAcceptedAt : new Date(),
+          });
+        },
+      },
+      update: {
+        // Covers profile edits and administrator writes. The HTTP guard gives
+        // first-party forms a stable error, while this database boundary also
+        // protects OAuth/plugin and future server-side write paths.
+        before: async (user) => {
+          if (user.name === undefined) return;
+          return {
+            data: {
+              ...user,
+              name: validatedUserName(user.name),
             },
           };
         },

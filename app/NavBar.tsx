@@ -22,6 +22,7 @@ import Stack from "@mui/material/Stack";
 import Toolbar from "@mui/material/Toolbar";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
+import { useTheme } from "@mui/material/styles";
 import AccountCircleOutlined from "@mui/icons-material/AccountCircleOutlined";
 import CloseOutlined from "@mui/icons-material/CloseOutlined";
 import DashboardOutlined from "@mui/icons-material/DashboardOutlined";
@@ -34,6 +35,7 @@ import MenuBookOutlined from "@mui/icons-material/MenuBookOutlined";
 import SettingsOutlined from "@mui/icons-material/SettingsOutlined";
 import UploadFileOutlined from "@mui/icons-material/UploadFileOutlined";
 import TollOutlined from "@mui/icons-material/TollOutlined";
+import PrivacyTipOutlined from "@mui/icons-material/PrivacyTipOutlined";
 import ThemeModeMenu from "./ThemeModeMenu";
 import BrandMark from "./components/BrandMark";
 import { useHydratedSession } from "@/lib/use-hydrated-session";
@@ -63,6 +65,7 @@ const STUDENT_ICONS = {
 } as const;
 
 export default function NavBar() {
+  const theme = useTheme();
   const pathname = usePathname();
   const { data: session } = useHydratedSession();
   const { state: onboarding } = useOnboarding();
@@ -99,11 +102,13 @@ export default function NavBar() {
         return [
           ...studentLinks,
           { href: "/admin", label: "Admin", icon: SettingsOutlined },
+          { href: "/admin/privacy", label: "Privacy requests", icon: PrivacyTipOutlined },
         ];
       case "super_admin":
         return [
           ...studentLinks,
           { href: "/admin", label: "Admin", icon: SettingsOutlined },
+          { href: "/admin/privacy", label: "Privacy requests", icon: PrivacyTipOutlined },
           {
             href: "/admin/users",
             label: "Users",
@@ -249,7 +254,7 @@ export default function NavBar() {
       </Toolbar>
 
       <Drawer
-        anchor="right"
+        anchor={theme.direction === "rtl" ? "left" : "right"}
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         slotProps={{ paper: { className: "drawer-paper" } }}
@@ -283,6 +288,7 @@ export default function NavBar() {
                   component={Link}
                   href={link.href}
                   selected={isActive(link.href)}
+                  aria-current={isActive(link.href) ? "page" : undefined}
                   onClick={() => setDrawerOpen(false)}
                 >
                   <ListItemIcon>

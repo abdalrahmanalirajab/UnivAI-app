@@ -10,6 +10,10 @@ import Chip from "@mui/material/Chip";
 import LinearProgress from "@mui/material/LinearProgress";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
+import Checkbox from "@mui/material/Checkbox";
+import FormControlLabel from "@mui/material/FormControlLabel";
+import Link from "next/link";
+import { CURRENT_EULA_VERSION } from "@/lib/legal-documents";
 
 type UploadStatus = "idle" | "pending" | "uploading" | "success" | "failed" | "offline";
 
@@ -64,6 +68,7 @@ export default function MultiBookUploader({
 }: Props) {
   const [entries, setEntries] = useState<UploadEntry[]>([]);
   const [dragging, setDragging] = useState(false);
+  const [acceptedEula, setAcceptedEula] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const idCounter = useRef(0);
   const queueRef = useRef<UploadEntry[]>([]);
@@ -135,6 +140,8 @@ export default function MultiBookUploader({
     if (entry.collectionId ?? collectionId) {
       body.append("collectionId", String(entry.collectionId ?? collectionId));
     }
+    body.append("eulaAccepted", String(acceptedEula));
+    body.append("eulaVersion", CURRENT_EULA_VERSION);
     let res: Response;
     const controller = new AbortController();
     controllersRef.current.set(entry.id, controller);
@@ -208,6 +215,7 @@ export default function MultiBookUploader({
   }
 
   function startUploads() {
+    if (!acceptedEula) return;
     const selected = entries.filter(
       (entry) =>
         entry.status === "pending" &&
@@ -306,13 +314,41 @@ export default function MultiBookUploader({
           {entries.length > 0 ? (
             <Stack spacing={1}>
               {entries.some((entry) => entry.status === "pending") ? (
-                <Stack direction="row" spacing={1}>
-                  <Button variant="contained" onClick={startUploads}>
-                    Start upload
-                  </Button>
-                  <Button variant="outlined" onClick={clearSelected}>
-                    Clear selected
-                  </Button>
+                <Stack spacing={1}>
+                  <Alert severity="info">
+                    UnivAI does not grant or verify rights in these PDFs. Upload only
+                    material you are legally allowed to use.
+                  </Alert>
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={acceptedEula}
+                        onChange={(event) => setAcceptedEula(event.target.checked)}
+                        required
+                      />
+                    }
+                    label={
+                      <Typography variant="body2">
+                        I accept the current{" "}
+                        <Link href="/legal/eula" target="_blank">
+                          EULA and Content Use Agreement
+                        </Link>{" "}
+                        for these files and confirm I am authorized to use them.
+                      </Typography>
+                    }
+                  />
+                  <Stack direction="row" spacing={1}>
+                    <Button
+                      variant="contained"
+                      onClick={startUploads}
+                      disabled={!acceptedEula}
+                    >
+                      Start upload
+                    </Button>
+                    <Button variant="outlined" onClick={clearSelected}>
+                      Clear selected
+                    </Button>
+                  </Stack>
                 </Stack>
               ) : null}
               {entries.some((entry) => entry.status === "offline") ? (

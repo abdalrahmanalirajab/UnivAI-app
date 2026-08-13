@@ -52,7 +52,7 @@ export default function RaiseHandTeaser() {
         <Typography variant="overline" color="secondary">
           {raiseHandTeaser.label}
         </Typography>
-        <Typography variant="body2">
+        <Typography variant="body2" data-no-ui-translate="true" dir="ltr">
           {raiseHandTeaser.sampleQuestion}
         </Typography>
       </Stack>
@@ -96,6 +96,9 @@ export default function RaiseHandTeaser() {
                   variant="body2"
                   color="text.secondary"
                   aria-live="polite"
+                  data-generated-content="true"
+                  lang="en"
+                  dir="ltr"
                 >
                   {complete ? null : displayedText}
                 </Typography>

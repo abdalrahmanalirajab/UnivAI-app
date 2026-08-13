@@ -14,7 +14,7 @@ export async function POST() {
   }
 
   await auth.api.sendVerificationEmail({
-    body: { email: gate.email, callbackURL: "/start" },
+    body: { email: gate.email, callbackURL: "/subscribe" },
     headers: await headers(),
   });
 

@@ -17,6 +17,10 @@ import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
 import DialogActions from "@mui/material/DialogActions";
+import CircularProgress from "@mui/material/CircularProgress";
+import TableContainer from "@mui/material/TableContainer";
+import TablePagination from "@mui/material/TablePagination";
+import Typography from "@mui/material/Typography";
 import { authClient } from "@/lib/auth-client";
 import { copyFor } from "@/lib/errorMap";
 
@@ -25,41 +29,64 @@ export default function AdminUsersPage() {
   const [searchField, setSearchField] = useState<"email" | "name">("email");
   const [users, setUsers] = useState<unknown[]>([]);
   const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(20);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [banDialogOpen, setBanDialogOpen] = useState(false);
-  const [banTarget, setBanTarget] = useState<number | null>(null);
+  const [banTarget, setBanTarget] = useState<string | null>(null);
   const [banReason, setBanReason] = useState("");
 
   useEffect(() => {
     setActionError(null);
     const id = setTimeout(async () => {
       setLoading(true);
-      const { data } = await authClient.admin.listUsers({
+      const { data, error } = await authClient.admin.listUsers({
         query: {
-          limit: 20,
-          offset: 0,
+          limit: pageSize,
+          offset: page * pageSize,
           searchValue: search || undefined,
           searchField,
         },
       });
+      if (error) {
+        setLoadError(copyFor(error).message);
+        setUsers([]);
+        setTotal(0);
+        setLoading(false);
+        return;
+      }
       setUsers(data?.users ?? []);
       setTotal(data?.total ?? 0);
+      setLoadError(null);
       setLoading(false);
     }, 400);
     return () => clearTimeout(id);
+  }, [search, searchField, page, pageSize]);
+
+  useEffect(() => {
+    setPage(0);
   }, [search, searchField]);
 
   const handleBan = async () => {
     if (banTarget === null) return;
+    const targetIndex = users.findIndex(
+      (candidate) => (candidate as Record<string, unknown>).id === banTarget,
+    );
+    if (targetIndex < 0) {
+      setBanDialogOpen(false);
+      setActionError("That user is no longer on this page. Search for them and try again.");
+      return;
+    }
     const newUsers = [...users];
-    const target = newUsers[banTarget] as Record<string, unknown>;
+    const target = newUsers[targetIndex] as Record<string, unknown>;
     target.banned = true;
     setUsers(newUsers);
     setBanDialogOpen(false);
     setActionError(null);
     const { error } = await authClient.admin.banUser({
-      userId: (users[banTarget] as Record<string, unknown>).id as string,
+      userId: banTarget,
       banReason: banReason || undefined,
     });
     if (error) {
@@ -101,7 +128,16 @@ export default function AdminUsersPage() {
         <MenuItem value="name">name</MenuItem>
       </Select>
       {actionError && <Alert severity="error">{actionError}</Alert>}
-      <Table>
+      {loadError && <Alert severity="error">{loadError}</Alert>}
+      <Typography variant="body2" color="text.secondary" aria-live="polite">
+        {loading
+          ? "Loading users…"
+          : total === 0
+            ? "No users found."
+            : `Showing ${page * pageSize + 1}–${Math.min((page + 1) * pageSize, total)} of ${total} users`}
+      </Typography>
+      <TableContainer>
+      <Table aria-label="User administration">
         <TableHead>
           <TableRow>
             <TableCell>Name</TableCell>
@@ -113,6 +149,13 @@ export default function AdminUsersPage() {
           </TableRow>
         </TableHead>
         <TableBody>
+          {loading ? (
+            <TableRow>
+              <TableCell colSpan={6} align="center">
+                <CircularProgress size={28} aria-label="Loading users" />
+              </TableCell>
+            </TableRow>
+          ) : null}
           {users.map((u, i) => {
             const user = u as {
               id?: string;
@@ -173,7 +216,7 @@ export default function AdminUsersPage() {
                       if (user.banned) {
                         handleUnban(i);
                       } else {
-                        setBanTarget(i);
+                        setBanTarget(user.id ?? null);
                         setBanReason("");
                         setBanDialogOpen(true);
                       }
@@ -188,6 +231,22 @@ export default function AdminUsersPage() {
           })}
         </TableBody>
       </Table>
+      </TableContainer>
+      <TablePagination
+        component="div"
+        count={total}
+        page={page}
+        onPageChange={(_event, nextPage) => setPage(nextPage)}
+        rowsPerPage={pageSize}
+        onRowsPerPageChange={(event) => {
+          setPageSize(Number(event.target.value));
+          setPage(0);
+        }}
+        rowsPerPageOptions={[10, 20, 50, 100]}
+        labelRowsPerPage="Users per page"
+        showFirstButton
+        showLastButton
+      />
       <Dialog open={banDialogOpen} onClose={() => setBanDialogOpen(false)}>
         <DialogTitle>Ban user</DialogTitle>
         <DialogContent>

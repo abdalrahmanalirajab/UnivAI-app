@@ -6,6 +6,7 @@ import Button from "@mui/material/Button";
 import Divider from "@mui/material/Divider";
 import Stack from "@mui/material/Stack";
 import SvgIcon from "@mui/material/SvgIcon";
+import type { UiLocale } from "@/lib/legal-documents";
 
 /**
  * "Continue with Google" for /login and /register — the same control on both,
@@ -45,10 +46,21 @@ function GoogleMark() {
 export default function GoogleSignInButton({
   callbackURL = "/start",
   onError,
+  disabled = false,
+  legalAttestation,
 }: {
   /** Where Google returns the learner once the account exists. */
   callbackURL?: string;
   onError?: (message: string) => void;
+  disabled?: boolean;
+  /** Required on the registration page; login keeps this absent. */
+  legalAttestation?: {
+    eulaAccepted: boolean;
+    eulaVersion: string;
+    privacyNoticeAcknowledged: boolean;
+    privacyNoticeVersion: string;
+    uiLocale: UiLocale;
+  };
 }) {
   const [submitting, setSubmitting] = useState(false);
 
@@ -56,6 +68,22 @@ export default function GoogleSignInButton({
     setSubmitting(true);
     onError?.("");
     try {
+      if (legalAttestation) {
+        const acceptance = await fetch("/api/legal/preaccept", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(legalAttestation),
+        });
+        const acceptanceBody = await acceptance.json().catch(() => null);
+        if (!acceptance.ok) {
+          onError?.(
+            acceptanceBody?.error ??
+              "Accept the EULA and acknowledge the Privacy Notice before continuing with Google.",
+          );
+          setSubmitting(false);
+          return;
+        }
+      }
       const { error } = await authClient.signIn.social({
         provider: "google",
         callbackURL,
@@ -83,7 +111,7 @@ export default function GoogleSignInButton({
       <Button
         variant="outlined"
         fullWidth
-        disabled={submitting}
+        disabled={disabled || submitting}
         startIcon={<GoogleMark />}
         onClick={start}
       >

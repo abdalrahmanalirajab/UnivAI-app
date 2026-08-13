@@ -8,24 +8,29 @@ export const dynamic = "force-dynamic";
 
 /**
  * SUDO endpoint: everything the system knows about ONE student. Admin+ only.
- * Multi-tenant: the admin picks the student with ?sid=<registrationNumber>. Without it
- * we return the list of students so the panel can offer a picker.
+ * Multi-tenant: the admin picks the student with ?sid=<registrationNumber>.
+ * Learner discovery happens through the bounded /api/admin/learners endpoint.
  */
 export async function GET(request: NextRequest) {
   const gate = await requireAdminApi();
   if (gate instanceof Response) return gate;
 
-  // The clock is global and the student list is always needed for the picker,
-  // so both come back regardless of whether a student is selected.
+  // Learner discovery is a separate, bounded endpoint. This state endpoint is
+  // polled during generation, so it must never re-send every account.
   const [virtualNow, offsetMs] = await Promise.all([now(), getOffsetMs()]);
-  const students = await query(
-    `SELECT "registrationNumber" AS sid, name, email, role FROM "user" ORDER BY "createdAt" ASC`
-  );
   const clock = { now: virtualNow.toISOString(), offsetMs };
 
   const sid = request.nextUrl.searchParams.get("sid");
   if (!sid) {
-    return Response.json({ needsStudent: true, clock, students });
+    return Response.json({ needsStudent: true, clock });
+  }
+  const learner = await query<{ sid: string; name: string; email: string; role: string }>(
+    `SELECT "registrationNumber" AS sid, name, email, COALESCE(role, 'student') AS role
+       FROM "user" WHERE "registrationNumber" = $1 LIMIT 1`,
+    [sid],
+  );
+  if (!learner[0]) {
+    return Response.json({ error: "Learner not found." }, { status: 404 });
   }
 
   const [books, lectures, grades, qaLog] = await Promise.all([
@@ -43,7 +48,7 @@ export async function GET(request: NextRequest) {
 
   return Response.json({
     clock,
-    students,
+    learner: learner[0],
     sid,
     books,
     lectures,

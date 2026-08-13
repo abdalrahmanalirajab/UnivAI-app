@@ -260,7 +260,7 @@ async function seedLearner(email: string): Promise<string> {
 
 /**
  * Seed an approved plan + its schedule binding + a live lecture row so the
- * real getLectures/approvedPlanVersion/stampJoin paths all run server-side.
+ * real getLectures/approvedPlanVersion paths and the LiveKit presence stamp all run server-side.
  */
 async function seedLecture(sid: string, title: string): Promise<number> {
   const lectureId = await withPool(async (pool) => {

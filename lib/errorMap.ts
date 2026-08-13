@@ -3,7 +3,14 @@
 // error object is assignable.
 export type AuthError = { code?: string; message?: string; status: number };
 
-export const ERROR_COPY: Record<string, { field?: "email" | "password"; message: string }> = {
+type AuthErrorCopy = { field?: "name" | "email" | "password"; message: string };
+
+export const ERROR_COPY: Record<string, AuthErrorCopy> = {
+  INVALID_USER_NAME: {
+    field: "name",
+    message:
+      "Use letters from any language and spaces only. Numbers, symbols, and emoji are not allowed.",
+  },
   USER_ALREADY_EXISTS: { field: "email", message: "An account with this email already exists." },
   CANNOT_CHANGE_SUPER_ADMIN_ROLE: { message: "A super admin's role cannot be changed." },
   CANNOT_BAN_SUPER_ADMIN: { message: "A super admin cannot be banned." },
@@ -22,7 +29,7 @@ export const ERROR_COPY: Record<string, { field?: "email" | "password"; message:
   INVALID_PASSWORD: { field: "password", message: "Current password is incorrect." },
 };
 
-export function copyFor(err: AuthError): { field?: "email" | "password"; message: string } {
+export function copyFor(err: AuthError): AuthErrorCopy {
   if (err.status === 429) return { message: "Too many attempts. Please wait a moment." };
   const copy = err.code ? ERROR_COPY[err.code] : undefined;
   return copy ?? { message: "Something went wrong, please try again." };

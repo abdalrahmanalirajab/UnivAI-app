@@ -1,12 +1,10 @@
 import { NextRequest } from "next/server";
 import { requirePreparedSourceApi } from "@/lib/session";
+import { getLatestLectureOutput } from "@/lib/feedback";
 import {
-  getLatestLectureOutput,
-  submitFeedback,
-  validateFeedback,
-  type FeedbackInput,
-  type FeedbackRating,
-} from "@/lib/feedback";
+  parseAiOutputFeedbackRequest,
+  submitAiOutputFeedback,
+} from "@/lib/ai-output-feedback";
 import { enforceUserRateLimit } from "@/lib/rate-limits";
 
 export const dynamic = "force-dynamic";
@@ -32,46 +30,11 @@ export async function POST(request: NextRequest) {
   if (limited) return limited;
 
   const body: unknown = await request.json().catch(() => null);
-  if (!body || typeof body !== "object" || Array.isArray(body)) {
-    return Response.json({ error: "Request body must be a JSON object." }, { status: 400 });
-  }
+  const parsed = parseAiOutputFeedbackRequest(body);
+  if (!parsed.ok) return Response.json({ error: parsed.error }, { status: 400 });
 
-  const { output_id, output_version, trace_id, rating, issue, note } = body as Record<
-    string,
-    unknown
-  >;
-  if (
-    typeof output_id !== "number" ||
-    typeof output_version !== "string" ||
-    typeof trace_id !== "string" ||
-    typeof rating !== "string" ||
-    typeof issue !== "boolean" ||
-    (note !== null && note !== undefined && typeof note !== "string")
-  ) {
-    return Response.json(
-      {
-        error:
-          "output_id must be a number; output_version, trace_id and rating must be strings; issue must be a boolean; note must be a string or null.",
-      },
-      { status: 400 },
-    );
-  }
-
-  const input: FeedbackInput = {
-    output_id,
-    output_version,
-    trace_id,
-    rating: rating as FeedbackRating,
-    issue,
-    note: note ?? null,
-  };
-  const validationMessage = validateFeedback(input);
-  if (validationMessage) {
-    return Response.json({ error: validationMessage }, { status: 400 });
-  }
-
-  const result = await submitFeedback(gate.registrationNumber, input);
+  const result = await submitAiOutputFeedback(gate.registrationNumber, parsed.value);
   return result.ok
-    ? Response.json({ feedback: result.feedback }, { status: 201 })
-    : Response.json({ error: result.error }, { status: 404 });
+    ? Response.json(result.value, { status: parsed.value.action === "report" ? 201 : 200 })
+    : Response.json({ error: result.error }, { status: result.status });
 }

@@ -8,7 +8,14 @@ import TextField from "@mui/material/TextField";
 import Divider from "@mui/material/Divider";
 import Button from "@mui/material/Button";
 import { FormError, FormSuccess } from "@/app/components/FormAlerts";
-import { validateName, validatePhone, validatePassword, normalizePhone } from "@/lib/validators";
+import {
+  INVALID_USER_NAME_MESSAGE,
+  normalizeName,
+  normalizePhone,
+  validateName,
+  validatePassword,
+  validatePhone,
+} from "@/lib/validators";
 import PasswordField from "@/app/components/PasswordField";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import Checkbox from "@mui/material/Checkbox";
@@ -18,6 +25,8 @@ import ListItem from "@mui/material/ListItem";
 import ListItemText from "@mui/material/ListItemText";
 import Chip from "@mui/material/Chip";
 import NotificationPreferences from "@/app/components/NotificationPreferences";
+import PrivacyCenter from "@/app/components/PrivacyCenter";
+import LanguageSettings from "@/app/components/LanguageSettings";
 
 type SessionUser = NonNullable<ReturnType<typeof useSession>["data"]>["user"];
 
@@ -70,10 +79,20 @@ function ProfileForm({ user }: { user: SessionUser }) {
   const handleSave = async () => {
     setSaveError(null);
     setSaveSuccess(false);
-    const { error } = await authClient.updateUser({ name, phone: normalizePhone(phone) });
+    const normalizedName = normalizeName(name);
+    const invalidName = validateName(normalizedName);
+    if (invalidName) {
+      setNameError(invalidName);
+      return;
+    }
+    const { error } = await authClient.updateUser({
+      name: normalizedName,
+      phone: normalizePhone(phone),
+    });
     if (error) {
       setSaveError(error.message ?? "Could not save changes.");
     } else {
+      setName(normalizedName);
       setSaveSuccess(true);
     }
   };
@@ -95,7 +114,7 @@ function ProfileForm({ user }: { user: SessionUser }) {
           setNameError(validateName(e.target.value));
         }}
         error={nameError !== null}
-        helperText={nameError}
+        helperText={nameError ?? INVALID_USER_NAME_MESSAGE}
       />
       <TextField
         label="Phone (optional)"
@@ -115,6 +134,8 @@ function ProfileForm({ user }: { user: SessionUser }) {
       </Button>
       {saveSuccess && <FormSuccess message="Saved" />}
       {saveError && <FormError message={saveError} />}
+      <Divider />
+      <LanguageSettings initialLocale={user.uiLocale === "ar" ? "ar" : "en"} />
       <Divider />
       <Typography>Change email</Typography>
       <TextField
@@ -155,6 +176,8 @@ function ProfileForm({ user }: { user: SessionUser }) {
       {changeEmailError && <FormError message={changeEmailError} />}
       <Divider />
       <NotificationPreferences />
+      <Divider />
+      <PrivacyCenter />
       <Divider />
       <Typography>Change password</Typography>
       <PasswordField

@@ -22,12 +22,31 @@ type SubscriptionRow = {
   provider: "none" | "paypal";
   provider_subscription_id: string | null;
   provider_plan_id: string | null;
+  subscribed_at: Date | string | null;
+  current_period_ends_at: Date | string | null;
+  cancelled_at: Date | string | null;
+  created_at: Date | string;
+  updated_at: Date | string;
 };
 
 type WalletRow = {
   balance: number;
   weekly_allowance: number;
-  week_started_at: Date | string;
+  week_started_at: string;
+};
+
+type CoinTransactionRow = {
+  amount: number;
+  balance_after: number;
+  reason: "signup" | "weekly_refill" | "plan_change" | "spend" | "adjustment";
+  created_at: Date | string;
+};
+
+export type CoinTransaction = {
+  amount: number;
+  balanceAfter: number;
+  reason: CoinTransactionRow["reason"];
+  createdAt: string;
 };
 
 export type SubscriptionSnapshot = {
@@ -39,12 +58,18 @@ export type SubscriptionSnapshot = {
   status: SubscriptionStatus;
   provider: "none" | "paypal";
   providerSubscriptionId: string | null;
+  subscribedAt: string | null;
+  currentPeriodEndsAt: string | null;
+  cancelledAt: string | null;
+  createdAt: string;
+  updatedAt: string;
   coins: {
     balance: number;
     weeklyAllowance: number;
     weekStartedAt: string;
     nextGrantAt: string;
   };
+  coinTransactions: CoinTransaction[];
 };
 
 function nextWeek(start: Date): Date {
@@ -56,6 +81,11 @@ function nextWeek(start: Date): Date {
 function isoDate(value: Date | string): string {
   const date = value instanceof Date ? value : new Date(`${value}T00:00:00.000Z`);
   return date.toISOString().slice(0, 10);
+}
+
+function isoTimestamp(value: Date | string | null): string | null {
+  if (!value) return null;
+  return new Date(value).toISOString();
 }
 
 function pendingPlan(value: string | null): SubscriptionPlanCode | null {
@@ -84,14 +114,16 @@ export async function getSubscriptionSnapshot(
 
     const subscriptionResult = await client.query<SubscriptionRow>(
       `SELECT plan_code, pending_plan_code, status, provider,
-              provider_subscription_id, provider_plan_id
+              provider_subscription_id, provider_plan_id,
+              subscribed_at, current_period_ends_at, cancelled_at,
+              created_at, updated_at
          FROM user_subscriptions
         WHERE user_id = $1
         FOR UPDATE`,
       [userId],
     );
     const walletResult = await client.query<WalletRow>(
-      `SELECT balance, weekly_allowance, week_started_at
+      `SELECT balance, weekly_allowance, week_started_at::text AS week_started_at
          FROM coin_wallets
         WHERE user_id = $1
         FOR UPDATE`,
@@ -108,12 +140,11 @@ export async function getSubscriptionSnapshot(
       : DEFAULT_SUBSCRIPTION_PLAN;
     const plan = getSubscriptionPlan(planCode);
     const weekStart = startOfUtcWeek(now);
-    const storedWeek = new Date(`${isoDate(wallet.week_started_at)}T00:00:00.000Z`);
     const grant = calculateWeeklyCoinGrant({
       balance: wallet.balance,
       previousAllowance: wallet.weekly_allowance,
       nextAllowance: plan.weeklyCoins,
-      storedWeekStartedAt: isoDate(storedWeek),
+      storedWeekStartedAt: wallet.week_started_at,
       currentWeekStartedAt: isoDate(weekStart),
     });
     const { amount, balance } = grant;
@@ -145,6 +176,15 @@ export async function getSubscriptionSnapshot(
       );
     }
 
+    const transactionResult = await client.query<CoinTransactionRow>(
+      `SELECT amount, balance_after, reason, created_at
+         FROM coin_transactions
+        WHERE user_id = $1
+        ORDER BY created_at DESC
+        LIMIT 25`,
+      [userId],
+    );
+
     await client.query("COMMIT");
     return {
       planCode,
@@ -155,12 +195,23 @@ export async function getSubscriptionSnapshot(
       status: subscription.status,
       provider: subscription.provider,
       providerSubscriptionId: subscription.provider_subscription_id,
+      subscribedAt: isoTimestamp(subscription.subscribed_at),
+      currentPeriodEndsAt: isoTimestamp(subscription.current_period_ends_at),
+      cancelledAt: isoTimestamp(subscription.cancelled_at),
+      createdAt: isoTimestamp(subscription.created_at)!,
+      updatedAt: isoTimestamp(subscription.updated_at)!,
       coins: {
         balance,
         weeklyAllowance: plan.weeklyCoins,
         weekStartedAt: isoDate(weekStart),
         nextGrantAt: nextWeek(weekStart).toISOString(),
       },
+      coinTransactions: transactionResult.rows.map((transaction) => ({
+        amount: transaction.amount,
+        balanceAfter: transaction.balance_after,
+        reason: transaction.reason,
+        createdAt: isoTimestamp(transaction.created_at)!,
+      })),
     };
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);
@@ -192,6 +243,50 @@ export async function markPayPalSubscriptionPending(input: {
   );
 }
 
+export async function activateDevelopmentSubscription(input: {
+  userId: string;
+  planCode: Exclude<SubscriptionPlanCode, "free">;
+}): Promise<SubscriptionSnapshot> {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("Development subscriptions cannot be activated in production.");
+  }
+  await pool.query(
+    `INSERT INTO user_subscriptions
+       (user_id, plan_code, pending_plan_code, status, provider,
+        provider_subscription_id, provider_plan_id, subscribed_at,
+        current_period_ends_at, cancelled_at)
+     VALUES ($1, $2, NULL, 'active', 'none', NULL, NULL,
+             CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '1 month', NULL)
+     ON CONFLICT (user_id) DO UPDATE SET
+       plan_code = EXCLUDED.plan_code,
+       pending_plan_code = NULL,
+       status = 'active',
+       provider = 'none',
+       provider_subscription_id = NULL,
+       provider_plan_id = NULL,
+       subscribed_at = CURRENT_TIMESTAMP,
+       current_period_ends_at = CURRENT_TIMESTAMP + INTERVAL '1 month',
+       cancelled_at = NULL,
+       updated_at = CURRENT_TIMESTAMP`,
+    [input.userId, input.planCode],
+  );
+  return getSubscriptionSnapshot(input.userId);
+}
+
+export async function abandonPendingSubscription(userId: string): Promise<void> {
+  await pool.query(
+    `UPDATE user_subscriptions
+        SET pending_plan_code = NULL,
+            status = 'active',
+            provider = 'none',
+            provider_subscription_id = NULL,
+            provider_plan_id = NULL,
+            updated_at = CURRENT_TIMESTAMP
+      WHERE user_id = $1 AND status = 'approval_pending'`,
+    [userId],
+  );
+}
+
 function mappedStatus(providerStatus: string): SubscriptionStatus {
   const statuses: Record<string, SubscriptionStatus> = {
     ACTIVE: "active",
@@ -214,6 +309,8 @@ export async function reconcilePayPalSubscription(input: {
   subscriptionId: string;
   providerPlanId: string;
   providerStatus: string;
+  providerStartedAt?: string;
+  providerPeriodEndsAt?: string;
 }): Promise<void> {
   const status = mappedStatus(input.providerStatus);
   const active = status === "active";
@@ -239,18 +336,42 @@ export async function reconcilePayPalSubscription(input: {
       input.providerPlanId,
     ],
   );
+  if (active) {
+    await pool.query(
+      `UPDATE user_subscriptions
+          SET subscribed_at = COALESCE(subscribed_at, $2::timestamptz, CURRENT_TIMESTAMP),
+              current_period_ends_at = COALESCE(
+                $3::timestamptz,
+                CURRENT_TIMESTAMP + INTERVAL '1 month'
+              ),
+              cancelled_at = NULL
+        WHERE user_id = $1`,
+      [input.userId, input.providerStartedAt ?? null, input.providerPeriodEndsAt ?? null],
+    );
+  } else if (status === "cancelled" || status === "expired") {
+    await pool.query(
+      `UPDATE user_subscriptions
+          SET current_period_ends_at = COALESCE(current_period_ends_at, CURRENT_TIMESTAMP),
+              cancelled_at = COALESCE(cancelled_at, CURRENT_TIMESTAMP)
+        WHERE user_id = $1`,
+      [input.userId],
+    );
+  }
   await getSubscriptionSnapshot(input.userId);
 }
 
 export async function cancelLocalSubscription(input: {
   userId: string;
-  subscriptionId: string;
+  subscriptionId: string | null;
 }): Promise<void> {
   await pool.query(
     `UPDATE user_subscriptions
         SET plan_code = 'free', pending_plan_code = NULL, status = 'cancelled',
+            current_period_ends_at = CURRENT_TIMESTAMP,
+            cancelled_at = CURRENT_TIMESTAMP,
             updated_at = CURRENT_TIMESTAMP
-      WHERE user_id = $1 AND provider_subscription_id = $2`,
+      WHERE user_id = $1
+        AND ($2::text IS NULL OR provider_subscription_id = $2)`,
     [input.userId, input.subscriptionId],
   );
   await getSubscriptionSnapshot(input.userId);
@@ -265,6 +386,8 @@ export async function recordAndReconcilePayPalEvent(input: {
     planCode: Exclude<SubscriptionPlanCode, "free">;
     providerPlanId: string;
     status: string;
+    providerStartedAt?: string;
+    providerPeriodEndsAt?: string;
   };
 }): Promise<"processed" | "duplicate"> {
   const client = await pool.connect();
@@ -307,6 +430,31 @@ export async function recordAndReconcilePayPalEvent(input: {
         input.subscription.providerPlanId,
       ],
     );
+    if (active) {
+      await client.query(
+        `UPDATE user_subscriptions
+            SET subscribed_at = COALESCE(subscribed_at, $2::timestamptz, CURRENT_TIMESTAMP),
+                current_period_ends_at = COALESCE(
+                  $3::timestamptz,
+                  CURRENT_TIMESTAMP + INTERVAL '1 month'
+                ),
+                cancelled_at = NULL
+          WHERE user_id = $1`,
+        [
+          input.subscription.customId,
+          input.subscription.providerStartedAt ?? null,
+          input.subscription.providerPeriodEndsAt ?? null,
+        ],
+      );
+    } else if (status === "cancelled" || status === "expired") {
+      await client.query(
+        `UPDATE user_subscriptions
+            SET current_period_ends_at = COALESCE(current_period_ends_at, CURRENT_TIMESTAMP),
+                cancelled_at = COALESCE(cancelled_at, CURRENT_TIMESTAMP)
+          WHERE user_id = $1`,
+        [input.subscription.customId],
+      );
+    }
     await client.query("COMMIT");
     await getSubscriptionSnapshot(input.subscription.customId);
     return "processed";

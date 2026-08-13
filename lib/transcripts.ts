@@ -94,6 +94,8 @@ export function scoreCourse(input: {
   attendancePercentage: number;
   midtermPercentage: number;
   finalPercentage: number;
+  /** An absent final is an academic fail even when coursework alone exceeds 50%. */
+  finalAbsent?: boolean;
 }): CourseScore {
   const quizPercentage = clampPercentage(input.quizPercentage);
   const attendancePercentage = clampPercentage(input.attendancePercentage);
@@ -108,7 +110,7 @@ export function scoreCourse(input: {
   const totalPercentage = round2(
     courseworkPoints + (finalPercentage * COURSE_WEIGHTS.final) / 100,
   );
-  const grade = gradeForPercentage(totalPercentage);
+  const grade = input.finalAbsent ? { letter: "F" as const, gpa: 0 } : gradeForPercentage(totalPercentage);
   return {
     quizPercentage: round2(quizPercentage),
     attendancePercentage: round2(attendancePercentage),
@@ -128,6 +130,7 @@ type GradeRow = {
   score: string;
   max_score: string;
   flagged: boolean;
+  report?: { absent?: boolean } | null;
 };
 
 function assessmentPercentage(rows: GradeRow[], expectedCount: number): number {
@@ -219,7 +222,7 @@ export async function upsertCourseTranscript(
   await repairMisclassifiedFinalGrade(registrationNumber);
 
   const finalGrade = await queryOne<GradeRow>(
-    `SELECT kind, week, score, max_score, flagged
+    `SELECT kind, week, score, max_score, flagged, report
        FROM grades
       WHERE student_id = $1 AND kind = 'final' AND flagged = false
       ORDER BY taken_at DESC, id DESC LIMIT 1`,
@@ -237,11 +240,20 @@ export async function upsertCourseTranscript(
       "SELECT COUNT(*)::text AS total FROM lectures WHERE student_id = $1",
       [registrationNumber],
     ),
-    queryOne<{ attended: string }>(
-      `SELECT COUNT(*)::text AS attended
-         FROM attendance a
-         JOIN lectures l ON l.id = a.lecture_id
-        WHERE a.student_id = $1 AND l.student_id = $1 AND a.joined_at IS NOT NULL`,
+    queryOne<{ percentage: string }>(
+      `SELECT COALESCE(AVG(
+                CASE
+                  WHEN a.completed_at IS NOT NULL THEN 100.0
+                  WHEN a.total_sentences > 0 THEN
+                    100.0 * LEAST(a.last_sentence_index, a.total_sentences)
+                      / a.total_sentences
+                  ELSE 0.0
+                END
+              ), 0)::text AS percentage
+         FROM lectures l
+         LEFT JOIN attendance a
+           ON a.lecture_id = l.id AND a.student_id = l.student_id
+        WHERE l.student_id = $1`,
       [registrationNumber],
     ),
     query<GradeRow>(
@@ -253,19 +265,20 @@ export async function upsertCourseTranscript(
   ]);
 
   const lectureCount = Number(lectureCountRow?.total ?? 0);
-  const attended = Number(attendanceRow?.attended ?? 0);
+  const attendancePercentage = Number(attendanceRow?.percentage ?? 0);
   const expectedMidterms = expectedMidtermCount(semesterPlan?.semesterCount);
   const score = scoreCourse({
     quizPercentage: assessmentPercentage(
       grades.filter((grade) => grade.kind === "quiz"),
       lectureCount,
     ),
-    attendancePercentage: lectureCount > 0 ? (attended / lectureCount) * 100 : 0,
+    attendancePercentage: lectureCount > 0 ? attendancePercentage : 0,
     midtermPercentage: assessmentPercentage(
       grades.filter((grade) => grade.kind === "midterm"),
       expectedMidterms,
     ),
     finalPercentage: (Number(finalGrade.score) / Number(finalGrade.max_score)) * 100,
+    finalAbsent: finalGrade.report?.absent === true,
   });
 
   const courseKey = book ? `book:${book.id}` : `final:${fallbackTitle}`;

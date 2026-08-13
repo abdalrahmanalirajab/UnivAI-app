@@ -8,6 +8,8 @@ import { notFound } from "next/navigation";
 import { getLectureMaterialAccess } from "@/lib/lecture-materials";
 import { readSlides } from "@/lib/lectures";
 import { requireLearningAction } from "@/lib/session";
+import OutputFeedback from "@/app/components/OutputFeedback";
+import { lectureFeedbackTarget } from "@/lib/ai-output-feedback-types";
 import LectureArchive from "./LectureArchive";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -47,14 +49,25 @@ export default async function LectureArchivePage({
         <Typography variant="overline" color="text.secondary">
           Week {access.week} · completed lecture
         </Typography>
-        <Typography variant="h4">{access.title}</Typography>
+        <Typography variant="h4" data-generated-content="true" lang="en" dir="ltr">
+          {access.title}
+        </Typography>
         <Typography variant="body2" color="text.secondary">
           Review the published presentation without changing your attendance record.
         </Typography>
       </Stack>
 
       {deck ? (
-        <LectureArchive deck={deck} />
+        <>
+          <Stack data-generated-content="true" lang="en" dir="ltr">
+            <LectureArchive deck={deck} />
+          </Stack>
+          {access.artifactId && access.artifactVersion ? (
+            <OutputFeedback
+              target={lectureFeedbackTarget(access.artifactId, access.artifactVersion)}
+            />
+          ) : null}
+        </>
       ) : (
         <Alert severity="warning">
           <AlertTitle>Presentation not ready</AlertTitle>

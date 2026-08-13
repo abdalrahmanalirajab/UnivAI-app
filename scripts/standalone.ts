@@ -90,6 +90,8 @@ function reset(): void {
     DELETE FROM "account";
     DELETE FROM "verification";
     DELETE FROM "user" WHERE "email" = '${STANDALONE_USER.email}';
+    DELETE FROM ai_output_reports WHERE student_id = '${STANDALONE_SID}';
+    DELETE FROM ai_output_reactions WHERE student_id = '${STANDALONE_SID}';
     DELETE FROM output_feedback WHERE student_id = '${STANDALONE_SID}';
     DELETE FROM output_versions WHERE student_id = '${STANDALONE_SID}';
     DELETE FROM qa_log WHERE student_id = '${STANDALONE_SID}';

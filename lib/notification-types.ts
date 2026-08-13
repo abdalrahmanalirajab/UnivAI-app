@@ -36,6 +36,8 @@ export type NotificationEvent =
       maxScore: number;
       passed: boolean;
     }
+  | { type: "final.retake_scheduled"; availableAt: string | Date }
+  | { type: "final.retake_declined"; reason: string }
   | { type: "transcript.ready"; courseTitle: string; grade: string }
   | { type: "security.password_changed" }
   | { type: "security.sessions_revoked" }

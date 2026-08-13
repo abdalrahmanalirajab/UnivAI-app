@@ -329,7 +329,7 @@ export default function CurriculumWorkspace({
         <CardContent>
           <Stack spacing={2}>
             <Stack direction="row" spacing={2}>
-              <Typography variant="subtitle1">
+              <Typography variant="subtitle1" data-generated-content="true" lang="en" dir="ltr">
                 {programme.name}
               </Typography>
               <Stack direction="row" spacing={1}>
@@ -399,7 +399,7 @@ export default function CurriculumWorkspace({
                     <CardContent>
                       <Stack spacing={1}>
                         <Stack direction="row" spacing={2}>
-                          <Typography variant="body2">
+                          <Typography variant="body2" data-generated-content="true" lang="en" dir="ltr">
                             {semester.name}
                           </Typography>
                           <Button
@@ -424,7 +424,7 @@ export default function CurriculumWorkspace({
                             {semesterCourses.map((course) => (
                               <TableRow key={course.id}>
                                 <TableCell>
-                                  <Typography variant="body2">
+                                  <Typography variant="body2" data-generated-content="true" lang="en" dir="ltr">
                                     {course.title}
                                   </Typography>
                                 </TableCell>
@@ -538,7 +538,9 @@ export default function CurriculumWorkspace({
                       <ArrowDownwardIcon fontSize="small" />
                     </IconButton>
                   </Stack>
-                  <ListItemText primary={courseTitle(courseId)} />
+                  <ListItemText
+                    primary={<span data-generated-content="true" lang="en" dir="ltr">{courseTitle(courseId)}</span>}
+                  />
                 </Stack>
               </ListItem>
             ))}
@@ -570,7 +572,11 @@ export default function CurriculumWorkspace({
                         onChange={() => toggleMerge(course.id)}
                       />
                     }
-                    label={`${course.title} (${course.credits} cr, ${course.lecture_hours + course.tutorial_hours + course.lab_hours} h)`}
+                    label={(
+                      <span data-generated-content="true" lang="en" dir="ltr">
+                        {`${course.title} (${course.credits} cr, ${course.lecture_hours + course.tutorial_hours + course.lab_hours} h)`}
+                      </span>
+                    )}
                   />
                 </ListItem>
               ))}

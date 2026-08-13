@@ -24,6 +24,11 @@ import { requireUserApi, requireVerifiedUserApi } from "@/lib/session";
 import { env } from "@/lib/env";
 import { isStandalone } from "@/lib/runtime";
 import { enforceUserRateLimit } from "@/lib/rate-limits";
+import { CURRENT_EULA_VERSION } from "@/lib/legal-documents";
+import {
+  recordUploadEulaAcceptance,
+  validUploadAttestation,
+} from "@/lib/legal";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 600;
@@ -161,6 +166,25 @@ async function runUpload(request: NextRequest, claim: UploadClaim) {
       { error: "That file is not a real PDF — its contents do not start with %PDF-." },
       { status: 400 }
     );
+  }
+
+  if (file && form && !validUploadAttestation(form)) {
+    return Response.json(
+      {
+        error: "Accept the current EULA and confirm you are authorized to use this material.",
+        code: "EULA_ACCEPTANCE_REQUIRED",
+        eulaVersion: CURRENT_EULA_VERSION,
+      },
+      { status: 422 },
+    );
+  }
+  if (file) {
+    await recordUploadEulaAcceptance({
+      userId: gate.id,
+      registrationNumber: sid,
+      locale: gate.uiLocale,
+      headers: request.headers,
+    });
   }
 
   const standalone = isStandalone();

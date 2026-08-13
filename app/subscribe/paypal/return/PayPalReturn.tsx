@@ -10,20 +10,33 @@ import Typography from "@mui/material/Typography";
 
 type State = "checking" | "active" | "pending" | "failed";
 
-export default function PayPalReturn({ subscriptionId }: { subscriptionId: string | null }) {
-  const [state, setState] = useState<State>(subscriptionId ? "checking" : "failed");
+export default function PayPalReturn({
+  checkoutId,
+  demoOrder,
+}: {
+  checkoutId: string | null;
+  demoOrder: boolean;
+}) {
+  const [state, setState] = useState<State>(checkoutId ? "checking" : "failed");
   const [message, setMessage] = useState(
-    subscriptionId ? "Checking your PayPal subscription…" : "PayPal returned no subscription ID.",
+    checkoutId ? "Completing your PayPal payment…" : "PayPal returned no checkout ID.",
   );
 
   useEffect(() => {
-    if (!subscriptionId) return;
+    if (!checkoutId) return;
     let active = true;
-    void fetch("/api/subscriptions/paypal/confirm", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ subscriptionId }),
-    })
+    void fetch(
+      demoOrder
+        ? "/api/subscriptions/paypal/demo-capture"
+        : "/api/subscriptions/paypal/confirm",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          demoOrder ? { orderId: checkoutId } : { subscriptionId: checkoutId },
+        ),
+      },
+    )
       .then(async (response) => {
         const body = (await response.json()) as { active?: boolean; error?: string };
         if (!response.ok && response.status !== 202) {
@@ -32,7 +45,7 @@ export default function PayPalReturn({ subscriptionId }: { subscriptionId: strin
         if (!active) return;
         if (body.active) {
           setState("active");
-          setMessage("Your membership is active and your weekly coin allowance is updated.");
+          setMessage("Payment completed. Your membership and weekly coin allowance are active.");
         } else {
           setState("pending");
           setMessage("PayPal is still activating the membership. You can keep learning while it finishes.");
@@ -46,7 +59,7 @@ export default function PayPalReturn({ subscriptionId }: { subscriptionId: strin
     return () => {
       active = false;
     };
-  }, [subscriptionId]);
+  }, [checkoutId, demoOrder]);
 
   return (
     <Stack spacing={3} className="paypal-return-card">

@@ -48,6 +48,14 @@ const mongoConnect = vi.hoisted(() => vi.fn(async () => {
   throw new Error("Final callbacks must not resolve a week through MongoDB.");
 }));
 const enqueueStudentEmailNotification = vi.hoisted(() => vi.fn(async () => ({ queued: true })));
+const recordFinalExamCallback = vi.hoisted(() => vi.fn(async () => ({
+  finalized: false,
+  studentId: "S-2026-000042",
+  curriculumId: "66f0a1b2c3d4e5f607182930",
+  reason: null,
+  result: null,
+  absent: false,
+})));
 
 vi.mock("@/lib/env", () => ({
   env: {
@@ -65,6 +73,10 @@ vi.mock("@/lib/clock", () => ({
 
 vi.mock("mongodb", () => ({ MongoClient: { connect: mongoConnect } }));
 vi.mock("@/lib/notification-outbox", () => ({ enqueueStudentEmailNotification }));
+vi.mock("@/lib/final-exam-retakes", () => ({
+  ensureFinalExamCase: vi.fn(async () => undefined),
+  recordFinalExamCallback,
+}));
 
 vi.mock("@/lib/db", () => {
   async function query(text: string, params: unknown[] = []): Promise<unknown[]> {
@@ -145,7 +157,9 @@ vi.mock("@/lib/db", () => {
     if (text.includes("COUNT(*)::text AS total FROM lectures")) {
       return [{ total: String(state.lectureCount) }];
     }
-    if (text.includes("COUNT(*)::text AS attended")) return [{ attended: "1" }];
+    if (text.includes("AS percentage") && text.includes("FROM lectures l")) {
+      return [{ percentage: "100" }];
+    }
     if (text.includes("kind IN ('quiz', 'midterm')")) {
       return state.grades.filter(
         (grade) =>
@@ -239,29 +253,27 @@ afterEach(() => {
   };
   mongoConnect.mockClear();
   enqueueStudentEmailNotification.mockClear();
+  recordFinalExamCallback.mockClear();
 });
 
-describe("final result callback transcript handoff", () => {
-  it("stores the final score and starts the seven-day transcript review window", async () => {
+describe("final result callback retake hold", () => {
+  it("stores a clean primary result as provisional without creating an official grade", async () => {
     const response = await postCallback(webhook());
 
     expect(response.status).toBe(200);
-    expect(state.grades.at(-1)).toMatchObject({
-      student_id: STUDENT_SID,
-      kind: "final",
-      week: null,
-      score: 8,
-      max_score: 10,
-      exam_id: EXAM_ID,
-    });
-    expect(state.transcripts).toHaveLength(1);
-    expect(state.transcripts[0]).toMatchObject({
-      student_id: STUDENT_SID,
-      final_percentage: 80,
-      total_percentage: 80,
-      letter_grade: "A-",
-      review_status: "pending",
-      release_at: new Date("2026-08-15T12:00:00.000Z"),
+    expect(state.grades).toHaveLength(2);
+    expect(state.transcripts).toHaveLength(0);
+    expect(recordFinalExamCallback).toHaveBeenCalledWith({
+      studentId: STUDENT_SID,
+      form: "primary",
+      examId: EXAM_ID,
+      submittedAt: COMPLETED_AT,
+      result: expect.objectContaining({
+        examId: EXAM_ID,
+        mark: 8,
+        maxScore: 10,
+        passed: true,
+      }),
     });
     expect(mongoConnect).not.toHaveBeenCalled();
     expect(enqueueStudentEmailNotification).not.toHaveBeenCalled();
@@ -277,12 +289,10 @@ describe("final result callback transcript handoff", () => {
     }));
 
     expect(response.status).toBe(200);
-    expect(state.grades.at(-1)).toMatchObject({
-      kind: "final",
-      score: 78,
-      max_score: 100,
-    });
-    expect(state.transcripts[0]).toMatchObject({ final_percentage: 78 });
+    expect(recordFinalExamCallback).toHaveBeenCalledWith(
+      expect.objectContaining({ result: expect.objectContaining({ mark: 78, maxScore: 100 }) }),
+    );
+    expect(state.grades).toHaveLength(2);
   });
 
   it("accepts an in-flight legacy manual callback on its percentage scale", async () => {
@@ -295,7 +305,9 @@ describe("final result callback transcript handoff", () => {
     }));
 
     expect(response.status).toBe(200);
-    expect(state.grades.at(-1)).toMatchObject({ score: 78, max_score: 100 });
+    expect(recordFinalExamCallback).toHaveBeenCalledWith(
+      expect.objectContaining({ result: expect.objectContaining({ mark: 78, maxScore: 100 }) }),
+    );
   });
 
   it("rejects an unknown assessment type before storing or resolving it", async () => {
@@ -332,7 +344,7 @@ describe("final result callback transcript handoff", () => {
     expect(state.transcripts).toHaveLength(0);
   });
 
-  it("repairs a final grade previously misclassified as a midterm", async () => {
+  it("does not mutate a legacy grade until the policy case finalizes", async () => {
     state.grades.push({
       student_id: STUDENT_SID,
       kind: "midterm",
@@ -348,12 +360,11 @@ describe("final result callback transcript handoff", () => {
 
     expect(response.status).toBe(200);
     expect(state.grades.filter((grade) => grade.exam_id === EXAM_ID)).toEqual([
-      expect.objectContaining({ kind: "final", week: null }),
+      expect.objectContaining({ kind: "midterm", week: null }),
     ]);
     const gradeWrite = state.queries.find((entry) => entry.text.includes("INSERT INTO grades"));
-    expect(gradeWrite?.text).toContain("kind = EXCLUDED.kind");
-    expect(gradeWrite?.text).toContain("week = EXCLUDED.week");
-    expect(state.transcripts).toHaveLength(1);
+    expect(gradeWrite).toBeUndefined();
+    expect(state.transcripts).toHaveLength(0);
   });
 
   it("recovers an already-recorded final even when another transcript exists", async () => {

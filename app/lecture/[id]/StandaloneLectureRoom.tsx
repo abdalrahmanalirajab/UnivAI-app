@@ -89,6 +89,12 @@ export default function StandaloneLectureRoom({ lectureId }: { lectureId: number
         trace_id: "standalone-qa-1-v1",
         book_id: 4200,
         status: "ready",
+        feedbackTarget: {
+          targetType: "raise_hand_answer",
+          targetId: "4201",
+          targetVersion: "1",
+          traceId: "standalone-qa-4201-v1",
+        },
         citations: known
           ? [
               {
@@ -119,7 +125,7 @@ export default function StandaloneLectureRoom({ lectureId }: { lectureId: number
       </Grid>
       <Card variant="outlined">
         <CardContent>
-          <Stack spacing={2}>
+          <Stack spacing={2} data-generated-content="true" lang="en" dir="ltr">
             <Typography variant="h4">Stable standalone contracts</Typography>
             <Typography>{segments[slide - 1]}</Typography>
             <Typography variant="caption">Project-authored fixture, page {slide}</Typography>
@@ -196,22 +202,22 @@ export default function StandaloneLectureRoom({ lectureId }: { lectureId: number
             ) : null}
             {answer ? (
               <Stack spacing={2}>
-                <Alert severity="info">{answer}</Alert>
+                <Alert severity="info" data-generated-content="true" lang="en" dir="ltr">
+                  {answer}
+                </Alert>
                 <GenerationStatus status={output?.status ?? "pending"} />
-                {output?.citations.map((citation) => (
-                  <CitationBubble
-                    key={`${citation.documentId}-${citation.pages[0]?.page}`}
-                    citation={citation}
-                    expanded={selectedCitation === citation}
-                    onOpen={setSelectedCitation}
-                  />
-                ))}
+                <Stack data-generated-content="true" lang="en" dir="ltr">
+                  {output?.citations.map((citation) => (
+                    <CitationBubble
+                      key={`${citation.documentId}-${citation.pages[0]?.page}`}
+                      citation={citation}
+                      expanded={selectedCitation === citation}
+                      onOpen={setSelectedCitation}
+                    />
+                  ))}
+                </Stack>
                 <OutputFeedback
-                  outputId={output?.id}
-                  outputVersion={output?.output_version}
-                  traceId={output?.trace_id}
-                  bookId={output?.book_id}
-                  onRetried={setOutput}
+                  target={output?.feedbackTarget}
                 />
               </Stack>
             ) : null}

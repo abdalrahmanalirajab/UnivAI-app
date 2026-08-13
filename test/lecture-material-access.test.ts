@@ -11,6 +11,7 @@ function row(joinedAt: Date | null = null) {
     title: "Storage engines",
     starts_at: START,
     joined_at: joinedAt,
+    completed_at: null,
     script_payload: { durationMinutes: 60 },
   };
 }
@@ -55,5 +56,28 @@ describe("lecture presentation access", () => {
       blockedReason: null,
     });
     expect(access.endsAt.toISOString()).toBe("2026-08-10T11:00:00.000Z");
+  });
+
+  it("keeps an admitted unfinished lecture live after the first-join window", () => {
+    const access = lectureMaterialAccessAt(
+      row(new Date("2026-08-10T10:01:00.000Z")),
+      new Date("2026-08-10T12:00:00.000Z"),
+    );
+    expect(access).toMatchObject({
+      available: true,
+      mode: "live",
+      blockedReason: null,
+    });
+  });
+
+  it("switches a completed resumable lecture to its archive", () => {
+    const access = lectureMaterialAccessAt(
+      {
+        ...row(new Date("2026-08-10T10:01:00.000Z")),
+        completed_at: new Date("2026-08-10T10:55:00.000Z"),
+      },
+      new Date("2026-08-10T10:55:00.000Z"),
+    );
+    expect(access.mode).toBe("archive");
   });
 });

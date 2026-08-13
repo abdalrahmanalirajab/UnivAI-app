@@ -38,7 +38,9 @@ const ITEMS: BentoFeature[] = [
           Semester timeline
         </Typography>
         <LinearProgress variant="determinate" value={48} aria-label="Example semester progress" />
-        <Typography variant="caption">Week 3 of 5 · midterm next</Typography>
+        <Typography variant="caption" data-generated-content="true" lang="en" dir="ltr">
+          Week 3 of 5 · midterm next
+        </Typography>
       </Stack>
     ),
   },
@@ -56,15 +58,15 @@ const ITEMS: BentoFeature[] = [
   },
   {
     title: "Finish with proof",
-    body: "Scores update immediately. Coursework and the final produce a transcript, GPA, certificate, and a public verification link.",
+    body: "Assessment scores update quickly. A final stays provisional through its retake window, then coursework and the official result produce a transcript, GPA, certificate, and public verification link.",
     label: "Verified outcome",
     icon: <WorkspacePremiumOutlined />,
     wide: true,
     visual: (
       <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-        <Chip label="Coursework 60%" variant="outlined" />
-        <Chip label="Final 40%" variant="outlined" />
-        <Chip label="Grade A" color="success" />
+        <Chip label="Coursework 60%" variant="outlined" data-generated-content="true" lang="en" dir="ltr" />
+        <Chip label="Final 40%" variant="outlined" data-generated-content="true" lang="en" dir="ltr" />
+        <Chip label="Grade A" color="success" data-generated-content="true" lang="en" dir="ltr" />
         <Chip label="Certificate valid" color="primary" />
       </Stack>
     ),

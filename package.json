@@ -40,7 +40,9 @@
     "pg": "^8.22.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "sharp": "0.35.3"
+    "server-only": "^0.0.1",
+    "sharp": "0.35.3",
+    "stylis-plugin-rtl": "^2.1.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.0",
@@ -51,6 +53,7 @@
     "@types/pg": "^8.20.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/stylis": "^4.2.7",
     "eslint": "^9",
     "eslint-config-next": "16.2.12",
     "jest-axe": "^11.0.0",

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import AuthCard from "@/app/components/AuthCard";
 import { FormError } from "@/app/components/FormAlerts";
 import TextField from "@mui/material/TextField";
@@ -9,11 +10,7 @@ import PasswordField from "@/app/components/PasswordField";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import Checkbox from "@mui/material/Checkbox";
 import Button from "@mui/material/Button";
-import Chip from "@mui/material/Chip";
-import Grid from "@mui/material/Grid";
-import Radio from "@mui/material/Radio";
-import RadioGroup from "@mui/material/RadioGroup";
-import Stack from "@mui/material/Stack";
+import MenuItem from "@mui/material/MenuItem";
 import Typography from "@mui/material/Typography";
 import {
   validateName,
@@ -21,16 +18,18 @@ import {
   validatePhone,
   validatePassword,
   validateConfirmPassword,
+  INVALID_USER_NAME_MESSAGE,
+  normalizeName,
   normalizePhone,
 } from "@/lib/validators";
 import { authClient } from "@/lib/auth-client";
 import { copyFor, type AuthError } from "@/lib/errorMap";
 import GoogleSignInButton from "@/app/components/GoogleSignInButton";
 import {
-  DEFAULT_SUBSCRIPTION_PLAN,
-  SUBSCRIPTION_PLANS,
-  type SubscriptionPlanCode,
-} from "@/lib/subscription-plans";
+  CURRENT_EULA_VERSION,
+  CURRENT_PRIVACY_NOTICE_VERSION,
+  type UiLocale,
+} from "@/lib/legal-documents";
 
 export default function RegisterPage() {
   const [name, setName] = useState("");
@@ -46,23 +45,62 @@ export default function RegisterPage() {
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [confirmPassword, setConfirmPassword] = useState("");
   const [confirmPasswordError, setConfirmPasswordError] = useState<string | null>(null);
-  const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [uiLocale, setUiLocale] = useState<UiLocale>("en");
+  const [agreedToEula, setAgreedToEula] = useState(false);
+  const [acknowledgedPrivacy, setAcknowledgedPrivacy] = useState(false);
   const [topLevelError, setTopLevelError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlanCode>(
-    DEFAULT_SUBSCRIPTION_PLAN,
-  );
+  const [localeSaving, setLocaleSaving] = useState(false);
 
   const router = useRouter();
 
+  useEffect(() => {
+    setUiLocale(document.documentElement.lang === "ar" ? "ar" : "en");
+  }, []);
+
   const canSubmit =
-    agreedToTerms &&
+    agreedToEula &&
+    acknowledgedPrivacy &&
     !submitting &&
+    !localeSaving &&
     validateName(name) === null &&
     validateEmail(email) === null &&
     validatePhone(phone) === null &&
     validatePassword(password) === null &&
     validateConfirmPassword(password, confirmPassword) === null;
+
+  const handleLocaleChange = async (nextLocale: UiLocale) => {
+    const previousLocale = uiLocale;
+    setUiLocale(nextLocale);
+    setLocaleSaving(true);
+    setTopLevelError(null);
+    try {
+      const response = await fetch("/api/preferences/locale", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ locale: nextLocale }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(body?.error ?? "Could not change the application language.");
+      }
+      window.localStorage.setItem("univai-ui-locale", nextLocale);
+      // The selector is deliberately the first field. A full navigation is
+      // required to rebuild both the Emotion RTL cache and the DOM catalog;
+      // it also guarantees Arabic-to-English switches do not retain text that
+      // the Arabic translator changed after hydration.
+      window.location.reload();
+    } catch (reason) {
+      setUiLocale(previousLocale);
+      setTopLevelError(
+        reason instanceof Error
+          ? reason.message
+          : "Could not change the application language.",
+      );
+    } finally {
+      setLocaleSaving(false);
+    }
+  };
 
   const handleSubmit = async () => {
     setSubmitting(true);
@@ -73,21 +111,50 @@ export default function RegisterPage() {
     setPasswordError(null);
     setConfirmPasswordError(null);
 
-    const destination =
-      selectedPlan === "free" ? "/start" : `/subscribe?plan=${selectedPlan}`;
+    const normalizedName = normalizeName(name);
+    const invalidName = validateName(normalizedName);
+    if (invalidName) {
+      setNameError(invalidName);
+      setSubmitting(false);
+      return;
+    }
+
+    const legalAttestation = {
+      eulaAccepted: true as const,
+      eulaVersion: CURRENT_EULA_VERSION,
+      privacyNoticeAcknowledged: true as const,
+      privacyNoticeVersion: CURRENT_PRIVACY_NOTICE_VERSION,
+      uiLocale,
+    };
+    const legalResponse = await fetch("/api/legal/preaccept", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(legalAttestation),
+    }).catch(() => null);
+    if (!legalResponse?.ok) {
+      const body = await legalResponse?.json().catch(() => null);
+      setTopLevelError(body?.error ?? "Could not record your legal choices. Please try again.");
+      setSubmitting(false);
+      return;
+    }
+
+    const destination = "/subscribe";
     const { error } = await authClient.signUp.email({
-      name,
+      name: normalizedName,
       email,
       password,
       // "" would be stored as an empty string beside the NULLs that mean the
       // same thing; send the absence itself.
       phone: normalizePhone(phone),
+      ...legalAttestation,
       callbackURL: destination,
     });
 
     if (error) {
       const mapped = copyFor(error as AuthError);
-      if (mapped.field === "email") {
+      if (mapped.field === "name") {
+        setNameError(mapped.message);
+      } else if (mapped.field === "email") {
         setEmailError(mapped.message);
       } else if (mapped.field === "password") {
         setPasswordError(mapped.message);
@@ -103,55 +170,22 @@ export default function RegisterPage() {
   };
 
   return (
-    <AuthCard title="Create your account" maxWidth="md">
+    <AuthCard title="Create your account" maxWidth="sm">
       <FormError message={topLevelError} />
-      <Stack spacing={1} className="signup-plan-intro">
-        <Typography variant="h6">Choose your plan</Typography>
-        <Typography color="text.secondary">
-          Every plan includes the same books, lectures, quizzes, exams, grades, and
-          certificates. Paid plans only add more weekly coins for optional
-          personalization coming later.
-        </Typography>
-      </Stack>
-      <RadioGroup
-        value={selectedPlan}
-        onChange={(event) => setSelectedPlan(event.target.value as SubscriptionPlanCode)}
-        aria-label="Subscription plan"
+      <TextField
+        select
+        label="Application language"
+        name="uiLocale"
+        fullWidth
+        margin="normal"
+        value={uiLocale}
+        disabled={localeSaving || submitting}
+        onChange={(event) => void handleLocaleChange(event.target.value as UiLocale)}
+        helperText="This changes website controls and labels. Generated lectures and exams remain in English."
       >
-        <Grid container spacing={1.5} className="signup-plan-grid">
-          {SUBSCRIPTION_PLANS.map((plan) => (
-            <Grid size={{ xs: 12, md: 4 }} key={plan.code}>
-              <FormControlLabel
-                value={plan.code}
-                control={<Radio />}
-                className={`signup-plan-option ${
-                  selectedPlan === plan.code ? "signup-plan-selected" : ""
-                }`}
-                label={
-                  <Stack spacing={0.75} className="signup-plan-copy">
-                    <Stack direction="row" className="spread-row align-center">
-                      <Typography variant="subtitle1">{plan.name}</Typography>
-                      {plan.code === "free" ? <Chip size="small" label="Always available" /> : null}
-                    </Stack>
-                    <Typography variant="h5">
-                      ${plan.monthlyPriceUsd}
-                      <Typography component="span" variant="body2" color="text.secondary">
-                        {plan.monthlyPriceUsd ? " / month" : " forever"}
-                      </Typography>
-                    </Typography>
-                    <Typography color="primary.main" className="plan-coin-allowance">
-                      {plan.weeklyCoins.toLocaleString()} coins weekly
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {plan.description}
-                    </Typography>
-                  </Stack>
-                }
-              />
-            </Grid>
-          ))}
-        </Grid>
-      </RadioGroup>
+        <MenuItem value="en">English</MenuItem>
+        <MenuItem value="ar">العربية</MenuItem>
+      </TextField>
       <TextField
         label="Name"
         name="name"
@@ -164,7 +198,7 @@ export default function RegisterPage() {
           setNameError(validateName(e.target.value));
         }}
         error={nameError !== null}
-        helperText={nameError}
+        helperText={nameError ?? INVALID_USER_NAME_MESSAGE}
       />
       <TextField
         label="Email"
@@ -224,19 +258,52 @@ export default function RegisterPage() {
       <FormControlLabel
         control={
           <Checkbox
-            checked={agreedToTerms}
-            onChange={(e) => setAgreedToTerms(e.target.checked)}
+            checked={agreedToEula}
+            onChange={(e) => setAgreedToEula(e.target.checked)}
+            required
           />
         }
-        label="I agree to the terms"
+        label={
+          <Typography variant="body2">
+            I have read and accept the current{" "}
+            <Link href={`/legal/eula?lang=${uiLocale}`} target="_blank">
+              EULA and Content Use Agreement
+            </Link>
+            . I confirm that I am responsible for having the right to use materials I upload.
+          </Typography>
+        }
+      />
+      <FormControlLabel
+        control={
+          <Checkbox
+            checked={acknowledgedPrivacy}
+            onChange={(e) => setAcknowledgedPrivacy(e.target.checked)}
+            required
+          />
+        }
+        label={
+          <Typography variant="body2">
+            I have read the{" "}
+            <Link href={`/legal/privacy?lang=${uiLocale}`} target="_blank">
+              Privacy Notice
+            </Link>
+            . This acknowledgment is separate from optional consent choices.
+          </Typography>
+        }
       />
       <Button variant="contained" fullWidth disabled={!canSubmit} onClick={handleSubmit}>
-        {selectedPlan === "free" ? "Create free account" : "Create account and continue"}
+        Create account
       </Button>
       <GoogleSignInButton
-        callbackURL={
-          selectedPlan === "free" ? "/start" : `/subscribe?plan=${selectedPlan}`
-        }
+        callbackURL="/start"
+        disabled={!agreedToEula || !acknowledgedPrivacy || submitting || localeSaving}
+        legalAttestation={{
+          eulaAccepted: agreedToEula,
+          eulaVersion: CURRENT_EULA_VERSION,
+          privacyNoticeAcknowledged: acknowledgedPrivacy,
+          privacyNoticeVersion: CURRENT_PRIVACY_NOTICE_VERSION,
+          uiLocale,
+        }}
         onError={(message) => setTopLevelError(message || null)}
       />
     </AuthCard>

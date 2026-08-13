@@ -100,6 +100,44 @@ export function renderNotification(event: NotificationEvent): RenderedNotificati
         ),
       };
     }
+    case "final.retake_scheduled": {
+      const availableAt = new Date(event.availableAt);
+      if (Number.isNaN(availableAt.getTime())) throw new Error("availableAt must be a valid date.");
+      const time = new Intl.DateTimeFormat("en", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        timeZone: "UTC",
+        timeZoneName: "short",
+      }).format(availableAt);
+      return {
+        category: "assessment",
+        eventType: event.type,
+        subject: "Your final-exam retake is scheduled",
+        text: message(
+          "Your final-exam retake is scheduled",
+          `A retake will be available on ${time}. Use these seven days to review the topics that challenged you, study hard, and remember that one difficult exam does not define what you can learn. You’ve got this. An administrator may decline the request before the retake starts if the reason does not qualify.`,
+          "View your final-exam status",
+          "/exams",
+        ),
+      };
+    }
+    case "final.retake_declined": {
+      const reason = inline(event.reason, "The request did not meet the retake policy.");
+      return {
+        category: "assessment",
+        eventType: event.type,
+        subject: "Your final-exam retake request was declined",
+        text: message(
+          "Your final-exam retake request was declined",
+          `An administrator declined your retake request. Reason: ${reason}. Your primary final result is now being used as the official grade; if no final was submitted, the result is Absent — 0 (F).`,
+          "View your final-exam status",
+          "/exams",
+        ),
+      };
+    }
     case "transcript.ready": {
       const course = inline(event.courseTitle, "Your course");
       const grade = inline(event.grade, "available");

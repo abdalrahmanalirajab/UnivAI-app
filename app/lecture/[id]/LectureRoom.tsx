@@ -54,6 +54,8 @@ type SpeechState = (typeof LIVE_SPEECH_STATES)[number];
 const STATE_LABEL: Record<AgentState, string> = {
   connecting: "Connecting…",
   preparing: "Loading the lecturer's voice…",
+  waiting: "Waiting for you to reconnect",
+  resuming: "Welcoming you back…",
   lecturing: "Lecturer speaking",
   asking: "Lecturer is asking you…",
   listening: "Listening to you…",
@@ -63,9 +65,14 @@ const STATE_LABEL: Record<AgentState, string> = {
   ended: "Lecture finished",
 };
 
-const STATE_COLOR: Record<AgentState, "default" | "primary" | "secondary" | "success"> = {
+const STATE_COLOR: Record<
+  AgentState,
+  "default" | "primary" | "secondary" | "success" | "warning"
+> = {
   connecting: "default",
   preparing: "default",
+  waiting: "warning",
+  resuming: "secondary",
   lecturing: "primary",
   asking: "secondary",
   listening: "secondary",
@@ -136,14 +143,18 @@ export default function LectureRoom({ lectureId }: Props) {
     try {
       await room.localParticipant.publishData(
         new TextEncoder().encode(JSON.stringify(message)),
-        { reliable: true },
+        // Heartbeats are current-state signals; stale queued heartbeats after a
+        // reconnect are harmful. Learner actions remain reliable.
+        { reliable: message.type !== "presence" },
       );
       if (message.type === "question" || message.type === "retry" || message.type === "cancel") {
         setTranscript(null);
         setVoiceFallback(null);
       }
     } catch (publishError) {
-      setVoiceFallback("The voice connection did not receive that action. Check your connection and try again.");
+      if (message.type !== "presence") {
+        setVoiceFallback("The voice connection did not receive that action. Check your connection and try again.");
+      }
       throw publishError;
     }
   }, [room]);
@@ -213,8 +224,9 @@ export default function LectureRoom({ lectureId }: Props) {
                 setSpeechState(null);
                 setSpeechDetail(null);
               }
-              // Reaching the end closes the lecture: it cannot be reopened.
-              if (message.state === "ended") {
+              // A startup failure also closes its worker, but it must not mark
+              // a lecture complete before any audio reached the learner.
+              if (message.state === "ended" && startupComplete.current) {
                 fetch(`/api/lecture/${lectureId}/complete`, { method: "POST" });
               }
             }
@@ -274,9 +286,26 @@ export default function LectureRoom({ lectureId }: Props) {
             // A malformed data message must never take the lecture down.
           }
         })
-        .on(RoomEvent.Disconnected, () => setConnected(false));
+        .on(RoomEvent.Reconnecting, () => {
+          setConnected(false);
+          setAgentState("waiting");
+        })
+        .on(RoomEvent.Reconnected, () => {
+          setConnected(true);
+          reply({ type: "presence", state: "present" }).catch(() => undefined);
+        })
+        .on(RoomEvent.Disconnected, () => {
+          setConnected(false);
+          setAgentState((current) => (current === "ended" ? current : "waiting"));
+        });
 
       await room.connect(data.url, data.token);
+      // Participant events provide the fast path. This explicit ready signal
+      // also lets the worker detect a half-open browser connection by heartbeat.
+      await reply({ type: "presence", state: "present" }).catch(() => undefined);
+      setConnected(true);
+      setAgentState("preparing");
+      if (!room.canPlaybackAudio) setAudioBlocked(true);
 
       // A microphone is what lets a student ASK; it is not what lets them
       // attend. Denying the permission prompt, or having no input device at
@@ -297,23 +326,29 @@ export default function LectureRoom({ lectureId }: Props) {
         setMicBlocked(true);
       }
 
-      setConnected(true);
-      setAgentState("preparing");
-      if (!room.canPlaybackAudio) setAudioBlocked(true);
     } catch (err) {
       if (startupTimer.current) clearTimeout(startupTimer.current);
       setError(err instanceof Error ? err.message : "Could not join the lecture.");
     }
-  }, [lectureId, muteMicrophone, room]);
+  }, [lectureId, muteMicrophone, reply, room]);
 
   useEffect(() => {
     connect();
     return () => {
       if (startupTimer.current) clearTimeout(startupTimer.current);
       if (turnTimer.current) clearTimeout(turnTimer.current);
+      reply({ type: "presence", state: "leaving" }).catch(() => undefined);
       room.disconnect();
     };
-  }, [connect, room]);
+  }, [connect, reply, room]);
+
+  useEffect(() => {
+    if (!connected || agentState === "ended") return;
+    const heartbeat = window.setInterval(() => {
+      reply({ type: "presence", state: "present" }).catch(() => undefined);
+    }, 3_000);
+    return () => window.clearInterval(heartbeat);
+  }, [agentState, connected, reply]);
 
   useEffect(() => {
     if (turnTimer.current) clearTimeout(turnTimer.current);
@@ -420,7 +455,7 @@ export default function LectureRoom({ lectureId }: Props) {
   return (
     <Stack spacing={3}>
       <Stack spacing={1}>
-        <Typography variant="h4">
+        <Typography variant="h4" data-generated-content="true" lang="en" dir="ltr">
           {week ? `Week ${week} — ${title}` : "Lecture"}
         </Typography>
         <Grid container spacing={1}>
@@ -464,6 +499,20 @@ export default function LectureRoom({ lectureId }: Props) {
         </Stack>
       ) : null}
 
+      {!connected && agentState === "waiting" ? (
+        <Alert
+          severity="warning"
+          action={
+            <Button color="inherit" variant="outlined" onClick={() => window.location.reload()}>
+              Reconnect
+            </Button>
+          }
+        >
+          Your connection was lost. The lecturer is waiting and will welcome you back,
+          replay three sentences, and continue from your saved place.
+        </Alert>
+      ) : null}
+
       {audioBlocked ? (
         <Alert
           severity="warning"
@@ -486,7 +535,7 @@ export default function LectureRoom({ lectureId }: Props) {
       ) : null}
 
       <Card variant="outlined">
-        <CardContent>
+        <CardContent data-generated-content="true" lang="en" dir="ltr">
           {week && sid ? (
             <LectureSlides lectureId={lectureId} slide={slide} />
           ) : (
@@ -647,7 +696,7 @@ export default function LectureRoom({ lectureId }: Props) {
                     !connected ||
                     micBlocked ||
                     (muted
-                      ? hand !== "acked" || agentState !== "listening"
+                      ? hand !== "acked"
                       : agentState !== "listening")
                   }
                 >
@@ -710,7 +759,14 @@ export default function LectureRoom({ lectureId }: Props) {
               <Typography variant="overline" color="text.secondary">
                 Answer
               </Typography>
-              <Typography variant="body1">{lastAnswer.answer}</Typography>
+              <Typography
+                variant="body1"
+                data-generated-content="true"
+                lang="en"
+                dir="ltr"
+              >
+                {lastAnswer.answer}
+              </Typography>
               <GenerationStatus
                 status={answerOutput?.status ?? (outputError ? "failed" : "pending")}
                 progress={
@@ -722,7 +778,7 @@ export default function LectureRoom({ lectureId }: Props) {
                 }
               />
               {(answerOutput?.citations.length || lastAnswer.pages?.length) ? (
-                <Grid container spacing={1}>
+                <Grid container spacing={1} data-generated-content="true" lang="en" dir="ltr">
                   {(answerOutput?.citations.length
                     ? answerOutput.citations
                     : lastAnswer.pages.map((page) => ({
@@ -742,11 +798,7 @@ export default function LectureRoom({ lectureId }: Props) {
                 </Grid>
               ) : null}
               <OutputFeedback
-                outputId={answerOutput?.id}
-                outputVersion={answerOutput?.output_version}
-                traceId={answerOutput?.trace_id}
-                bookId={answerOutput?.book_id}
-                onRetried={setAnswerOutput}
+                target={answerOutput?.feedbackTarget}
               />
             </Stack>
           </CardContent>

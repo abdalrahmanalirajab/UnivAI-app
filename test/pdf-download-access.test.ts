@@ -5,7 +5,7 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const { fixtureRoot, mockGate, mockGetDocument } = vi.hoisted(() => ({
-  fixtureRoot: `${process.cwd()}\\.pdf-reader-test-fixture`,
+  fixtureRoot: `${process.cwd()}\\.pdf-download-test-fixture`,
   mockGate: vi.fn(),
   mockGetDocument: vi.fn(),
 }));
@@ -17,10 +17,10 @@ vi.mock("@/lib/collections", async (importOriginal) => {
   return { ...actual, getDocument: mockGetDocument };
 });
 
-import { GET, HEAD } from "@/app/api/documents/[id]/content/route";
+import { GET, HEAD } from "@/app/api/documents/[id]/download/route";
 
 const SID = "S-2026-000042";
-const PDF = Buffer.from("%PDF-1.7\nreader fixture\n%%EOF", "latin1");
+const PDF = Buffer.from("%PDF-1.7\ndownload fixture\n%%EOF", "latin1");
 const DOCUMENT = {
   id: 7,
   collection_id: 3,
@@ -33,14 +33,14 @@ const DOCUMENT = {
 };
 
 function request(range?: string) {
-  return new Request("http://localhost/api/documents/7/content", {
+  return new Request("http://localhost/api/documents/7/download", {
     headers: range ? { Range: range } : undefined,
   });
 }
 
 const context = { params: Promise.resolve({ id: "7" }) };
 
-describe("authenticated PDF reader bytes", () => {
+describe("authenticated PDF downloads", () => {
   beforeAll(async () => {
     const directory = path.join(
       fixtureRoot,
@@ -64,7 +64,7 @@ describe("authenticated PDF reader bytes", () => {
     mockGetDocument.mockResolvedValue(DOCUMENT);
   });
 
-  it("requires a session before looking up or reading a document", async () => {
+  it("requires a session before looking up or downloading a document", async () => {
     mockGate.mockResolvedValue(new Response(null, { status: 401 }));
     const response = await GET(request(), context);
     expect(response.status).toBe(401);
@@ -75,13 +75,16 @@ describe("authenticated PDF reader bytes", () => {
     const response = await GET(request(), context);
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("application/pdf");
+    expect(response.headers.get("content-disposition")).toBe(
+      "attachment; filename*=UTF-8''systems.pdf",
+    );
     expect(response.headers.get("cache-control")).toBe("private, no-store");
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
     expect(Buffer.from(await response.arrayBuffer())).toEqual(PDF);
     expect(mockGetDocument).toHaveBeenCalledWith(7, SID);
   });
 
-  it("supports byte ranges used by browser PDF viewers", async () => {
+  it("supports byte ranges for resumable downloads", async () => {
     const response = await GET(request("bytes=0-4"), context);
     expect(response.status).toBe(206);
     expect(response.headers.get("content-range")).toBe(`bytes 0-4/${PDF.length}`);

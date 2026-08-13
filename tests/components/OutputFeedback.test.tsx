@@ -1,12 +1,15 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import OutputFeedback from "@/app/components/OutputFeedback";
+import type { AiOutputTarget } from "@/lib/ai-output-feedback-types";
 
-const OUTPUT_VERSION = "v2.3.1";
-const TRACE_ID = "trace-xyz-789";
-const BOOK_ID = 42;
-const OUTPUT_ID = 7;
+const TARGET: AiOutputTarget = {
+  targetType: "raise_hand_answer",
+  targetId: "17",
+  targetVersion: "1",
+  traceId: "qa-trace-17",
+};
 
 function mockFetchEndpoint(handler: (url: string, options: RequestInit) => unknown) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, options: RequestInit = {}) => {
@@ -16,169 +19,94 @@ function mockFetchEndpoint(handler: (url: string, options: RequestInit) => unkno
   return fetchMock;
 }
 
-function assertFeedbackBody(call: [string, RequestInit]) {
-  const [url, options] = call;
-  expect(url).toBe("/api/feedback");
-  expect(options.method).toBe("POST");
-  expect(JSON.parse(options.body as string)).toEqual({
-    output_id: OUTPUT_ID,
-    output_version: OUTPUT_VERSION,
-    trace_id: TRACE_ID,
-    rating: "up",
-    issue: false,
-    note: null,
-  });
+function requestBody(fetchMock: ReturnType<typeof mockFetchEndpoint>) {
+  const [, options] = fetchMock.mock.calls[0] as [string, RequestInit];
+  return JSON.parse(options.body as string);
 }
 
-describe("OutputFeedback — thumbs up", () => {
-  let fetchMock: ReturnType<typeof mockFetchEndpoint>;
-
+describe("OutputFeedback", () => {
   beforeEach(() => {
-    fetchMock = mockFetchEndpoint(() => ({ feedback: { id: 1 } }));
+    vi.restoreAllMocks();
   });
 
-  it("sends output_version and trace_id with rating 'up' on send", async () => {
+  it("saves an accessible 1–5 star rating with stable target metadata", async () => {
+    const fetchMock = mockFetchEndpoint(() => ({ reaction: { id: 1 } }));
     const user = userEvent.setup();
-    render(<OutputFeedback outputId={OUTPUT_ID} outputVersion={OUTPUT_VERSION} traceId={TRACE_ID} bookId={BOOK_ID} />);
+    render(<OutputFeedback target={TARGET} />);
 
-    await user.click(screen.getByRole("button", { name: "Thumbs up" }));
-    await user.click(screen.getByRole("button", { name: "Send feedback" }));
+    fireEvent.click(screen.getByLabelText("4 stars"));
+    await user.click(screen.getByRole("button", { name: "Save rating" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    assertFeedbackBody(fetchMock.mock.calls[0] as [string, RequestInit]);
-  });
-
-  it("shows the success alert when the feedback request succeeds", async () => {
-    const user = userEvent.setup();
-    render(<OutputFeedback outputId={OUTPUT_ID} outputVersion={OUTPUT_VERSION} traceId={TRACE_ID} bookId={BOOK_ID} />);
-
-    await user.click(screen.getByRole("button", { name: "Thumbs up" }));
-    await user.click(screen.getByRole("button", { name: "Send feedback" }));
-
-    expect(await screen.findByText("Thanks — feedback sent.")).toBeTruthy();
-  });
-});
-
-describe("OutputFeedback — thumbs down", () => {
-  it("sends output_version and trace_id with rating 'down' on send", async () => {
-    const fetchMock = mockFetchEndpoint(() => ({ feedback: { id: 2 } }));
-    const user = userEvent.setup();
-    render(<OutputFeedback outputId={OUTPUT_ID} outputVersion={OUTPUT_VERSION} traceId={TRACE_ID} bookId={BOOK_ID} />);
-
-    await user.click(screen.getByRole("button", { name: "Thumbs down" }));
-    await user.click(screen.getByRole("button", { name: "Send feedback" }));
-
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("/api/feedback");
-    expect(options.method).toBe("POST");
-    expect(JSON.parse(options.body as string)).toEqual({
-      output_id: OUTPUT_ID,
-      output_version: OUTPUT_VERSION,
-      trace_id: TRACE_ID,
-      rating: "down",
-      issue: false,
-      note: null,
+    expect(requestBody(fetchMock)).toEqual({
+      target_type: "raise_hand_answer",
+      target_id: "17",
+      target_version: "1",
+      trace_id: "qa-trace-17",
+      action: "rating",
+      rating: 4,
     });
+    expect(await screen.findByText("Thanks — your rating was saved.")).toBeTruthy();
   });
-});
 
-describe("OutputFeedback — issue flag", () => {
-  it("sends output_version and trace_id with issue true when the flag is set", async () => {
-    const fetchMock = mockFetchEndpoint(() => ({ feedback: { id: 3 } }));
+  it("saves Like separately and exposes its pressed state", async () => {
+    const fetchMock = mockFetchEndpoint(() => ({ reaction: { id: 1 } }));
     const user = userEvent.setup();
-    render(<OutputFeedback outputId={OUTPUT_ID} outputVersion={OUTPUT_VERSION} traceId={TRACE_ID} bookId={BOOK_ID} />);
+    render(<OutputFeedback target={TARGET} />);
 
-    await user.click(screen.getByRole("button", { name: /report an issue/i }));
-    await user.click(screen.getByRole("button", { name: "Thumbs up" }));
-    await user.click(screen.getByRole("button", { name: "Send feedback" }));
+    const like = screen.getByRole("button", { name: "Like" });
+    expect(like.getAttribute("aria-pressed")).toBe("false");
+    await user.click(like);
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("/api/feedback");
-    expect(options.method).toBe("POST");
-    expect(JSON.parse(options.body as string)).toEqual({
-      output_id: OUTPUT_ID,
-      output_version: OUTPUT_VERSION,
-      trace_id: TRACE_ID,
-      rating: "up",
-      issue: true,
-      note: null,
+    expect(requestBody(fetchMock)).toMatchObject({ action: "like", liked: true });
+    expect(screen.getByRole("button", { name: "Liked" }).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("submits a required predefined report reason without requiring a rating", async () => {
+    const fetchMock = mockFetchEndpoint(() => ({ report: { id: 4 } }));
+    const user = userEvent.setup();
+    render(<OutputFeedback target={TARGET} />);
+
+    await user.click(screen.getByRole("button", { name: "Report" }));
+    const submit = screen.getByRole("button", { name: "Submit report" });
+    expect((submit as HTMLButtonElement).disabled).toBe(true);
+    await user.click(screen.getByRole("combobox", { name: /reason/i }));
+    await user.click(await screen.findByRole("option", { name: "Copyright or privacy concern" }));
+    await user.type(screen.getByLabelText("Additional detail (optional)"), "Contains private material.");
+    await user.click(submit);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(requestBody(fetchMock)).toEqual({
+      target_type: "raise_hand_answer",
+      target_id: "17",
+      target_version: "1",
+      trace_id: "qa-trace-17",
+      action: "report",
+      reason: "copyright_or_privacy",
+      detail: "Contains private material.",
     });
-  });
+    expect(await screen.findByText("Report submitted for review.")).toBeTruthy();
+  }, 15_000);
 
-  it("sends issue false when the flag is not set", async () => {
-    const fetchMock = mockFetchEndpoint(() => ({ feedback: { id: 4 } }));
-    const user = userEvent.setup();
-    render(<OutputFeedback outputId={OUTPUT_ID} outputVersion={OUTPUT_VERSION} traceId={TRACE_ID} bookId={BOOK_ID} />);
-
-    await user.click(screen.getByRole("button", { name: "Thumbs down" }));
-    await user.click(screen.getByRole("button", { name: "Send feedback" }));
-
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    const [, options] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(JSON.parse(options.body as string).issue).toBe(false);
-  });
-});
-
-describe("OutputFeedback — retry", () => {
-  it("posts the output id to the versioned retry route and reflects the new version", async () => {
-    const retriedOutput = {
-      id: 8,
-      source_qa_id: 2,
-      output_version: "2",
-      trace_id: "trace-retry",
-      book_id: BOOK_ID,
-      status: "generating",
-      citations: [],
-      created_at: "2026-08-02T00:00:00.000Z",
-    };
+  it("keeps retry available independently when a valid retry id is supplied", async () => {
+    const retriedOutput = { id: 8, status: "generating" };
     const onRetried = vi.fn();
     const fetchMock = mockFetchEndpoint(() => ({ output: retriedOutput }));
     const user = userEvent.setup();
-    render(<OutputFeedback outputId={OUTPUT_ID} outputVersion={OUTPUT_VERSION} traceId={TRACE_ID} bookId={BOOK_ID} onRetried={onRetried} />);
+    render(<OutputFeedback retryOutputId={7} onRetried={onRetried} />);
 
-    await user.click(screen.getByRole("button", { name: "Retry" }));
+    await user.click(screen.getByRole("button", { name: "Retry generation" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe(`/api/outputs/${OUTPUT_ID}/retry`);
-    expect(options.method).toBe("POST");
-    expect(options.body).toBeUndefined();
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/outputs/7/retry");
     expect(onRetried).toHaveBeenCalledWith(retriedOutput);
-
     expect(await screen.findByRole("button", { name: "Retry started" })).toBeTruthy();
-    expect(
-      screen.getByText("Retry started — the course is being regenerated."),
-    ).toBeTruthy();
   });
 
-  it("surfaces a retry failure from the route as an error alert", async () => {
-    const fetchMock = vi.fn(async () => {
-      return Response.json({ error: "Course is already generating." }, { status: 409 });
-    });
-    globalThis.fetch = fetchMock;
-    const user = userEvent.setup();
-    render(<OutputFeedback outputId={OUTPUT_ID} outputVersion={OUTPUT_VERSION} traceId={TRACE_ID} bookId={BOOK_ID} />);
-
-    await user.click(screen.getByRole("button", { name: "Retry" }));
-
-    expect(await screen.findByText("Course is already generating.")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Retry started" })).toBeNull();
-  });
-});
-
-describe("OutputFeedback — missing identifiers", () => {
-  it("renders the explicit unavailable state and makes no calls", async () => {
-    const fetchMock = mockFetchEndpoint(() => ({ feedback: { id: 5 } }));
+  it("renders an explicit unavailable state when no target or retry exists", () => {
     render(<OutputFeedback />);
-
-    expect(
-      screen.getByText(
-        "Feedback and retry are unavailable — this output has no recorded identifiers yet.",
-      ),
-    ).toBeTruthy();
+    expect(screen.getByText(/feedback is unavailable/i)).toBeTruthy();
     expect(screen.queryByRole("button")).toBeNull();
-    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

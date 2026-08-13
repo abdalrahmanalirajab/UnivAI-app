@@ -34,7 +34,28 @@ const state = vi.hoisted(() => ({
     launches: [] as Array<{ body: Record<string, unknown>; idempotencyKey: string | undefined }>,
   },
   /** What the browser-facing GET /api/exams returns. */
-  page: { exams: [] as Array<Record<string, unknown>>, final: null as Record<string, unknown> | null },
+  page: {
+    exams: [] as Array<Record<string, unknown>>,
+    final: null as Record<string, unknown> | null,
+    finalCase: {
+      primaryOpensAt: "2026-08-10T00:00:00.000Z",
+      primaryClosesAt: "2026-08-11T00:00:00.000Z",
+      requestDeadline: "2026-08-25T00:00:00.000Z",
+      primarySubmitted: false,
+      provisionalResult: null,
+      retakeRequestedAt: null,
+      retakeAvailableAt: null,
+      retakeClosesAt: null,
+      declineReason: null,
+      finalizedAt: null,
+      officialResult: null,
+      officialAbsent: false,
+      phase: "primary-open",
+      canStartPrimary: true,
+      canRequestRetake: false,
+      canStartRetake: false,
+    } as Record<string, unknown>,
+  },
   mongo: {} as Record<string, Array<Record<string, unknown>>>,
 }));
 
@@ -110,7 +131,37 @@ vi.mock("@/lib/db", () => {
     if (/SELECT kind, week, score, max_score, flagged, feedback FROM grades WHERE student_id/.test(text)) {
       return state.grades.filter((row) => row.student_id === params[0]);
     }
-    if (/SELECT title, filename FROM books/.test(text)) return [];
+    if (/SELECT id, title, filename, source_sha256 FROM books/.test(text)) {
+      return [{
+        id: 7,
+        title: "Demo Course",
+        filename: "demo-course.pdf",
+        source_sha256: "a".repeat(64),
+      }];
+    }
+    if (/la\.artifact_id::text AS artifact_id/.test(text)) {
+      const sid = String(params[0]);
+      const week = Number(params[1]);
+      return [{
+        book_id: 7,
+        artifact_id: `artifact-week-${week}`,
+        artifact_student_id: sid,
+        quiz_payload: {
+          schema_version: "learner-assessment-bank-v1",
+          owner_student_id: sid,
+          owner_book_id: 7,
+          generation_id: `generation-${sid}-week-${week}`,
+          week,
+          title: `Quiz ${week} — Evidence and Sources`,
+          questions: [{
+            type: "mcq",
+            prompt: "Which claim is supported by the source?",
+            options: ["A", "B", "C", "D"],
+            correct_answer: "A",
+          }],
+        },
+      }];
+    }
     if (/SELECT semester_plan FROM books/.test(text)) return [];
     throw new Error(`unhandled SQL in fake db: ${text.slice(0, 100)}`);
   }
@@ -135,7 +186,7 @@ vi.mock("@/lib/lectures", () => ({
     {
       week: 1,
       title: "Evidence and Sources",
-      endsAt: new Date("2026-08-04T11:00:00.000Z"),
+      endsAt: new Date("2026-08-10T00:00:00.000Z"),
     },
   ],
 }));
@@ -143,6 +194,21 @@ vi.mock("@/lib/lectures", () => ({
 vi.mock("@/lib/settings", () => ({ getSetting: async () => "XS" }));
 
 vi.mock("@/lib/transcripts", () => ({ upsertCourseTranscript: async () => null }));
+
+vi.mock("@/lib/final-exam-retakes", () => ({
+  ensureFinalExamCase: vi.fn(async () => undefined),
+  reconcileFinalExamCase: vi.fn(async () => null),
+  getFinalExamCase: vi.fn(async () => state.page.finalCase),
+  recordFinalExamStart: vi.fn(async () => undefined),
+  recordFinalExamCallback: vi.fn(async () => ({
+    finalized: false,
+    studentId: "S-2026-000042",
+    curriculumId: "mongo-id",
+    reason: null,
+    result: null,
+    absent: false,
+  })),
+}));
 
 vi.mock("mongodb", () => {
   function collection(name: string) {
@@ -168,6 +234,22 @@ vi.mock("mongodb", () => {
         const merged = { ...(index >= 0 ? docs[index] : {}), ...update.$set };
         if (index >= 0) docs[index] = merged;
         else docs.push(merged);
+        return {};
+      },
+      async replaceOne(
+        filter: Record<string, unknown>,
+        replacement: Record<string, unknown>,
+      ) {
+        const docs = (state.mongo[name] ??= []);
+        const index = docs.findIndex((doc) =>
+          Object.entries(filter).every(([key, value]) => doc[key] === value)
+        );
+        const stored = {
+          _id: index >= 0 ? docs[index]._id : `${name}-${docs.length + 1}`,
+          ...replacement,
+        };
+        if (index >= 0) docs[index] = stored;
+        else docs.push(stored);
         return {};
       },
       async deleteMany() {
@@ -244,7 +326,17 @@ vi.stubGlobal(
       return serviceResponse(500, {});
     }
     if (method === "GET" && url === "/api/exams") {
-      return serviceResponse(200, { exams: state.page.exams, final: state.page.final });
+      return serviceResponse(200, {
+        exams: state.page.exams,
+        final: state.page.final,
+        finalWindow: {
+          opensAt: "2026-08-10T00:00:00.000Z",
+          closesAt: "2026-08-11T00:00:00.000Z",
+          retakeRequestDeadline: "2026-08-25T00:00:00.000Z",
+          phase: "primary-open",
+        },
+        finalCase: state.page.finalCase,
+      });
     }
     if (method === "GET" && url === "/api/clock") {
       return serviceResponse(200, { now: "2026-08-03T12:00:00.000Z" });
@@ -325,6 +417,24 @@ function resetState() {
   state.service.launches = [];
   state.page.exams = [];
   state.page.final = null;
+  state.page.finalCase = {
+    primaryOpensAt: "2026-08-10T00:00:00.000Z",
+    primaryClosesAt: "2026-08-11T00:00:00.000Z",
+    requestDeadline: "2026-08-25T00:00:00.000Z",
+    primarySubmitted: false,
+    provisionalResult: null,
+    retakeRequestedAt: null,
+    retakeAvailableAt: null,
+    retakeClosesAt: null,
+    declineReason: null,
+    finalizedAt: null,
+    officialResult: null,
+    officialAbsent: false,
+    phase: "primary-open",
+    canStartPrimary: true,
+    canRequestRetake: false,
+    canStartRetake: false,
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -360,6 +470,18 @@ describe("final exam journey — launch (acceptance criteria 1 & 2)", () => {
     expect((await second.json()).url).toBe(LAUNCH_URL);
     expect(state.finalStatus).toHaveLength(1);
     expect(state.service.launches).toHaveLength(2);
+
+    // Re-seeding validates the learner-owned generated payload and replaces
+    // the same bound bank instead of sharing or duplicating another tenant's.
+    expect(state.mongo.question_banks).toHaveLength(1);
+    expect(state.mongo.question_banks[0]).toMatchObject({
+      schema_version: "learner-question-bank-binding-v1",
+      owner_sid: SESSION_SID,
+      student_id: "mongo-id",
+      curriculum_id: "mongo-id",
+      source_book_id: 7,
+      source_artifact_id: "artifact-week-1",
+    });
   });
 
   it("relays the service-reported denial to an ineligible learner and ignores forged claims", async () => {
@@ -383,11 +505,16 @@ describe("final exam journey — launch (acceptance criteria 1 & 2)", () => {
     // identity — the forged programme/student/eligibility claims never left
     // the server.
     expect(state.service.launches).toHaveLength(1);
-    expect(state.service.launches[0].body).toEqual({
+    expect(state.service.launches[0].body).toEqual(expect.objectContaining({
       student_id: "mongo-id",
       curriculum_id: "mongo-id",
       student_sid: SESSION_SID,
-    });
+      final_form: "primary",
+      access_opens_at: "2026-08-10T00:00:00.000Z",
+      access_expires_at: "2026-08-11T00:00:00.000Z",
+    }));
+    expect(state.service.launches[0].body).not.toHaveProperty("registrationNumber");
+    expect(state.service.launches[0].body).not.toHaveProperty("programme");
 
     // A denial is not persisted as a status — the learner stays unstuck.
     expect(state.finalStatus).toHaveLength(0);
@@ -420,15 +547,14 @@ describe("final exam journey — callbacks (acceptance criterion 3)", () => {
     // The verified "graded" event (different fingerprint) is processed once.
     const graded = await postCallback(GRADED, sign(JSON.stringify(GRADED)));
     expect(graded.status).toBe(200);
-    expect(state.grades).toHaveLength(1);
-    expect(state.grades[0]).toMatchObject({ kind: "final", week: null, score: 4, exam_id: EXAM_ID });
+    expect(state.grades).toHaveLength(0); // still provisional during the request window
     expect(state.finalStatus[0]).toMatchObject({ state: "graded" });
     expect(state.ledger).toHaveLength(2);
 
     // And its re-delivery adds nothing.
     const gradedReplay = await postCallback(GRADED, sign(JSON.stringify(GRADED)));
     expect(await gradedReplay.json()).toEqual({ ok: true, idempotent: true });
-    expect(state.grades).toHaveLength(1);
+    expect(state.grades).toHaveLength(0);
     expect(state.ledger).toHaveLength(2);
   });
 });
@@ -439,12 +565,12 @@ describe("final exam journey — immediate clean result (acceptance criterion 4)
     resetState();
   });
 
-  it("publishes a clean auto-graded result immediately while review stays hidden", async () => {
+  it("shows a clean result as provisional while the official grade remains held", async () => {
     state.service.phase = "eligible";
     const launch = await postStart();
     expect(launch.status).toBe(200);
 
-    // A clean auto-graded result is final for the learner and appears at once.
+    // The service status can show the score, but no official grade row exists yet.
     const autoGraded = webhook({ grading_status: "auto_graded", mark: 7 });
     await postCallback(autoGraded, sign(JSON.stringify(autoGraded)));
     let exams = await getExams();
@@ -452,7 +578,7 @@ describe("final exam journey — immediate clean result (acceptance criterion 4)
     let body = await exams.json();
     expect(body.final.state).toBe("graded");
     expect(body.final.result).toEqual({ mark: 7, max_score: 10, passed: false });
-    expect(state.grades).toHaveLength(1);
+    expect(state.grades).toHaveLength(0);
 
     const pendingWithMark = webhook({ grading_status: "pending_review", mark: 7 });
     await postCallback(pendingWithMark, sign(JSON.stringify(pendingWithMark)));
@@ -460,7 +586,7 @@ describe("final exam journey — immediate clean result (acceptance criterion 4)
     body = await exams.json();
     expect(body.final.state).toBe("awaiting-grade");
     expect(body.final.result).toBeNull();
-    expect(state.grades).toHaveLength(1);
+    expect(state.grades).toHaveLength(0);
 
     // A later manual grade replaces the same exam result without duplication.
     await postCallback(GRADED, sign(JSON.stringify(GRADED)));
@@ -468,7 +594,7 @@ describe("final exam journey — immediate clean result (acceptance criterion 4)
     body = await exams.json();
     expect(body.final.state).toBe("graded");
     expect(body.final.result).toEqual({ mark: 4, max_score: 10, passed: false });
-    expect(state.grades).toHaveLength(1);
+    expect(state.grades).toHaveLength(0);
   });
 });
 
@@ -562,7 +688,7 @@ describe("final exam journey — refresh rebuilds from the backend (REFRESH TEST
       result: null,
     };
     const { unmount } = render(<ExamsPage />);
-    await screen.findByText(/Already in progress — continue in the exam window/);
+    await screen.findByRole("button", { name: /Continue in a new session/ });
     expect(screen.queryByText(/Result /)).toBeNull();
     unmount();
 
@@ -577,9 +703,15 @@ describe("final exam journey — refresh rebuilds from the backend (REFRESH TEST
       reason: null,
       result: null,
     };
+    state.page.finalCase = {
+      ...state.page.finalCase,
+      primarySubmitted: true,
+      phase: "awaiting-grade",
+      canStartPrimary: false,
+    };
     render(<ExamsPage />);
-    await screen.findByText(/Submitted — awaiting grade from the exam system/);
-    expect(screen.queryByText(/Already in progress/)).toBeNull();
+    await screen.findByText(/Submitted — awaiting grading before the official result can be set/);
+    expect(screen.queryByRole("button", { name: /Continue in a new session/ })).toBeNull();
     expect(screen.queryByText(/Result /)).toBeNull();
   });
 });

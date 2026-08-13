@@ -27,7 +27,9 @@ const FEATURES: CarouselFeature[] = [
             <AutoStoriesOutlined />
           </Avatar>
           <Stack>
-            <Typography variant="subtitle1">Designing Data-Intensive Applications</Typography>
+            <Typography variant="subtitle1" data-no-ui-translate="true" dir="ltr">
+              Designing Data-Intensive Applications
+            </Typography>
             <Typography variant="caption" color="text.secondary">
               Identical content found · generation reused
             </Typography>
@@ -53,13 +55,13 @@ const FEATURES: CarouselFeature[] = [
           <span className="voice-orb" aria-hidden="true" />
           <Stack>
             <Typography variant="subtitle1">I heard your question</Typography>
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="caption" color="text.secondary" data-no-ui-translate="true" dir="ltr">
               “Why do distributed systems need replication?”
             </Typography>
           </Stack>
         </Stack>
         <Paper className="carousel-answer" elevation={0}>
-          <Typography variant="body2">
+          <Typography variant="body2" data-generated-content="true" lang="en" dir="ltr">
             Replication keeps copies of the same data on several nodes, improving availability
             and bringing reads closer to users…
           </Typography>
@@ -83,7 +85,9 @@ const FEATURES: CarouselFeature[] = [
           <Typography variant="overline" color="warning.main">
             Due now
           </Typography>
-          <Typography variant="h6">Week 2 quiz</Typography>
+          <Typography variant="h6" data-generated-content="true" lang="en" dir="ltr">
+            Week 2 quiz
+          </Typography>
           <Typography variant="body2" color="text.secondary">
             Open for 18 more hours
           </Typography>
@@ -106,16 +110,32 @@ const FEATURES: CarouselFeature[] = [
             <Typography variant="overline" color="text.secondary">
               Final course grade
             </Typography>
-            <Typography variant="h3">A</Typography>
+            <Typography variant="h3" data-generated-content="true" lang="en" dir="ltr">
+              A
+            </Typography>
           </Stack>
           <Chip color="success" label="Passed" className="nav-actions" />
         </Stack>
         <LinearProgress variant="determinate" value={88} color="success" />
         <Stack direction="row" spacing={1}>
-          <Chip label="Coursework 52.8 / 60" variant="outlined" />
-          <Chip label="Final 35.2 / 40" variant="outlined" />
+          <Chip
+            label="Coursework 52.8 / 60"
+            variant="outlined"
+            data-generated-content="true"
+            lang="en"
+            dir="ltr"
+          />
+          <Chip
+            label="Final 35.2 / 40"
+            variant="outlined"
+            data-generated-content="true"
+            lang="en"
+            dir="ltr"
+          />
         </Stack>
-        <Typography variant="body2">Certificate ID · UVA-2026-8F3A</Typography>
+        <Typography variant="body2" data-no-ui-translate="true" dir="ltr">
+          Certificate ID · UVA-2026-8F3A
+        </Typography>
       </Stack>
     ),
   },

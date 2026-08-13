@@ -16,7 +16,6 @@ const {
   mockQueryOne,
   mockGetLectures,
   mockReadScript,
-  mockStampJoin,
   mockEnv,
   mockBlockedMessage,
 } = vi.hoisted(() => ({
@@ -24,7 +23,6 @@ const {
   mockQueryOne: vi.fn(),
   mockGetLectures: vi.fn(),
   mockReadScript: vi.fn(),
-  mockStampJoin: vi.fn(),
   mockEnv: {
     LIVEKIT_API_KEY: "test-api-key",
     LIVEKIT_API_SECRET: "test-api-secret-with-enough-entropy",
@@ -40,7 +38,6 @@ const {
 
 vi.mock("@/lib/session", () => ({ requireLearningActionApi: mockGate }));
 vi.mock("@/lib/db", () => ({ queryOne: mockQueryOne }));
-vi.mock("@/lib/attendance", () => ({ stampJoin: mockStampJoin }));
 vi.mock("@/lib/lectures", () => ({
   getLectures: mockGetLectures,
   readScript: mockReadScript,
@@ -118,21 +115,22 @@ describe("safeSpokenName", () => {
     expect(safeSpokenName("  Mohamed\tHany  ")).toBe("Mohamed Hany");
   });
 
-  it("normalizes Unicode (NFKC) and keeps diacritics", () => {
-    expect(safeSpokenName("ＭＯＨＡＭＥＤ")).toBe("MOHAMED");
+  it("normalizes Unicode (NFC) and keeps letters and combining marks", () => {
+    expect(safeSpokenName("ＭＯＨＡＭＥＤ")).toBe("ＭＯＨＡＭＥＤ");
     expect(safeSpokenName("Moḥamed\u00a0Ḥany")).toBe("Moḥamed Ḥany");
+    expect(safeSpokenName("محمد هاني")).toBe("محمد هاني");
   });
 
-  it("strips control and zero-width characters without leaving gaps", () => {
-    expect(safeSpokenName("Mo\x00hamed\u0007 Hany")).toBe("Mo hamed Hany");
-    expect(safeSpokenName("Mo\u200dhamed")).toBe("Mohamed");
+  it("rejects control and zero-width characters", () => {
+    expect(safeSpokenName("Mo\x00hamed\u0007 Hany")).toBeNull();
+    expect(safeSpokenName("Mo\u200dhamed")).toBeNull();
   });
 
   it("caps over-long names at SPOKEN_NAME_MAX_LENGTH code points, surrogate-safe", () => {
     const long = "A".repeat(100);
     expect(safeSpokenName(long)).toBe("A".repeat(SPOKEN_NAME_MAX_LENGTH));
     const astralTail = "A".repeat(SPOKEN_NAME_MAX_LENGTH) + "😀";
-    expect(safeSpokenName(astralTail)).toBe("A".repeat(SPOKEN_NAME_MAX_LENGTH));
+    expect(safeSpokenName(astralTail)).toBeNull();
   });
 
   it("returns null for empty, blank, and unpronounceable names", () => {
@@ -143,9 +141,9 @@ describe("safeSpokenName", () => {
     expect(safeSpokenName(42)).toBeNull();
   });
 
-  it("keeps speakable letter/number-only forms", () => {
-    expect(safeSpokenName("007")).toBe("007");
-    expect(safeSpokenName("Abd Al-Raḥmān")).toBe("Abd Al-Raḥmān");
+  it("rejects numbers and punctuation", () => {
+    expect(safeSpokenName("007")).toBeNull();
+    expect(safeSpokenName("Abd Al-Raḥmān")).toBeNull();
   });
 });
 
@@ -192,7 +190,6 @@ describe("POST /api/lecture/[id]/token — personalized signed metadata", () => 
       title: "Week 3",
       segments: [{ slide: 1, text: "Grounded segment", citations: [{ page: 3 }] }],
     });
-    mockStampJoin.mockResolvedValue({ status: "on_time", lateMinutes: 0 });
     listRoomsSpy.mockReset().mockResolvedValue([]);
     createRoomSpy.mockReset().mockResolvedValue({} as never);
     updateRoomMetadataSpy.mockReset().mockResolvedValue({} as never);
@@ -352,18 +349,16 @@ describe("POST /api/lecture/[id]/token — personalized signed metadata", () => 
     try {
       const response = await post();
       expect(response.status).toBe(503);
-      expect(mockStampJoin).not.toHaveBeenCalled();
     } finally {
       mockEnv.LIVEKIT_API_SECRET = "test-api-secret-with-enough-entropy";
     }
   });
 
-  it("does not stamp attendance when trusted room setup fails", async () => {
+  it("fails without reporting attendance when trusted room setup fails", async () => {
     createRoomSpy.mockRejectedValue(new Error("provider unavailable"));
     listRoomsSpy.mockResolvedValue([]);
     const response = await post();
     expect(response.status).toBe(503);
-    expect(mockStampJoin).not.toHaveBeenCalled();
   });
 
   it("updates metadata on an existing learner room", async () => {
@@ -379,6 +374,11 @@ describe("POST /api/lecture/[id]/token — personalized signed metadata", () => 
     const response = await post();
     expect(response.status).toBe(409);
     expect(createRoomSpy).not.toHaveBeenCalled();
-    expect(mockStampJoin).not.toHaveBeenCalled();
+  });
+
+  it("does not treat token issuance as an actual room join", async () => {
+    const response = await post();
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ attendance: null });
   });
 });

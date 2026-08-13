@@ -145,7 +145,9 @@ export default function TranscriptPage() {
         </Card>
       ) : null}
       {transcripts.length === 0 && pending.length === 0 ? (
-        <Alert severity="info">Your transcript review starts after your final exam is graded.</Alert>
+        <Alert severity="info">
+          Your transcript review starts after the retake lifecycle selects your official final grade.
+        </Alert>
       ) : (
         transcripts.map((transcript) => (
           <Card key={transcript.id} variant="outlined">

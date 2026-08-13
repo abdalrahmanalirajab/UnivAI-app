@@ -82,7 +82,7 @@ export default function TranscriptReviewManager({ registrationNumber }: { regist
           <Stack spacing={0.5}>
             <Typography variant="h5">Transcript review</Typography>
             <Typography variant="body2" color="text.secondary">
-              Results release automatically seven days after the final. Release early when checked,
+              Results release automatically seven days after the official final grade is selected. Release early when checked,
               or hold only when a real issue needs investigation.
             </Typography>
           </Stack>

@@ -32,7 +32,10 @@ export default function Hero() {
             className="eyebrow-chip hero-eyebrow"
           />
           <Typography id="hero-heading" variant="h1" component="h1">
-            Books become{" "}
+            <Box component="span" className="hero-headline-secondary">
+              Books
+            </Box>{" "}
+            become{" "}
             <Box component="span" className="hero-headline-accent">
               journeys.
             </Box>

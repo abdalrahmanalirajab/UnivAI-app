@@ -97,12 +97,18 @@ describe("feedback flow", () => {
   it("full feedback controls have no violations", async () => {
     render(
       <main>
-        <OutputFeedback outputId={1} outputVersion="1" traceId="trace-1" bookId={3} />
+        <OutputFeedback target={{
+          targetType: "raise_hand_answer",
+          targetId: "1",
+          targetVersion: "1",
+          traceId: "trace-1",
+        }} />
       </main>
     );
 
-    expect(screen.getByRole("button", { name: "Thumbs up" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Thumbs down" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Like" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Report" })).toBeTruthy();
+    expect(screen.getByLabelText("5 stars")).toBeTruthy();
     expect(await axe(document.body)).toHaveNoViolations();
   }, 20000);
 
@@ -113,7 +119,7 @@ describe("feedback flow", () => {
       </main>
     );
 
-    expect(screen.getByText(/feedback and retry are unavailable/i)).toBeTruthy();
+    expect(screen.getByText(/feedback is unavailable/i)).toBeTruthy();
     expect(await axe(document.body)).toHaveNoViolations();
   }, 20000);
 

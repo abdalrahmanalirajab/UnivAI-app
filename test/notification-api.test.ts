@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   enqueueTranscripts: vi.fn(),
   dispatch: vi.fn(),
   cleanupRateLimits: vi.fn(),
+  reconcileFinals: vi.fn(),
 }));
 
 vi.mock("@/lib/session", () => ({ requireUserApi: mocks.requireUserApi }));
@@ -30,6 +31,10 @@ vi.mock("@/lib/rate-limits", () => ({
   enforceUserRateLimit: vi.fn(async () => null),
   cleanupExpiredRateLimitUsage: mocks.cleanupRateLimits,
 }));
+vi.mock("@/lib/clock", () => ({ now: vi.fn(async () => new Date("2026-08-10T12:00:00.000Z")) }));
+vi.mock("@/lib/final-exam-scheduler", () => ({
+  ensureAndReconcileScheduledFinals: mocks.reconcileFinals,
+}));
 vi.mock("@/lib/env", () => ({
   env: {
     BETTER_AUTH_SECRET: "local-notification-secret-32-characters",
@@ -50,6 +55,7 @@ describe("notification APIs", () => {
     mocks.enqueueReminders.mockResolvedValue(0);
     mocks.enqueueTranscripts.mockResolvedValue(0);
     mocks.cleanupRateLimits.mockResolvedValue(0);
+    mocks.reconcileFinals.mockResolvedValue([]);
   });
 
   it("requires authentication for preferences", async () => {
@@ -113,6 +119,7 @@ describe("notification APIs", () => {
       courseUpdatesQueued: 2,
       remindersQueued: 1,
       transcriptsQueued: 0,
+      finalizedFinals: 0,
       rateLimitRowsCleaned: 0,
       claimed: 2,
       sent: 2,

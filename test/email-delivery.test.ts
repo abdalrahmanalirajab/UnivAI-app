@@ -31,6 +31,25 @@ describe("email delivery", () => {
     );
   });
 
+  it("prints an obvious auth-link banner even when provider delivery succeeds", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(null, { status: 200 })),
+    );
+
+    await sendEmail({
+      to: "student@example.test",
+      subject: "Verify your UnivAI email",
+      text: "Open http://localhost:3100/verify?token=copy-me",
+      terminalPreview: true,
+    });
+
+    const output = JSON.stringify(log.mock.calls);
+    expect(output).toContain("UNIVAI AUTH EMAIL - COPY THE LINK BELOW");
+    expect(output).toContain("token=copy-me");
+  });
+
   it("does not include a provider response body in thrown errors", async () => {
     vi.stubGlobal(
       "fetch",

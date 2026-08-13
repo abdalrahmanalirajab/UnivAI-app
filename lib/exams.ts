@@ -1,11 +1,17 @@
-import { MongoClient, type Db } from "mongodb";
+import { MongoClient, ObjectId, type Db } from "mongodb";
 import { env } from "./env";
 import { query, queryOne } from "./db";
 import { now, HOUR_MS, DAY_MS } from "./clock";
+import { finalExamWindowAt, type FinalExamWindow } from "./final-exam-policy";
 import { getLectures } from "./lectures";
 import { isStandalone } from "./runtime";
 import { requireTrustedExamLaunchUrl } from "./exam-launch";
 import { readGeneratedSemesterPlan } from "./semester-plan";
+import {
+  AssessmentBankOwnershipError,
+  buildLearnerQuestionBankDocument,
+  type GeneratedLearnerQuizBank,
+} from "./assessment-bank-ownership";
 
 /**
  * Integration with the team's exam system (UnivAI-exam_system, port 3200).
@@ -28,18 +34,15 @@ export const EXAM_SYSTEM_URL = env.EXAM_SYSTEM_URL;
 export function finalExamAvailabilityAt(
   virtualNow: Date,
   lectureEndsAt: Date[],
-): { available: boolean; opensAt: Date | null } {
-  const opensAt = lectureEndsAt.reduce<Date | null>(
-    (latest, endsAt) => (!latest || endsAt > latest ? endsAt : latest),
-    null,
-  );
-  return { available: Boolean(opensAt && virtualNow >= opensAt), opensAt };
+): FinalExamWindow & { available: boolean } {
+  const window = finalExamWindowAt(virtualNow, lectureEndsAt);
+  return { ...window, available: window.primaryAvailable };
 }
 
-/** The final opens when the semester's last lecture has ended, regardless of attendance. */
+/** The final opens after the last lecture and closes after its recovery window. */
 export async function getFinalExamAvailability(
   sid: string,
-): Promise<{ available: boolean; opensAt: Date | null }> {
+): Promise<FinalExamWindow & { available: boolean }> {
   const [virtualNow, lectures] = await Promise.all([now(), getLectures(sid)]);
   return finalExamAvailabilityAt(virtualNow, lectures.map((lecture) => lecture.endsAt));
 }
@@ -338,6 +341,8 @@ export type ResultWebhook = {
   title: string;
   student_sid: string;
   chapter_id: string | null;
+  attempt_number: number;
+  final_form: "primary" | "retake" | null;
   mark: number | null;
   total_questions: number;
   max_score: number;
@@ -387,6 +392,25 @@ export function parseResultWebhook(value: unknown): ResultWebhookParseResult {
   }
   if (!(payload.chapter_id === null || isNonEmptyString(payload.chapter_id))) {
     return { ok: false, error: "chapter_id must be a non-empty string or null" };
+  }
+  const attemptNumber = payload.attempt_number === undefined ? 1 : payload.attempt_number;
+  if (
+    typeof attemptNumber !== "number" ||
+    !Number.isSafeInteger(attemptNumber) ||
+    attemptNumber < 1
+  ) {
+    return { ok: false, error: "attempt_number must be a positive safe integer" };
+  }
+  const finalForm = payload.final_form === undefined
+    ? payload.type === "final" ? "primary" : null
+    : payload.final_form;
+  if (
+    !(
+      finalForm === null ||
+      (payload.type === "final" && (finalForm === "primary" || finalForm === "retake"))
+    )
+  ) {
+    return { ok: false, error: "final_form must identify a final form or be null" };
   }
   if (
     typeof payload.total_questions !== "number" ||
@@ -454,6 +478,8 @@ export function parseResultWebhook(value: unknown): ResultWebhookParseResult {
       title: payload.title,
       student_sid: payload.student_sid,
       chapter_id: payload.chapter_id,
+      attempt_number: attemptNumber,
+      final_form: finalForm,
       mark: payload.mark,
       total_questions: payload.total_questions,
       max_score: maxScore,
@@ -553,6 +579,8 @@ export function examCallbackFingerprint(payload: ResultWebhook): string {
     payload.grading_status,
     payload.integrity_status,
     payload.review_status,
+    payload.attempt_number,
+    payload.final_form ?? "",
     payload.mark ?? "",
     payload.max_score,
     payload.passing_mark ?? "",
@@ -583,32 +611,84 @@ export async function recordExamCallback(examId: string, fingerprint: string): P
 /**
  * Wipe ONE student's seeded exam world (used when they replace their book).
  * Scoped by owner so re-uploading never destroys another student's exams. We
- * delete their link + their chapters' question banks, and the docs owned by
- * their exam-system student / curriculum where the owner field is known.
- * (Collection names are mongoose's default pluralisation of the model names.)
+ * Delete every learner-owned assessment binding before a replacement book is
+ * linked: immutable papers, attempts, grades, provenance, banks, chapters,
+ * enrollments, and curricula. Audit logs remain as durable audit evidence.
  */
 export async function resetExamWorld(sid: string): Promise<void> {
   if (isStandalone()) return;
   const db = await mongo();
   const link = await db.collection("univai_link").findOne<ExamLink>({ sid });
-  await db.collection("univai_link").deleteMany({ sid });
-  if (!link) return;
+  const student = link?.student_id && ObjectId.isValid(link.student_id)
+    ? await db.collection("students").findOne(
+        { _id: new ObjectId(link.student_id), sid },
+        { projection: { _id: 1 } },
+      )
+    : await db.collection("students").findOne({ sid }, { projection: { _id: 1 } });
+  if (!student) {
+    await db.collection("univai_link").deleteMany({ sid });
+    return;
+  }
 
-  const chapterIds = link.chapters.map((c) => c.chapter_id);
-  // Find this student's exams (stamped with student_sid by the exam system),
-  // then cascade their sessions + proctoring events by exam id.
+  const studentId = student._id;
+  const curricula = await db.collection("curricula").find(
+    { owner_student_id: studentId },
+    { projection: { _id: 1 } },
+  ).toArray();
+  const curriculumIds = curricula.map((curriculum) => curriculum._id);
+  const chapters = await db.collection("chapters").find(
+    { curriculum_id: { $in: curriculumIds } },
+    { projection: { _id: 1 } },
+  ).toArray();
+  const chapterIds = chapters.map((chapter) => chapter._id);
+
   const exams = await db
     .collection("exams")
-    .find({ student_sid: sid }, { projection: { _id: 1 } })
+    .find(
+      { $or: [{ student_sid: sid }, { student_id: studentId }] },
+      { projection: { _id: 1 } },
+    )
     .toArray();
   const examIds = exams.map((e) => e._id);
 
   await Promise.all([
-    db.collection("exams").deleteMany({ student_sid: sid }).catch(() => undefined),
-    db.collection("examsessions").deleteMany({ exam_id: { $in: examIds } }).catch(() => undefined),
-    db.collection("proctoringevents").deleteMany({ exam_id: { $in: examIds } }).catch(() => undefined),
-    db.collection("question_banks").deleteMany({ chapter_id: { $in: chapterIds } }).catch(() => undefined),
+    db.collection("examsessions").deleteMany({ exam_id: { $in: examIds } }),
+    db.collection("proctoringevents").deleteMany({ exam_id: { $in: examIds } }),
+    db.collection("integrityevents").deleteMany({ exam_id: { $in: examIds } }),
+    db.collection("integrityappeals").deleteMany({ exam_id: { $in: examIds } }),
+    db.collection("gradehistories").deleteMany({ exam_id: { $in: examIds } }),
+    db.collection("examattemptrecords").deleteMany({ learner_id: studentId }),
+    db.collection("examchapters").deleteMany({
+      $or: [{ exam_id: { $in: examIds } }, { chapter_id: { $in: chapterIds } }],
+    }),
+    db.collection("question_banks").deleteMany({
+      $or: [
+        { owner_sid: sid },
+        { student_id: studentId.toString() },
+        { chapter_id: { $in: chapterIds.map((id) => id.toString()) } },
+      ],
+    }),
+    db.collection("questionprovenances").deleteMany({
+      $or: [
+        { learner_id: { $in: [sid, studentId.toString()] } },
+        { curriculum_id: { $in: curriculumIds } },
+        { chapter_id: { $in: chapterIds } },
+      ],
+    }),
+    db.collection("midtermpublications").deleteMany({
+      curriculum_id: { $in: curriculumIds },
+    }),
+    db.collection("assessmentblueprints").deleteMany({
+      course_id: { $in: curriculumIds.map((id) => id.toString()) },
+    }),
+    db.collection("enrollments").deleteMany({ student_id: studentId }),
+    db.collection("exams").deleteMany({
+      $or: [{ student_sid: sid }, { student_id: studentId }],
+    }),
   ]);
+  await db.collection("chapters").deleteMany({ curriculum_id: { $in: curriculumIds } });
+  await db.collection("curricula").deleteMany({ _id: { $in: curriculumIds } });
+  await db.collection("univai_link").deleteMany({ sid });
 }
 
 /**
@@ -621,32 +701,69 @@ export async function syncQuestionBanks(link: ExamLink): Promise<void> {
   const banks = db.collection("question_banks");
 
   for (const chapter of link.chapters) {
-    let parsed: { title?: string; questions?: unknown[] } | null = null;
+    const bindingFilter = {
+      chapter_id: chapter.chapter_id,
+      owner_sid: link.sid,
+      student_id: link.student_id,
+      curriculum_id: link.curriculum_id,
+    };
+    let source: {
+      book_id: number;
+      artifact_id: string;
+      artifact_student_id: string;
+      quiz_payload: GeneratedLearnerQuizBank | null;
+    } | null = null;
     try {
-      const rows = await query<{ quiz_payload: { title?: string; questions?: unknown[] } }>(
-        `SELECT la.quiz_payload
+      const rows = await query<{
+        book_id: number;
+        artifact_id: string;
+        artifact_student_id: string;
+        quiz_payload: GeneratedLearnerQuizBank | null;
+      }>(
+        `SELECT la.book_id, la.artifact_id::text AS artifact_id,
+                la.student_id AS artifact_student_id, la.quiz_payload
            FROM lectures l
            JOIN lecture_artifacts la ON la.artifact_id = l.lecture_artifact_id
           WHERE l.student_id = $1 AND l.week = $2`,
         [link.sid, chapter.week]
       );
-      parsed = rows[0]?.quiz_payload ?? null;
+      source = rows[0] ?? null;
     } catch {
-      continue; // no generated quiz for this week (yet) — the bank stays as-is
+      await banks.deleteMany(bindingFilter);
+      throw new AssessmentBankOwnershipError(
+        `Could not verify week ${chapter.week} assessment ownership. Try again after regeneration.`,
+      );
     }
-    if (!parsed?.questions?.length) continue;
+    if (!source?.quiz_payload) {
+      await banks.deleteMany(bindingFilter);
+      throw new AssessmentBankOwnershipError(
+        `Week ${chapter.week} assessment bank is not ready; regenerate its quizzes.`,
+      );
+    }
+    if (source.artifact_student_id !== link.sid) {
+      await banks.deleteMany(bindingFilter);
+      throw new AssessmentBankOwnershipError(
+        `Week ${chapter.week} lecture artifact belongs to another learner.`,
+      );
+    }
 
-    await banks.updateOne(
-      { chapter_id: chapter.chapter_id },
-      {
-        $set: {
-          chapter_id: chapter.chapter_id,
-          week: chapter.week,
-          title: parsed.title ?? chapter.title,
-          questions: parsed.questions,
-          updated_at: new Date(),
-        },
-      },
+    let document;
+    try {
+      document = buildLearnerQuestionBankDocument({
+        scope: link,
+        chapter,
+        sourceBookId: source.book_id,
+        sourceArtifactId: source.artifact_id,
+        payload: source.quiz_payload,
+      });
+    } catch (error) {
+      await banks.deleteMany(bindingFilter);
+      throw error;
+    }
+
+    await banks.replaceOne(
+      bindingFilter,
+      document,
       { upsert: true }
     );
   }
@@ -657,14 +774,7 @@ export async function ensureExamWorld(sid: string, studentName: string): Promise
   const db = await mongo();
   const links = db.collection("univai_link");
 
-  const existing = await links.findOne<ExamLink & { _id: unknown }>({ sid });
   const midtermPlans = await plannedMidterms(sid);
-  if (
-    existing &&
-    Array.isArray(existing.midterms) &&
-    existing.midterms.length === midtermPlans.length &&
-    existing.midterms.every((midterm, index) => midterm.after_week === midtermPlans[index]?.afterWeek)
-  ) return existing;
 
   const lectures = await getLectures(sid);
 
@@ -684,19 +794,31 @@ export async function ensureExamWorld(sid: string, studentName: string): Promise
     student = { _id: inserted.insertedId, name: studentName, sid };
   }
 
-  const book = await queryOne<{ title: string | null; filename: string }>(
-    "SELECT title, filename FROM books WHERE student_id = $1 ORDER BY id DESC LIMIT 1",
+  const book = await queryOne<{
+    id: number;
+    title: string | null;
+    filename: string;
+    source_sha256: string | null;
+  }>(
+    "SELECT id, title, filename, source_sha256 FROM books WHERE student_id = $1 ORDER BY id DESC LIMIT 1",
     [sid]
   );
-  const courseTitle = book?.title ?? book?.filename ?? "UnivAI Course";
+  if (!book) throw new Error("No generated book exists for this learner.");
+  const courseTitle = book.title ?? book.filename;
 
   const curricula = db.collection("curricula");
-  let curriculum = await curricula.findOne({ title: courseTitle, owner_student_id: student._id });
+  let curriculum = await curricula.findOne({
+    owner_student_id: student._id,
+    source_book_id: book.id,
+    source_sha256: book.source_sha256,
+  });
   if (!curriculum) {
     const inserted = await curricula.insertOne({
       title: courseTitle,
       description: "One book, one chapter-derived course — generated by UnivAI",
       owner_student_id: student._id,
+      source_book_id: book.id,
+      source_sha256: book.source_sha256,
       createdAt: new Date(),
       updatedAt: new Date(),
     });
@@ -743,6 +865,18 @@ export async function ensureExamWorld(sid: string, studentName: string): Promise
     });
   }
 
+  const assessmentScope: ExamLink = {
+    sid,
+    student_id: student._id.toString(),
+    curriculum_id: curriculum._id.toString(),
+    chapters,
+    midterms: [],
+    mid_exam_id: null,
+  };
+  // A cumulative paper may only be assembled after this learner's generated
+  // banks have been validated and bound to their Exam identities.
+  await syncQuestionBanks(assessmentScope);
+
   // One midterm is pre-created at each semester's midpoint and covers its
   // completed first-half lectures.
   const midterms: NonNullable<ExamLink["midterms"]> = [];
@@ -755,6 +889,8 @@ export async function ensureExamWorld(sid: string, studentName: string): Promise
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         curriculum_id: curriculum._id.toString(),
+        student_id: student._id.toString(),
+        student_sid: sid,
         title: planned.title,
         chapter_ids: chapterIds,
         passing_mark: 5,
@@ -966,7 +1102,7 @@ export async function startExam(
   const res = await fetch(`${EXAM_SYSTEM_URL}/api/exams/mid/${midtermId}/start`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ student_sid: sid }),
+    body: JSON.stringify({ student_id: link.student_id, student_sid: sid }),
   });
   const exam = await res.json();
   if (!res.ok) throw new Error(exam.error ?? "The exam system refused to start the midterm.");

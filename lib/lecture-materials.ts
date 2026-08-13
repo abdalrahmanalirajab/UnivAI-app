@@ -5,16 +5,19 @@ import { scriptDurationMinutes, type DurationBearingScript } from "./lecture-dur
 type LectureMaterialRow = {
   lecture_id: string;
   artifact_id: string | null;
+  artifact_updated_at?: Date | null;
   week: number;
   title: string;
   starts_at: Date;
   joined_at: Date | null;
+  completed_at: Date | null;
   script_payload: DurationBearingScript;
 };
 
 export type LectureMaterialAccess = {
   lectureId: string;
   artifactId: string | null;
+  artifactVersion: string | null;
   week: number;
   title: string;
   startsAt: Date;
@@ -44,12 +47,31 @@ export function lectureMaterialAccessAt(
   const base = {
     lectureId: row.lecture_id,
     artifactId: row.artifact_id,
+    artifactVersion: row.artifact_updated_at
+      ? new Date(row.artifact_updated_at).toISOString()
+      : null,
     week: row.week,
     title: row.title,
     startsAt,
     endsAt,
   };
 
+  if (row.completed_at) {
+    return {
+      ...base,
+      available: true,
+      mode: "archive",
+      blockedReason: null,
+    };
+  }
+  if (row.joined_at) {
+    return {
+      ...base,
+      available: true,
+      mode: "live",
+      blockedReason: null,
+    };
+  }
   if (virtualNow < startsAt) {
     return {
       ...base,
@@ -66,19 +88,11 @@ export function lectureMaterialAccessAt(
       blockedReason: null,
     };
   }
-  if (!row.joined_at) {
-    return {
-      ...base,
-      available: false,
-      mode: null,
-      blockedReason: "not_joined",
-    };
-  }
   return {
     ...base,
-    available: true,
-    mode: "live",
-    blockedReason: null,
+    available: false,
+    mode: null,
+    blockedReason: "not_joined",
   };
 }
 
@@ -93,7 +107,8 @@ export async function getLectureMaterialAccess(
   const row = await queryOne<LectureMaterialRow>(
     `SELECT l.public_id::text AS lecture_id,
             la.artifact_id::text AS artifact_id,
-            l.week, l.title, l.starts_at, a.joined_at, la.script_payload
+            la.updated_at AS artifact_updated_at,
+            l.week, l.title, l.starts_at, a.joined_at, a.completed_at, la.script_payload
        FROM lectures l
        LEFT JOIN lecture_artifacts la ON la.artifact_id = l.lecture_artifact_id
        LEFT JOIN attendance a ON a.lecture_id = l.id AND a.student_id = l.student_id
@@ -111,7 +126,8 @@ export async function getPresentationMaterialAccess(
   const row = await queryOne<LectureMaterialRow>(
     `SELECT l.public_id::text AS lecture_id,
             la.artifact_id::text AS artifact_id,
-            l.week, l.title, l.starts_at, a.joined_at, la.script_payload
+            la.updated_at AS artifact_updated_at,
+            l.week, l.title, l.starts_at, a.joined_at, a.completed_at, la.script_payload
        FROM lecture_artifacts la
        JOIN lectures l ON l.lecture_artifact_id = la.artifact_id
        LEFT JOIN attendance a ON a.lecture_id = l.id AND a.student_id = l.student_id

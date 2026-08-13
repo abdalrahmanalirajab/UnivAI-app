@@ -16,6 +16,7 @@ vi.mock("@/lib/onboarding", () => ({
 }));
 
 import UploadLayout from "@/app/upload/layout";
+import SubscribePage from "@/app/subscribe/page";
 import {
   requireVerifiedUser,
   requireVerifiedUserApi,
@@ -53,6 +54,14 @@ describe("verified session guards", () => {
 
     expect(mocks.redirect).toHaveBeenCalledWith("/verify-email");
     expect(mocks.getOnboardingState).not.toHaveBeenCalled();
+  });
+
+  it("locks the subscription page until email verification", async () => {
+    await expect(
+      SubscribePage({ searchParams: Promise.resolve({}) }),
+    ).rejects.toThrow("NEXT_REDIRECT:/verify-email");
+
+    expect(mocks.redirect).toHaveBeenCalledWith("/verify-email");
   });
 
   it("allows a verified first-time learner to reach the upload page", async () => {

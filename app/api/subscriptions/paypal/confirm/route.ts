@@ -44,6 +44,8 @@ export async function POST(request: Request) {
       subscriptionId: providerSubscription.id,
       providerPlanId: providerSubscription.plan_id,
       providerStatus: providerSubscription.status,
+      providerStartedAt: providerSubscription.start_time,
+      providerPeriodEndsAt: providerSubscription.billing_info?.next_billing_time,
     });
     const subscription = await getSubscriptionSnapshot(gate.id);
     const active = subscription.status === "active" && subscription.planCode === planCode;

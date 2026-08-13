@@ -1,10 +1,12 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextRequest } from "next/server";
 import { env } from "@/lib/env";
-import { query } from "@/lib/db";
+import { query, queryOne } from "@/lib/db";
 import { now } from "@/lib/clock";
 import {
   examCallbackFingerprint,
+  ensureExamWorld,
+  getFinalExamAvailability,
   parseResultWebhook,
   recordExamCallback,
   resolveWeek,
@@ -12,7 +14,11 @@ import {
   wasExamCallbackProcessed,
   webhookToFinalExamStatus,
 } from "@/lib/exams";
-import { upsertCourseTranscript } from "@/lib/transcripts";
+import {
+  ensureFinalExamCase,
+  recordFinalExamCallback,
+  type StoredFinalResult,
+} from "@/lib/final-exam-retakes";
 import { enqueueStudentEmailNotification } from "@/lib/notification-outbox";
 
 export const dynamic = "force-dynamic";
@@ -31,7 +37,7 @@ export const dynamic = "force-dynamic";
  * would fail verification. The secret comes from environment configuration
  * only; without it the route fails closed and rejects every callback.
  *
- * A clean auto-graded or manually graded final is recorded immediately.
+ * A clean final remains provisional until the retake lifecycle finalizes it.
  */
 export async function POST(request: NextRequest) {
   // Read the raw body FIRST — the signature covers the exact delivered bytes.
@@ -103,7 +109,7 @@ export async function POST(request: NextRequest) {
     payload.mark !== undefined &&
     payload.max_score > 0;
 
-  if (!isFinal || finalGradeConfirmed) {
+  if (!isFinal) {
     await query(
       `INSERT INTO grades (student_id, kind, week, score, max_score, feedback, taken_at, exam_id, flagged, report)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
@@ -137,11 +143,48 @@ export async function POST(request: NextRequest) {
   // stale start-time snapshot.
   if (isFinal) {
     await saveFinalExamStatus(sid, webhookToFinalExamStatus(payload));
-    if (finalGradeConfirmed) {
-      // The score is immediate, but the official transcript waits through its
-      // seven-day admin review window. The dispatcher sends the ready email
-      // only when that window releases it.
-      await upsertCourseTranscript(sid, takenAt, payload.title);
+    const result: StoredFinalResult | null = finalGradeConfirmed
+      ? {
+          examId: payload.exam_id,
+          title: payload.title,
+          mark: payload.mark!,
+          maxScore: payload.max_score,
+          passed: payload.passed,
+          submittedAt: takenAt.toISOString(),
+          report: payload.report,
+        }
+      : null;
+    const callbackInput = {
+      studentId: sid,
+      form: payload.final_form === "retake" ? "retake" as const : "primary" as const,
+      examId: payload.exam_id,
+      submittedAt: takenAt,
+      result,
+    };
+    let outcome;
+    try {
+      outcome = await recordFinalExamCallback(callbackInput);
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.includes("No final-exam policy case")) {
+        throw error;
+      }
+      // Rolling-deploy compatibility for a final launched before policy cases
+      // existed. New launches and the scheduler always create the case first.
+      await ensurePolicyCaseForCallback(sid);
+      outcome = await recordFinalExamCallback(callbackInput);
+    }
+    if (outcome?.finalized && outcome.result) {
+      await enqueueStudentEmailNotification({
+        registrationNumber: sid,
+        eventId: `final:${outcome.curriculumId}:${outcome.reason}`,
+        event: {
+          type: "assessment.result",
+          assessmentTitle: outcome.result.title,
+          score: outcome.result.mark,
+          maxScore: outcome.result.maxScore,
+          passed: outcome.result.passed,
+        },
+      });
     }
   } else if (
     !flagged &&
@@ -169,6 +212,21 @@ export async function POST(request: NextRequest) {
       `mark=${payload.mark}/${payload.max_score} flagged=${flagged}`
   );
   return Response.json({ ok: true });
+}
+
+async function ensurePolicyCaseForCallback(sid: string): Promise<void> {
+  const learner = await queryOne<{ name: string }>(
+    `SELECT name FROM "user" WHERE "registrationNumber" = $1`,
+    [sid],
+  );
+  if (!learner) throw new Error("Final callback owner does not exist.");
+  const window = await getFinalExamAvailability(sid);
+  const link = await ensureExamWorld(sid, learner.name);
+  await ensureFinalExamCase({
+    studentId: sid,
+    curriculumId: link.curriculum_id,
+    window,
+  });
 }
 
 /**

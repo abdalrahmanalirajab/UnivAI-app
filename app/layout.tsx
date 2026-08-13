@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import { Manrope } from "next/font/google";
-import { AppRouterCacheProvider } from "@mui/material-nextjs/v16-appRouter";
+import { Manrope, Noto_Kufi_Arabic } from "next/font/google";
 import InitColorSchemeScript from "@mui/material/InitColorSchemeScript";
 import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
@@ -11,11 +10,21 @@ import AppThemeProvider from "./AppThemeProvider";
 import NavBar from "./NavBar";
 import OnboardingGuide from "./OnboardingGuide";
 import OnboardingProvider from "./OnboardingProvider";
+import LocaleBootstrap from "./LocaleBootstrap";
+import { cookies } from "next/headers";
+import { UI_LOCALE_COOKIE } from "@/lib/legal";
+import AppCacheProvider from "./AppCacheProvider";
+import UiLocalizationProvider from "./UiLocalizationProvider";
 
 const manrope = Manrope({
   subsets: ["latin"],
   display: "swap",
   variable: "--font-univai",
+});
+const notoKufiArabic = Noto_Kufi_Arabic({
+  subsets: ["arabic"],
+  display: "swap",
+  variable: "--font-univai-arabic",
 });
 
 export const metadata: Metadata = {
@@ -40,21 +49,29 @@ export const metadata: Metadata = {
   ],
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  const locale = (await cookies()).get(UI_LOCALE_COOKIE)?.value === "ar" ? "ar" : "en";
   return (
-    <html lang="en" className={manrope.variable} suppressHydrationWarning>
+    <html
+      lang={locale}
+      dir={locale === "ar" ? "rtl" : "ltr"}
+      className={`${manrope.variable} ${notoKufiArabic.variable}`}
+      suppressHydrationWarning
+    >
       <body>
+        <LocaleBootstrap />
         <InitColorSchemeScript
           attribute="class"
           defaultMode="system"
           modeStorageKey="univai-color-mode"
           colorSchemeStorageKey="univai-color-scheme"
         />
-        <AppRouterCacheProvider>
-          <AppThemeProvider>
+        <AppCacheProvider direction={locale === "ar" ? "rtl" : "ltr"}>
+          <AppThemeProvider direction={locale === "ar" ? "rtl" : "ltr"}>
             <CssBaseline enableColorScheme />
+            <UiLocalizationProvider locale={locale}>
             <OnboardingProvider>
               <Button component="a" href="#main-content" className="skip-link">
                 Skip to main content
@@ -69,8 +86,9 @@ export default function RootLayout({
               <OnboardingGuide />
               <AppMain>{children}</AppMain>
             </OnboardingProvider>
+            </UiLocalizationProvider>
           </AppThemeProvider>
-        </AppRouterCacheProvider>
+        </AppCacheProvider>
       </body>
     </html>
   );

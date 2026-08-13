@@ -139,13 +139,10 @@ async function serve(
   const headers = new Headers({
     "Accept-Ranges": "bytes",
     "Cache-Control": "private, no-store",
-    "Content-Security-Policy": "frame-ancestors 'self'",
-    "Content-Disposition": `inline; filename*=UTF-8''${encodedFilename(pdf.filename)}`,
+    "Content-Disposition": `attachment; filename*=UTF-8''${encodedFilename(pdf.filename)}`,
     "Content-Length": String(end - start + 1),
     "Content-Type": "application/pdf",
-    "Cross-Origin-Resource-Policy": "same-origin",
     "X-Content-Type-Options": "nosniff",
-    "X-Frame-Options": "SAMEORIGIN",
   });
   if (range) headers.set("Content-Range", `bytes ${start}-${end}/${pdf.size}`);
 

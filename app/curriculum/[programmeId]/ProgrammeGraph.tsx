@@ -158,12 +158,12 @@ function SemesterCard({
     <Card variant="outlined" key={semester.id}>
       <CardContent>
         <Stack spacing={2}>
-          <Typography variant="subtitle1">
+          <Typography variant="subtitle1" data-generated-content="true" lang="en" dir="ltr">
             {semester.name}
           </Typography>
           {semesterCourses.map((course) => (
             <Stack key={course.id} spacing={1}>
-              <Typography variant="body1">
+              <Typography variant="body1" data-generated-content="true" lang="en" dir="ltr">
                 {course.title}
               </Typography>
               <Grid container spacing={1}>
@@ -197,7 +197,13 @@ function SemesterCard({
               </Grid>
             </Grid>
               {course.description ? (
-                <Typography variant="body2" color="text.secondary">
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  data-generated-content="true"
+                  lang="en"
+                  dir="ltr"
+                >
                   {course.description}
                 </Typography>
               ) : null}
@@ -223,7 +229,13 @@ function CourseCadence({
   const counted = (count: number, singular: string, plural = `${singular}s`) =>
     `${count} ${count === 1 ? singular : plural}`;
   return (
-    <Typography variant="body2" color="text.secondary">
+    <Typography
+      variant="body2"
+      color="text.secondary"
+      data-generated-content="true"
+      lang="en"
+      dir="ltr"
+    >
       {counted(structure.week_count, "week")} ·{" "}
       {counted(structure.theoretical_lectures, "theory lecture")} ·{" "}
       {counted(structure.practical_sections, "practical section")} ·{" "}
@@ -261,9 +273,13 @@ function PrerequisitesTable({
           <TableBody>
             {prerequisites.map((p) => (
               <TableRow key={p.course_id}>
-                <TableCell>{courseTitle(p.course_id)}</TableCell>
+                <TableCell data-generated-content="true" lang="en" dir="ltr">
+                  {courseTitle(p.course_id)}
+                </TableCell>
                 <TableCell>
-                  {p.requires.map(courseTitle).join(", ") || "—"}
+                  <span data-generated-content="true" lang="en" dir="ltr">
+                    {p.requires.map(courseTitle).join(", ") || "—"}
+                  </span>
                 </TableCell>
               </TableRow>
             ))}
@@ -298,9 +314,11 @@ function SourceCoverageTable({
           <TableBody>
             {coverage.map((sc) => (
               <TableRow key={sc.document_id}>
-                <TableCell>{sc.filename}</TableCell>
-                <TableCell>{sc.pages}</TableCell>
-                <TableCell>{sc.course_ids.join(", ")}</TableCell>
+                <TableCell data-no-ui-translate="true" dir="auto">{sc.filename}</TableCell>
+                <TableCell data-generated-content="true" lang="en" dir="ltr">{sc.pages}</TableCell>
+                <TableCell data-generated-content="true" lang="en" dir="ltr">
+                  {sc.course_ids.join(", ")}
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -450,7 +468,9 @@ function BooksCard({
             {path.books.map((book) => (
               <ListItem key={book.id} disableGutters disablePadding>
                 <Stack direction="row" spacing={1}>
-                  <Typography variant="body2">{bookTitle(book.id)}</Typography>
+                  <Typography variant="body2" data-generated-content="true" lang="en" dir="ltr">
+                    {bookTitle(book.id)}
+                  </Typography>
                   {completed.has(book.id) ? (
                     <Chip size="small" color="success" label="Completed" />
                   ) : null}
@@ -494,7 +514,7 @@ function EdgeCard({
       <CardContent>
         <Stack spacing={1.5}>
           <Stack direction="row" spacing={1}>
-            <Typography variant="body2">
+            <Typography variant="body2" data-generated-content="true" lang="en" dir="ltr">
               Finish {bookTitle(edge.prerequisite_book_id)} before {bookTitle(edge.dependent_book_id)}
             </Typography>
             <Chip
@@ -505,7 +525,13 @@ function EdgeCard({
             />
           </Stack>
           {prerequisiteCompleted ? (
-            <Typography variant="caption" color="text.secondary">
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              data-generated-content="true"
+              lang="en"
+              dir="ltr"
+            >
               {bookTitle(edge.prerequisite_book_id)} is complete — {bookTitle(edge.dependent_book_id)} chapters restart at 1.
             </Typography>
           ) : null}
@@ -515,7 +541,13 @@ function EdgeCard({
               This edge was proposed below the display threshold. Review the rationale before relying on it.
             </Alert>
           ) : null}
-          <Typography variant="body2" color="text.secondary">
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            data-generated-content="true"
+            lang="en"
+            dir="ltr"
+          >
             {edge.rationale}
           </Typography>
           <EvidenceBubble evidence={edge.evidence} onOpen={onOpenEvidence} />
@@ -530,7 +562,7 @@ function EdgeCard({
                   direction="row"
                   spacing={1}
                 >
-                  <Typography variant="body2">
+                  <Typography variant="body2" data-generated-content="true" lang="en" dir="ltr">
                     {bookTitle(alternative.prerequisite_book_id)}
                   </Typography>
                   <Chip
@@ -539,7 +571,13 @@ function EdgeCard({
                     color={alternative.resolved ? "success" : "warning"}
                     label={alternative.resolved ? "Resolved" : "Not resolved"}
                   />
-                  <Typography variant="caption" color="text.secondary">
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    data-generated-content="true"
+                    lang="en"
+                    dir="ltr"
+                  >
                     {alternative.rationale}
                   </Typography>
                   <EvidenceBubble
@@ -563,7 +601,9 @@ function EdgeCard({
                 }
               />
               {edge.override.reason ? (
-                <Typography variant="body2">{edge.override.reason}</Typography>
+                <Typography variant="body2" data-generated-content="true" lang="en" dir="ltr">
+                  {edge.override.reason}
+                </Typography>
               ) : null}
             </Stack>
           ) : null}
@@ -617,12 +657,26 @@ function EvidenceDialog({
       <DialogContent>
         {evidence ? (
           <Stack spacing={1}>
-            <Typography variant="body1">{evidence.book_title}</Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body1" data-generated-content="true" lang="en" dir="ltr">
+              {evidence.book_title}
+            </Typography>
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              data-generated-content="true"
+              lang="en"
+              dir="ltr"
+            >
               Pages: {evidence.pages}
             </Typography>
             {evidence.excerpt ? (
-              <Typography variant="body2" color="text.secondary">
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                data-generated-content="true"
+                lang="en"
+                dir="ltr"
+              >
                 {evidence.excerpt}
               </Typography>
             ) : (

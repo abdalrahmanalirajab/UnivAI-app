@@ -274,6 +274,9 @@ export default function SyncedVoicePlayer({
         variant="body1"
         className="synced-transcript"
         aria-label={answer}
+        data-generated-content="true"
+        lang="en"
+        dir="ltr"
       >
         {timing.map(({ word }, index) => (
           <Box

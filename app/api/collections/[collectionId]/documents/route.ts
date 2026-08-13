@@ -1,8 +1,10 @@
 import { NextRequest } from "next/server";
 import { promises as fs } from "fs";
 import path from "path";
-import { requireUserApi } from "@/lib/session";
-import { REPO_ROOT } from "@/lib/python";
+import { requireUserApi, requireVerifiedUserApi } from "@/lib/session";
+import { parseJsonLine, REPO_ROOT, runPython } from "@/lib/python";
+import { env } from "@/lib/env";
+import { isStandalone } from "@/lib/runtime";
 import {
   addDocument,
   documentStorageKey,
@@ -15,6 +17,11 @@ import {
 } from "@/lib/collections";
 import { cancelGenerationForSource } from "@/lib/generation";
 import { enforceUserRateLimit } from "@/lib/rate-limits";
+import { CURRENT_EULA_VERSION } from "@/lib/legal-documents";
+import {
+  recordUploadEulaAcceptance,
+  validUploadAttestation,
+} from "@/lib/legal";
 
 export const dynamic = "force-dynamic";
 
@@ -55,7 +62,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ collectionId: string }> },
 ) {
-  const gate = await requireUserApi();
+  const gate = await requireVerifiedUserApi();
   if (gate instanceof Response) return gate;
   const limited = await enforceUserRateLimit(gate.id, "upload");
   if (limited) return limited;
@@ -81,6 +88,17 @@ export async function POST(
     return Response.json({ error: "No file uploaded." }, { status: 400 });
   }
 
+  if (!form || !validUploadAttestation(form)) {
+    return Response.json(
+      {
+        error: "Accept the current EULA and confirm you are authorized to use this material.",
+        code: "EULA_ACCEPTANCE_REQUIRED",
+        eulaVersion: CURRENT_EULA_VERSION,
+      },
+      { status: 422 },
+    );
+  }
+
   const safeName = file.name.replace(/[^\w.\-]+/g, "_");
 
   const validationMsg = validateFilename(safeName);
@@ -102,6 +120,14 @@ export async function POST(
       { status: 400 },
     );
   }
+
+
+  await recordUploadEulaAcceptance({
+    userId: gate.id,
+    registrationNumber: gate.registrationNumber,
+    locale: gate.uiLocale,
+    headers: request.headers,
+  });
 
   const result = await addDocument(collectionId, gate.registrationNumber, safeName);
   if (!result.ok) {
@@ -169,7 +195,6 @@ export async function DELETE(
   }
 
   const storageKey = documentStorageKey(collectionId, documentId, doc.filename);
-  await cancelGenerationForSource(gate.registrationNumber, storageKey);
   const docDir = path.join(
     REPO_ROOT,
     "uploads",
@@ -178,6 +203,37 @@ export async function DELETE(
     String(collectionId),
     String(documentId),
   );
+
+  // Resolve and purge the deterministic RAG document while the SQL identity is
+  // still available. If cleanup cannot be confirmed, retain the database row
+  // and local file so the learner can retry instead of creating an unreachable
+  // vector orphan. Standalone mode has no Qdrant index.
+  if (!isStandalone()) {
+    if (!env.RAG_MCP_URL) {
+      return Response.json(
+        { error: "The source index is unavailable. Nothing was removed; try again shortly." },
+        { status: 503 },
+      );
+    }
+    const cleanup = await runPython(
+      "services/rag-tools/rag_delete.py",
+      [gate.registrationNumber, String(collectionId), doc.filename],
+      5 * 60_000,
+      request.signal,
+    );
+    if (request.signal.aborted) {
+      return Response.json({ error: "Source removal cancelled." }, { status: 499 });
+    }
+    const cleanupPayload = parseJsonLine<{ ok: boolean; error?: string }>(cleanup.stdout);
+    if (!cleanup.ok || !cleanupPayload?.ok) {
+      return Response.json(
+        { error: "The source index could not be cleared. Nothing was removed; try again shortly." },
+        { status: 502 },
+      );
+    }
+  }
+
+  await cancelGenerationForSource(gate.registrationNumber, storageKey);
 
   const removed = await removeDocumentAndBook(
     documentId,

@@ -1,83 +1,234 @@
-const JOURNEY_PATHS = [
-  "M 24 620 C 140 610 238 508 360 500 C 480 493 528 388 660 380 C 795 370 840 255 965 236 C 1075 220 1140 128 1236 92",
-  "M 24 620 C 145 622 252 575 382 556 C 500 540 565 430 704 420 C 850 410 930 330 1042 260 C 1130 205 1175 142 1236 92",
-  "M 24 620 C 122 592 236 460 350 430 C 454 402 510 324 642 320 C 770 316 838 220 970 196 C 1080 176 1150 115 1236 92",
-  "M 24 620 C 120 650 218 548 330 534 C 410 524 378 442 492 444 C 605 446 612 356 742 350 C 870 344 900 232 1020 232 C 1110 232 1175 128 1236 92",
-  "M 24 620 C 140 600 220 520 350 508 C 464 497 446 580 572 540 C 680 506 680 395 790 392 C 906 390 900 300 1018 272 C 1120 248 1150 138 1236 92",
-  "M 24 620 C 152 632 246 540 366 530 C 476 522 535 460 626 468 C 736 478 760 330 884 322 C 1010 314 1070 188 1236 92",
-  "M 24 620 C 126 604 204 486 326 470 C 438 456 472 366 590 350 C 716 334 734 418 852 354 C 974 288 1030 150 1236 92",
-  "M 24 620 C 132 638 210 566 318 552 C 438 536 510 490 620 424 C 718 366 798 302 910 286 C 1050 266 1092 142 1236 92",
-] as const;
+"use client";
 
-const WAYPOINTS = [
-  { cx: 24, cy: 620, kind: "origin" },
-  { cx: 360, cy: 500, kind: "step" },
-  { cx: 660, cy: 380, kind: "step" },
-  { cx: 965, cy: 236, kind: "step" },
-  { cx: 1236, cy: 92, kind: "horizon" },
-] as const;
+// Adapted from Kokonut UI's MIT-licensed Background Paths component.
+import { useEffect, useRef } from "react";
+
+type BackgroundPath = {
+  id: string;
+  d: string;
+  opacity: number;
+  width: number;
+};
+
+function createPaths(position: 1 | -1): BackgroundPath[] {
+  return Array.from({ length: 36 }, (_, index) => ({
+    id: `background-path-${position}-${index}`,
+    d: `M-${380 - index * 5 * position} -${189 + index * 6}C-${
+      380 - index * 5 * position
+    } -${189 + index * 6} -${312 - index * 5 * position} ${216 - index * 6} ${
+      152 - index * 5 * position
+    } ${343 - index * 6}C${616 - index * 5 * position} ${470 - index * 6} ${
+      684 - index * 5 * position
+    } ${875 - index * 6} ${684 - index * 5 * position} ${875 - index * 6}`,
+    opacity: 0.08 + index * 0.012,
+    width: 0.45 + index * 0.028,
+  }));
+}
+
+const PRIMARY_PATHS = createPaths(1);
+const SECONDARY_PATHS = createPaths(-1);
+const TRAVELLER_INDICES = [5, 14, 23, 32] as const;
+const TRAVELLER_DURATIONS = [16_000, 20_000, 24_000, 28_000] as const;
+const VIEWBOX_WIDTH = 696;
+const VIEWBOX_HEIGHT = 316;
+const TARGET_FRAME_TIME = 1000 / 30;
+
+function PathGroup({ paths, tone }: { paths: BackgroundPath[]; tone: string }) {
+  return (
+    <g className={`background-path-${tone}`}>
+      {paths.map((path) => (
+        <path
+          key={path.id}
+          d={path.d}
+          stroke="currentColor"
+          strokeWidth={path.width}
+          strokeOpacity={path.opacity}
+          strokeLinecap="round"
+        />
+      ))}
+    </g>
+  );
+}
+
+function TravellingHighlights() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvasElement = canvasRef.current;
+    if (!canvasElement) return;
+
+    const drawingContext = canvasElement.getContext("2d", { alpha: true });
+    if (!drawingContext) return;
+    const canvas: HTMLCanvasElement = canvasElement;
+    const context: CanvasRenderingContext2D = drawingContext;
+
+    const primaryPaths = TRAVELLER_INDICES.map((index) => ({
+      path: new Path2D(PRIMARY_PATHS[index].d),
+      width: PRIMARY_PATHS[index].width + 0.5,
+    }));
+    const secondaryPaths = TRAVELLER_INDICES.map((index) => ({
+      path: new Path2D(SECONDARY_PATHS[index].d),
+      width: SECONDARY_PATHS[index].width + 0.5,
+    }));
+
+    let frameId: number | null = null;
+    let lastFrameAt = 0;
+    let visible = true;
+    let reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let cssWidth = 0;
+    let cssHeight = 0;
+    let renderScale = 1;
+    let primaryColor = "#818cf8";
+    let secondaryColor = "#2dd4bf";
+
+    function readThemeColors() {
+      const styles = getComputedStyle(document.documentElement);
+      primaryColor = styles.getPropertyValue("--univai-palette-primary-main").trim() || primaryColor;
+      secondaryColor =
+        styles.getPropertyValue("--univai-palette-secondary-main").trim() || secondaryColor;
+    }
+
+    function prepareCanvas() {
+      const bounds = canvas.getBoundingClientRect();
+      cssWidth = bounds.width;
+      cssHeight = bounds.height;
+      renderScale = cssWidth >= 900 ? 0.75 : Math.min(window.devicePixelRatio || 1, 1.25);
+      canvas.width = Math.max(1, Math.round(cssWidth * renderScale));
+      canvas.height = Math.max(1, Math.round(cssHeight * renderScale));
+      readThemeColors();
+    }
+
+    function drawPaths(
+      paths: Array<{ path: Path2D; width: number }>,
+      color: string,
+      now: number,
+      phaseOffset: number,
+    ) {
+      context.strokeStyle = color;
+      for (let index = 0; index < paths.length; index += 1) {
+        const duration = TRAVELLER_DURATIONS[index];
+        const progress = reduceMotion
+          ? 0.28 + index * 0.12
+          : ((now + phaseOffset + index * 2_900) % duration) / duration;
+        const pulse = Math.sin(progress * Math.PI);
+        context.globalAlpha = 0.16 + pulse * 0.56;
+        context.lineWidth = paths[index].width;
+        context.setLineDash([90, 210]);
+        context.lineDashOffset = -progress * 300;
+        context.stroke(paths[index].path);
+      }
+    }
+
+    function draw(now: number) {
+      if (!cssWidth || !cssHeight) return;
+      context.setTransform(1, 0, 0, 1, 0, 0);
+      context.clearRect(0, 0, canvas.width, canvas.height);
+
+      const viewScale = Math.max(cssWidth / VIEWBOX_WIDTH, cssHeight / VIEWBOX_HEIGHT);
+      const translateX = (cssWidth - VIEWBOX_WIDTH * viewScale) / 2;
+      const translateY = (cssHeight - VIEWBOX_HEIGHT * viewScale) / 2;
+      context.setTransform(
+        renderScale * viewScale,
+        0,
+        0,
+        renderScale * viewScale,
+        renderScale * translateX,
+        renderScale * translateY,
+      );
+      context.lineCap = "round";
+      drawPaths(primaryPaths, primaryColor, now, 0);
+      drawPaths(secondaryPaths, secondaryColor, now, 4_700);
+      context.globalAlpha = 1;
+      context.setLineDash([]);
+    }
+
+    function shouldAnimate() {
+      return visible && !reduceMotion && !document.hidden;
+    }
+
+    function tick(now: number) {
+      frameId = null;
+      if (!shouldAnimate()) return;
+      if (now - lastFrameAt >= TARGET_FRAME_TIME) {
+        draw(now);
+        lastFrameAt = now;
+      }
+      frameId = window.requestAnimationFrame(tick);
+    }
+
+    function syncAnimation() {
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+        frameId = null;
+      }
+      if (shouldAnimate()) {
+        frameId = window.requestAnimationFrame(tick);
+      } else {
+        draw(performance.now());
+      }
+    }
+
+    const resizeObserver = new ResizeObserver(() => {
+      prepareCanvas();
+      draw(performance.now());
+    });
+    const intersectionObserver = new IntersectionObserver(
+      ([entry]) => {
+        visible = entry.isIntersecting;
+        syncAnimation();
+      },
+      { rootMargin: "120px" },
+    );
+    const motionPreference = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const handleMotionPreference = (event: MediaQueryListEvent) => {
+      reduceMotion = event.matches;
+      syncAnimation();
+    };
+    const handleVisibility = () => syncAnimation();
+    const themeObserver = new MutationObserver(() => {
+      readThemeColors();
+      draw(performance.now());
+    });
+
+    prepareCanvas();
+    draw(performance.now());
+    resizeObserver.observe(canvas);
+    intersectionObserver.observe(canvas);
+    motionPreference.addEventListener("change", handleMotionPreference);
+    document.addEventListener("visibilitychange", handleVisibility);
+    themeObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class", "style", "data-mui-color-scheme"],
+    });
+    syncAnimation();
+
+    return () => {
+      if (frameId !== null) window.cancelAnimationFrame(frameId);
+      resizeObserver.disconnect();
+      intersectionObserver.disconnect();
+      motionPreference.removeEventListener("change", handleMotionPreference);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      themeObserver.disconnect();
+    };
+  }, []);
+
+  return <canvas ref={canvasRef} className="background-path-motion-canvas" />;
+}
 
 export default function BackgroundPaths() {
   return (
     <div className="background-paths" aria-hidden="true">
       <svg
-        className="background-path-layer"
-        viewBox="0 0 1260 700"
+        className="background-path-svg background-path-base-layer"
+        viewBox="0 0 696 316"
         fill="none"
-        preserveAspectRatio="none"
+        preserveAspectRatio="xMidYMid slice"
+        focusable="false"
       >
-        <defs>
-          <linearGradient id="journey-line-gradient" x1="24" y1="620" x2="1236" y2="92">
-            <stop stopColor="var(--univai-palette-primary-main)" />
-            <stop offset="0.55" stopColor="var(--univai-palette-secondary-main)" />
-            <stop offset="1" stopColor="var(--univai-palette-primary-main)" />
-          </linearGradient>
-          <linearGradient id="journey-light-gradient" x1="24" y1="620" x2="1236" y2="92">
-            <stop stopColor="var(--univai-palette-secondary-main)" />
-            <stop offset="0.5" stopColor="var(--univai-palette-primary-main)" />
-            <stop offset="1" stopColor="var(--univai-palette-secondary-main)" />
-          </linearGradient>
-        </defs>
-
-        <g className="journey-field">
-          <g className="journey-base-lines">
-            {JOURNEY_PATHS.map((path, index) => (
-              <path
-                key={`base-${index}`}
-                className={`journey-base-path journey-base-path-${index + 1}`}
-                d={path}
-                pathLength={1}
-                stroke="url(#journey-line-gradient)"
-                strokeLinecap="round"
-                strokeDasharray="0.12 0.025"
-              />
-            ))}
-          </g>
-
-          <g className="journey-travellers">
-            {JOURNEY_PATHS.map((path, index) => (
-              <path
-                key={`traveller-${index}`}
-                className={`journey-pulse journey-pulse-${index + 1}`}
-                d={path}
-                pathLength={1}
-                stroke="url(#journey-light-gradient)"
-                strokeLinecap="round"
-                strokeDasharray="0.055 0.945"
-              />
-            ))}
-          </g>
-
-          <g className="journey-waypoints">
-            {WAYPOINTS.map((point) => (
-              <g key={`${point.cx}-${point.cy}`} className={`journey-waypoint journey-${point.kind}`}>
-                <circle cx={point.cx} cy={point.cy} r={point.kind === "step" ? 8 : 11} className="journey-node-ring" />
-                <circle cx={point.cx} cy={point.cy} r={point.kind === "step" ? 2.8 : 3.8} className="journey-node-core" />
-              </g>
-            ))}
-          </g>
-        </g>
+        <PathGroup paths={PRIMARY_PATHS} tone="primary" />
+        <PathGroup paths={SECONDARY_PATHS} tone="secondary" />
       </svg>
+      <TravellingHighlights />
     </div>
   );
 }

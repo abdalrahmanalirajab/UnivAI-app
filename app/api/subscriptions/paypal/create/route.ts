@@ -1,13 +1,16 @@
 import {
+  createPayPalDemoOrder,
   createPayPalSubscription,
   getPayPalSubscription,
   PayPalConfigurationError,
   PayPalRequestError,
+  isPayPalFakeSubscriptionEnabled,
   payPalPlanId,
 } from "@/lib/paypal";
-import { requireUserApi } from "@/lib/session";
+import { requireVerifiedUserApi } from "@/lib/session";
 import { enforceUserRateLimit } from "@/lib/rate-limits";
 import {
+  getSubscriptionPlan,
   isSubscriptionPlanCode,
   type SubscriptionPlanCode,
 } from "@/lib/subscription-plans";
@@ -34,7 +37,7 @@ function paymentError(error: unknown): Response {
 }
 
 export async function POST(request: Request) {
-  const gate = await requireUserApi();
+  const gate = await requireVerifiedUserApi();
   if (gate instanceof Response) return gate;
   const limited = await enforceUserRateLimit(gate.id, "account");
   if (limited) return limited;
@@ -45,17 +48,50 @@ export async function POST(request: Request) {
 
   try {
     const current = await getSubscriptionSnapshot(gate.id);
+    const sandboxDemo = isPayPalFakeSubscriptionEnabled();
     if (current.planCode !== "free" && current.status === "active") {
       return Response.json(
         { error: "Cancel your current paid plan before choosing another one." },
         { status: 409 },
       );
     }
+    if (sandboxDemo) {
+      const plan = getSubscriptionPlan(body.planCode);
+      const created = await createPayPalDemoOrder({
+        userId: gate.id,
+        planCode: body.planCode,
+        amountUsd: plan.monthlyPriceUsd,
+      });
+      await markPayPalSubscriptionPending({
+        userId: gate.id,
+        planCode: body.planCode,
+        subscriptionId: created.order.id,
+        providerPlanId: payPalPlanId(body.planCode),
+      });
+      console.warn(
+        `[PAYPAL SANDBOX DEMO] Opening a real PayPal Order for ${body.planCode}.`,
+      );
+      return Response.json({
+        approvalUrl: created.approvalUrl,
+        subscriptionId: created.order.id,
+        demoOrder: true,
+      });
+    }
     if (current.status === "approval_pending" && current.providerSubscriptionId) {
-      const pending = await getPayPalSubscription(current.providerSubscriptionId);
-      const approvalUrl = pending.links?.find((link) => link.rel === "approve")?.href;
-      if (approvalUrl && pending.plan_id === payPalPlanId(body.planCode)) {
-        return Response.json({ approvalUrl, subscriptionId: pending.id });
+      try {
+        const pending = await getPayPalSubscription(current.providerSubscriptionId);
+        const approvalUrl = pending.links?.find((link) => link.rel === "approve")?.href;
+        if (approvalUrl && pending.plan_id === payPalPlanId(body.planCode)) {
+          return Response.json({
+            approvalUrl,
+            subscriptionId: pending.id,
+          });
+        }
+      } catch (error) {
+        // A checkout created under replaced Sandbox credentials can remain pending
+        // locally even though the current PayPal account cannot find it. Replace
+        // only that confirmed missing resource; all other provider errors fail closed.
+        if (!(error instanceof PayPalRequestError) || error.status !== 404) throw error;
       }
     }
 

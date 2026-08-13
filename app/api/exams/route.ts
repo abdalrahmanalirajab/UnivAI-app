@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import {
   EXAM_SYSTEM_URL,
   ensureExamWorld,
@@ -7,10 +7,22 @@ import {
   getExamStatuses,
   getFinalExamStatus,
   saveFinalExamStatus,
+  syncQuestionBanks,
   startExam,
   toFinalExamStatus,
   type FinalExamAttemptView,
 } from "@/lib/exams";
+import { now } from "@/lib/clock";
+import {
+  ensureFinalExamCase,
+  getFinalExamCase,
+  reconcileFinalExamCase,
+  recordFinalExamStart,
+  type FinalExamCaseView,
+  type FinalExamForm,
+} from "@/lib/final-exam-retakes";
+import type { FinalExamWindow } from "@/lib/final-exam-policy";
+import { env } from "@/lib/env";
 import { requireTrustedExamLaunchUrl } from "@/lib/exam-launch";
 import { requireLearningActionApi } from "@/lib/session";
 import type { SessionUser } from "@/lib/auth-types";
@@ -31,7 +43,10 @@ export async function GET() {
   // (populated only by verified callbacks), so the state it returns can never
   // be influenced by anything the URL claims.
 
-  const statuses = await getExamStatuses(gate.registrationNumber);
+  const [statuses, policy] = await Promise.all([
+    getExamStatuses(gate.registrationNumber),
+    loadFinalPolicy(gate),
+  ]);
   return Response.json({
     exams: statuses.map((status) => ({
       ...status,
@@ -41,7 +56,52 @@ export async function GET() {
     // The final's last status as reported by the Exam service (session-scoped
     // cache); null when the service has never reported one for this learner.
     final: await getFinalExamStatus(gate.registrationNumber),
+    finalWindow: serializeFinalWindow(policy.window),
+    finalCase: policy.finalCase,
   });
+}
+
+function serializeFinalWindow(window: FinalExamWindow) {
+  return {
+    ...window,
+    opensAt: window.opensAt?.toISOString() ?? null,
+    closesAt: window.closesAt?.toISOString() ?? null,
+    retakeRequestDeadline: window.retakeRequestDeadline?.toISOString() ?? null,
+  };
+}
+
+async function loadFinalPolicy(gate: SessionUser): Promise<{
+  referenceTime: Date;
+  window: FinalExamWindow & { available: boolean };
+  finalCase: FinalExamCaseView | null;
+  link: Awaited<ReturnType<typeof ensureExamWorld>> | null;
+}> {
+  const window = await getFinalExamAvailability(gate.registrationNumber);
+  const referenceTime = await now();
+  if (!window.opensAt || !window.closesAt || !window.retakeRequestDeadline) {
+    return { referenceTime, window, finalCase: null, link: null };
+  }
+  const link = await ensureExamWorld(gate.registrationNumber, gate.name);
+  await ensureFinalExamCase({
+    studentId: gate.registrationNumber,
+    curriculumId: link.curriculum_id,
+    window,
+  });
+  await reconcileFinalExamCase(
+    gate.registrationNumber,
+    link.curriculum_id,
+    referenceTime,
+  );
+  return {
+    referenceTime,
+    window,
+    finalCase: await getFinalExamCase(
+      gate.registrationNumber,
+      link.curriculum_id,
+      referenceTime,
+    ),
+    link,
+  };
 }
 
 /**
@@ -89,9 +149,11 @@ export async function POST(request: NextRequest) {
 /**
  * Start the final exam through the Exam service.
  *
- * Eligibility, publication and the attempt lifecycle are the service's alone:
- * we call it as-is and relay its answer verbatim — including a 403 denial with
- * the service's own reason — without layering any local check on top.
+ * The App owns the virtual primary/request/retake windows and administrator
+ * approval state. The Exam service independently owns attempt limits, the two
+ * immutable papers, answer state and grading. A signed raw-body contract binds
+ * the App's authorized form/window to the service launch; service denials are
+ * relayed without inventing a different reason.
  *
  * Idempotency: this app has no idempotency-key mechanism of its own (existing
  * patterns are DB upserts, see /api/exams/callback). The Exam service defines
@@ -101,32 +163,60 @@ export async function POST(request: NextRequest) {
  */
 async function startFinalExam(gate: SessionUser): Promise<Response> {
   try {
-    const availability = await getFinalExamAvailability(gate.registrationNumber);
-    if (!availability.available) {
-      return Response.json(
-        {
-          error: availability.opensAt
-            ? `The final exam opens after the last lecture, at ${availability.opensAt.toISOString()}.`
-            : "The final exam is not scheduled yet.",
-        },
-        { status: 409 },
-      );
+    const policy = await loadFinalPolicy(gate);
+    if (!policy.link || !policy.finalCase) {
+      return Response.json({ error: "The final exam is not scheduled yet." }, { status: 409 });
     }
-    const link = await ensureExamWorld(gate.registrationNumber, gate.name);
+    const finalForm: FinalExamForm | null = policy.finalCase.canStartRetake
+      ? "retake"
+      : policy.finalCase.canStartPrimary
+        ? "primary"
+        : null;
+    if (!finalForm) {
+      const error = policy.finalCase.phase === "request-open"
+        ? `The primary final has ended. You may request a retake until ${policy.finalCase.requestDeadline}.`
+        : policy.finalCase.phase === "retake-waiting"
+          ? `Your reserve-form retake opens at ${policy.finalCase.retakeAvailableAt}. Study hard—you’ve got this.`
+          : policy.finalCase.phase === "finalized"
+            ? "Your final grade has already been set."
+            : policy.finalCase.phase === "awaiting-grade"
+              ? "Your submitted final is awaiting grading."
+              : `No final-exam form is open right now. The primary opens at ${policy.finalCase.primaryOpensAt}.`;
+      return Response.json({ error }, { status: 409 });
+    }
+    if (!env.EXAM_CALLBACK_SECRET) {
+      return Response.json({ error: "Trusted exam launch is not configured." }, { status: 503 });
+    }
+
+    await syncQuestionBanks(policy.link);
+    const accessOpensAt = finalForm === "primary"
+      ? policy.finalCase.primaryOpensAt
+      : policy.finalCase.retakeAvailableAt!;
+    const accessExpiresAt = finalForm === "primary"
+      ? policy.finalCase.primaryClosesAt
+      : policy.finalCase.retakeClosesAt!;
+    const serviceBody = JSON.stringify({
+      student_id: policy.link.student_id,
+      curriculum_id: policy.link.curriculum_id,
+      student_sid: gate.registrationNumber,
+      final_form: finalForm,
+      authorized_at: policy.referenceTime.toISOString(),
+      access_opens_at: accessOpensAt,
+      access_expires_at: accessExpiresAt,
+      ...(finalForm === "retake" ? { retake_not_before: accessOpensAt } : {}),
+    });
+    const signature = createHmac("sha256", env.EXAM_CALLBACK_SECRET)
+      .update(serviceBody)
+      .digest("hex");
 
     const res = await fetch(`${EXAM_SYSTEM_URL}/api/exams/final/start`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "Idempotency-Key": randomUUID(),
+        "X-UnivAI-App-Signature": signature,
       },
-      body: JSON.stringify({
-        student_id: link.student_id,
-        curriculum_id: link.curriculum_id,
-        // Carried through so the exam system can echo it in the result webhook,
-        // routing the grade back to this owner (see /api/exams/callback).
-        student_sid: gate.registrationNumber,
-      }),
+      body: serviceBody,
     });
 
     const payload = await res.json().catch(() => null);
@@ -147,6 +237,16 @@ async function startFinalExam(gate: SessionUser): Promise<Response> {
     }
 
     const url = requireTrustedExamLaunchUrl(payload, EXAM_SYSTEM_URL);
+    if (typeof payload._id !== "string") {
+      return Response.json({ error: "The exam system omitted the exam id." }, { status: 502 });
+    }
+    await recordFinalExamStart({
+      studentId: gate.registrationNumber,
+      curriculumId: policy.link.curriculum_id,
+      form: finalForm,
+      examId: payload._id,
+      startedAt: policy.referenceTime,
+    });
     // Remember the status the service reported (session-scoped) so the /exams
     // page can render it. Denials are deliberately NOT persisted: they are
     // relayed to the caller as-is and never made to outlive a later change.

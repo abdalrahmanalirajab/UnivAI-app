@@ -1,4 +1,6 @@
 DELETE FROM attendance WHERE student_id = 'S-2026-000042';
+DELETE FROM ai_output_reports WHERE student_id = 'S-2026-000042';
+DELETE FROM ai_output_reactions WHERE student_id = 'S-2026-000042';
 DELETE FROM output_feedback WHERE student_id = 'S-2026-000042';
 DELETE FROM output_versions WHERE student_id = 'S-2026-000042';
 DELETE FROM qa_log WHERE student_id = 'S-2026-000042';
@@ -75,15 +77,22 @@ UPDATE lectures l
    AND l.student_id = 'S-2026-000042';
 
 INSERT INTO qa_log(
-  lecture_id, question, answer, citations, model_used, asked_at, student_id
+  id, lecture_id, question, answer, citations, model_used, asked_at, student_id, trace_id
 ) VALUES (
+  4201,
   4211,
   'What protects each learner''s material?',
   'Tenant filtering keeps each learner''s material separate.',
   '[{"page":2,"excerpt":"Tenant filtering keeps each learner''s records separate."}]',
   'standalone-fixture',
   '2026-07-28T10:30:00Z',
-  'S-2026-000042'
+  'S-2026-000042',
+  'standalone-qa-4201-v1'
+);
+SELECT setval(
+  pg_get_serial_sequence('qa_log', 'id'),
+  GREATEST((SELECT COALESCE(MAX(id), 1) FROM qa_log), 1),
+  true
 );
 
 INSERT INTO attendance(lecture_id, joined_at, status, late_minutes, completed_at, student_id)

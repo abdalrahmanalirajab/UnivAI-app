@@ -66,7 +66,12 @@ export default function LiveSample() {
                     />
                   </Box>
 
-                  <Paper className="lecture-slide">
+                  <Paper
+                    className="lecture-slide"
+                    data-generated-content="true"
+                    lang="en"
+                    dir="ltr"
+                  >
                     <Stack spacing={2}>
                       <Typography variant="overline" color="primary">
                         {liveSample.slideLabel}

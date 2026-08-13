@@ -6,6 +6,7 @@ import Accordion from "@mui/material/Accordion";
 import AccordionDetails from "@mui/material/AccordionDetails";
 import AccordionSummary from "@mui/material/AccordionSummary";
 import Alert from "@mui/material/Alert";
+import Autocomplete from "@mui/material/Autocomplete";
 import Avatar from "@mui/material/Avatar";
 import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
@@ -19,7 +20,6 @@ import DialogTitle from "@mui/material/DialogTitle";
 import Divider from "@mui/material/Divider";
 import Grid from "@mui/material/Grid";
 import LinearProgress from "@mui/material/LinearProgress";
-import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Tab from "@mui/material/Tab";
@@ -45,6 +45,9 @@ import WarningAmberOutlined from "@mui/icons-material/WarningAmberOutlined";
 import { formatCountdown, formatDateTime, formatLateness } from "@/lib/time";
 import RateLimitManager from "./RateLimitManager";
 import TranscriptReviewManager from "./TranscriptReviewManager";
+import FinalRetakeReviewManager from "./FinalRetakeReviewManager";
+import AdminNotificationMonitor from "./AdminNotificationMonitor";
+import AdminFeedbackReports from "./AdminFeedbackReports";
 
 type Student = { sid: string; name: string; email: string; role: string };
 type Book = {
@@ -71,6 +74,15 @@ type Attendance = {
   status: string;
   joinedAt: string | null;
   lateMinutes: number;
+  completedAt: string | null;
+  attendanceStatus: "attended" | "partially_attended" | "absent" | "upcoming";
+  attendancePercentage: number;
+  attendedLectureMinutes: number;
+  connectedSeconds: number;
+  isConnected: boolean;
+  inProgress: boolean;
+  disconnectCount: number;
+  lastDisconnectedAt: string | null;
 };
 type Grade = {
   id: number;
@@ -104,10 +116,16 @@ type AttendanceSummary = {
   upcomingCount: number;
   totalLateMinutes: number;
   averageLateMinutes: number;
+  attendedCount: number;
+  partiallyAttendedCount: number;
+  participationAbsentCount: number;
+  inProgressCount: number;
+  connectedCount: number;
+  averageAttendancePercentage: number;
 };
 type AdminState = {
   clock: { now: string; offsetMs: number };
-  students: Student[];
+  learner?: Student;
   sid?: string;
   books: Book[];
   lectures: Lecture[];
@@ -124,6 +142,12 @@ const EMPTY_SUMMARY: AttendanceSummary = {
   upcomingCount: 0,
   totalLateMinutes: 0,
   averageLateMinutes: 0,
+  attendedCount: 0,
+  partiallyAttendedCount: 0,
+  participationAbsentCount: 0,
+  inProgressCount: 0,
+  connectedCount: 0,
+  averageAttendancePercentage: 0,
 };
 
 type ConfirmAction = "regenerate" | "restart" | null;
@@ -146,6 +170,9 @@ export default function AdminPage() {
   const [busy, setBusy] = useState(false);
   const [isoInput, setIsoInput] = useState("");
   const [selectedSid, setSelectedSid] = useState("");
+  const [learnerOptions, setLearnerOptions] = useState<Student[]>([]);
+  const [learnerQuery, setLearnerQuery] = useState("");
+  const [learnerLoading, setLearnerLoading] = useState(false);
   const [tab, setTab] = useState(0);
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null);
   const loadSequence = useRef(0);
@@ -162,7 +189,7 @@ export default function AdminPage() {
       if (sequence !== loadSequence.current) return;
       setState({
         clock: raw.clock,
-        students: raw.students ?? [],
+        learner: raw.learner,
         sid: raw.sid,
         books: raw.books ?? [],
         lectures: raw.lectures ?? [],
@@ -177,6 +204,34 @@ export default function AdminPage() {
       setError(reason instanceof Error ? reason.message : "Could not load administration state.");
     }
   }, [selectedSid]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(async () => {
+      setLearnerLoading(true);
+      try {
+        const params = new URLSearchParams({ page: "1", pageSize: "25" });
+        if (learnerQuery.trim()) params.set("q", learnerQuery.trim());
+        const response = await fetch(`/api/admin/learners?${params}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        const body = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(body?.error ?? "Could not search learners.");
+        setLearnerOptions(body.learners ?? []);
+      } catch (reason) {
+        if ((reason as { name?: string })?.name !== "AbortError") {
+          setError(reason instanceof Error ? reason.message : "Could not search learners.");
+        }
+      } finally {
+        if (!controller.signal.aborted) setLearnerLoading(false);
+      }
+    }, 300);
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [learnerQuery]);
 
   const loadAudit = useCallback(async () => {
     try {
@@ -202,19 +257,20 @@ export default function AdminPage() {
   ) ?? false;
 
   useEffect(() => {
-    if (!building) return;
+    const watchingAttendance = Boolean(selectedSid) && (tab === 0 || tab === 2);
+    if (!building && !watchingAttendance) return;
     const poll = window.setInterval(() => void load(), 5_000);
     return () => window.clearInterval(poll);
-  }, [building, load]);
+  }, [building, load, selectedSid, tab]);
 
-  const selectedStudent = state?.students.find((student) => student.sid === selectedSid);
+  const selectedStudent =
+    state?.learner ?? learnerOptions.find((student) => student.sid === selectedSid);
   const latestBook = state?.books[0] ?? null;
   const flaggedCount = state?.grades.filter((grade) => grade.flagged).length ?? 0;
-  const summary = state?.attendanceSummary ?? EMPTY_SUMMARY;
-  const recordedAttendance = summary.onTimeCount + summary.lateCount + summary.absentCount;
-  const attendanceRate = recordedAttendance
-    ? Math.round(((summary.onTimeCount + summary.lateCount) / recordedAttendance) * 100)
-    : 0;
+  const summary = { ...EMPTY_SUMMARY, ...(state?.attendanceSummary ?? {}) };
+  const recordedAttendance =
+    summary.attendedCount + summary.partiallyAttendedCount + summary.participationAbsentCount;
+  const attendanceRate = summary.averageAttendancePercentage;
   const nextLecture = (() => {
     if (!state?.clock.now) return null;
     const nowMs = new Date(state.clock.now).getTime();
@@ -356,18 +412,27 @@ export default function AdminPage() {
         <CardContent>
           <Grid container spacing={2.5} className="align-center">
             <Grid size={{ xs: 12, md: 7 }}>
-              <TextField
-                select
+              <Autocomplete
                 fullWidth
-                label="Learner workspace"
-                value={selectedSid}
-                onChange={(event) => {
-                  const nextSid = event.target.value;
+                options={learnerOptions}
+                loading={learnerLoading}
+                filterOptions={(options) => options}
+                value={selectedStudent ?? null}
+                inputValue={learnerQuery}
+                isOptionEqualToValue={(option, value) => option.sid === value.sid}
+                getOptionLabel={(option) => `${option.name} · ${option.sid} · ${option.email}`}
+                onInputChange={(_event, value, reason) => {
+                  if (reason === "input" || reason === "clear") setLearnerQuery(value);
+                }}
+                onChange={(_event, student) => {
+                  const nextSid = student?.sid ?? "";
+                  setLearnerQuery(student?.name ?? "");
                   setSelectedSid(nextSid);
                   setState((current) =>
                     current
                       ? {
                           ...current,
+                          learner: student ?? undefined,
                           sid: undefined,
                           books: [],
                           lectures: [],
@@ -380,16 +445,16 @@ export default function AdminPage() {
                   );
                   setTab(0);
                 }}
-              >
-                <MenuItem value="">
-                  <em>Select a learner</em>
-                </MenuItem>
-                {(state?.students ?? []).map((student) => (
-                  <MenuItem key={student.sid} value={student.sid}>
-                    {student.name} · {student.sid} · {student.role}
-                  </MenuItem>
-                ))}
-              </TextField>
+                noOptionsText={learnerQuery ? "No matching learner" : "No learners found"}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Learner workspace"
+                    placeholder="Search name, email, or registration number"
+                    helperText="Server-bounded results; type to find any learner."
+                  />
+                )}
+              />
             </Grid>
             <Grid size={{ xs: 12, md: 5 }}>
               <Stack spacing={0.5} className="admin-clock-summary">
@@ -453,17 +518,17 @@ export default function AdminPage() {
                 />
                 <AdminMetric
                   icon={<EventAvailableOutlined />}
-                  label="Attendance"
+                  label="Attendance coverage"
                   value={recordedAttendance ? attendanceRate + "%" : "No records"}
                   detail={
-                    summary.onTimeCount +
-                    " on time · " +
-                    summary.lateCount +
-                    " late · " +
-                    summary.absentCount +
+                    summary.attendedCount +
+                    " attended · " +
+                    summary.partiallyAttendedCount +
+                    " partial · " +
+                    summary.participationAbsentCount +
                     " absent"
                   }
-                  tone={summary.absentCount ? "warning" : "success"}
+                  tone={summary.participationAbsentCount ? "warning" : "success"}
                 />
                 <AdminMetric
                   icon={<FactCheckOutlined />}
@@ -528,6 +593,7 @@ export default function AdminPage() {
                 </CardContent>
               </Card>
               <RateLimitManager registrationNumber={selectedSid} />
+              <FinalRetakeReviewManager registrationNumber={selectedSid} />
               <TranscriptReviewManager registrationNumber={selectedSid} />
             </>
           )}
@@ -677,11 +743,16 @@ export default function AdminPage() {
             <AccordionDetails>
               <Stack spacing={2}>
                 <Stack direction="row" spacing={1} className="wrap-row">
-                  <Chip color="success" label={"On time " + summary.onTimeCount} />
-                  <Chip color="warning" label={"Late " + summary.lateCount} />
-                  <Chip color="error" label={"Absent " + summary.absentCount} />
-                  <Chip variant="outlined" label={"Upcoming " + summary.upcomingCount} />
+                  <Chip color="success" label={"Attended " + summary.attendedCount} />
+                  <Chip color="warning" label={"Partially attended " + summary.partiallyAttendedCount} />
+                  <Chip color="error" label={"Absent " + summary.participationAbsentCount} />
+                  <Chip variant="outlined" label={"In progress " + summary.inProgressCount} />
+                  <Chip color="info" variant="outlined" label={"Connected now " + summary.connectedCount} />
                 </Stack>
+                <Typography variant="body2" color="text.secondary">
+                  Attended: 70% or more · Partially attended: 50–69.9% · Absent: below
+                  50%. In-progress coverage updates sentence by sentence.
+                </Typography>
                 <TableContainer className="admin-table-scroll">
                   <Table size="small">
                     <TableHead>
@@ -690,8 +761,12 @@ export default function AdminPage() {
                         <TableCell>Lecture</TableCell>
                         <TableCell>Starts</TableCell>
                         <TableCell>Joined</TableCell>
-                        <TableCell>Status</TableCell>
-                        <TableCell align="right">Lateness</TableCell>
+                        <TableCell>Presence</TableCell>
+                        <TableCell>Attendance</TableCell>
+                        <TableCell align="right">Coverage</TableCell>
+                        <TableCell align="right">Connected time</TableCell>
+                        <TableCell align="right">Disconnects</TableCell>
+                        <TableCell>Arrival</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -701,9 +776,32 @@ export default function AdminPage() {
                           <TableCell>{record.title}</TableCell>
                           <TableCell>{formatDateTime(record.startsAt)}</TableCell>
                           <TableCell>{formatDateTime(record.joinedAt)}</TableCell>
-                          <TableCell>{record.status.replace("_", " ")}</TableCell>
+                          <TableCell>
+                            {record.isConnected ? (
+                              <Chip size="small" color="success" label="Connected" />
+                            ) : record.inProgress ? (
+                              <Chip size="small" color="warning" variant="outlined" label="Waiting to rejoin" />
+                            ) : (
+                              "Offline"
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {record.attendanceStatus.replaceAll("_", " ")}
+                            {record.inProgress ? " (in progress)" : ""}
+                          </TableCell>
                           <TableCell align="right">
-                            {record.lateMinutes ? formatLateness(record.lateMinutes) : "—"}
+                            {record.attendancePercentage}% · {record.attendedLectureMinutes} min
+                          </TableCell>
+                          <TableCell align="right">
+                            {record.connectedSeconds
+                              ? formatCountdown(record.connectedSeconds * 1_000)
+                              : "—"}
+                          </TableCell>
+                          <TableCell align="right">{record.disconnectCount}</TableCell>
+                          <TableCell align="right">
+                            {record.status === "late"
+                              ? formatLateness(record.lateMinutes)
+                              : record.status.replace("_", " ")}
                           </TableCell>
                         </TableRow>
                       ))}
@@ -801,6 +899,8 @@ export default function AdminPage() {
 
       {tab === 3 ? (
         <Stack spacing={3}>
+          <AdminFeedbackReports selectedRegistrationNumber={selectedSid || undefined} />
+          <AdminNotificationMonitor selectedRegistrationNumber={selectedSid || undefined} />
           <Card>
             <CardContent>
               <Stack spacing={2.5}>
@@ -848,6 +948,7 @@ export default function AdminPage() {
                     fullWidth
                     label="Set exact ISO time"
                     placeholder="2026-08-01T10:00:00Z"
+                    slotProps={{ htmlInput: { "data-no-ui-translate": "true", dir: "ltr" } }}
                     value={isoInput}
                     onChange={(event) => setIsoInput(event.target.value)}
                   />

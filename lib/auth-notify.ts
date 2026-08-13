@@ -1,4 +1,4 @@
-import { sendEmail } from "./email";
+import { sendMonitoredEmail } from "./monitored-email";
 
 /**
  * User-facing notifications for privileged admin actions. Called from the
@@ -17,6 +17,7 @@ type BanCtx = {
   context: {
     returned?: {
       user?: {
+        id?: string;
         email?: string;
         name?: string;
         banReason?: string | null;
@@ -32,12 +33,20 @@ export async function sendBanNotification(ctx: unknown) {
   // A forbidden/failed ban throws before producing `returned.user`.
   const user = c.context.returned?.user;
   if (!user?.email) return;
+  const userId = user.id ?? c.body?.userId;
+  if (!userId) {
+    console.error("[notifications] ban email has no learner identity.");
+    return;
+  }
 
   const reason =
     user.banReason || c.body?.banReason || "No reason was provided.";
 
   try {
-    await sendEmail({
+    await sendMonitoredEmail({
+      userId,
+      category: "security",
+      eventType: "security.account_suspended",
       to: user.email,
       subject: "Your UnivAI account has been suspended",
       text: `Hi ${user.name ?? "there"},
@@ -48,7 +57,8 @@ Reason: ${reason}
 
 You will not be able to sign in while the suspension is in effect. If you believe this is a mistake, please reply to this email to contact support.`,
     });
-  } catch (err) {
-    console.error("ban notification email failed:", err);
+  } catch (error) {
+    const label = error instanceof Error ? error.name : "UnknownError";
+    console.error(`[notifications] ban email failed (${label}).`);
   }
 }

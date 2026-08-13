@@ -10,7 +10,7 @@ import { SCENARIOS, isStandalone } from "@/lib/runtime";
 export default function ScenarioPage() {
   if (!isStandalone()) notFound();
   return (
-    <Stack spacing={3}>
+    <Stack spacing={3} data-no-ui-translate="true" lang="en" dir="ltr">
       <Alert severity="warning">Standalone development data</Alert>
       <Typography variant="h4">Fixture scenarios</Typography>
       <Typography color="text.secondary">

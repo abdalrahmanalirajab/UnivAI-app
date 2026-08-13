@@ -4,6 +4,7 @@ import { env } from "@/lib/env";
 import { getSectionPack } from "@/lib/lectures";
 import { requireLearningActionApi } from "@/lib/session";
 import { enforceUserRateLimit } from "@/lib/rate-limits";
+import { sectionFeedbackTarget } from "@/lib/ai-output-feedback-types";
 
 export const dynamic = "force-dynamic";
 const TOKEN_TTL_SECONDS = 600;
@@ -81,6 +82,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
       title: section.payload.title,
       totalMinutes: section.payload.total_minutes,
       objectives: section.payload.objectives,
+      feedbackTarget: sectionFeedbackTarget(section.id, section.payloadHash),
     },
   });
 }

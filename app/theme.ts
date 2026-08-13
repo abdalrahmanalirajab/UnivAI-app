@@ -1,16 +1,18 @@
 import { createTheme } from "@mui/material/styles";
 
 const focusRing = {
-  outline: "2px solid var(--univai-palette-secondary-main)",
+  outline: "3px solid var(--univai-palette-secondary-main)",
   outlineOffset: 3,
 };
 
-const theme = createTheme({
-  cssVariables: {
-    cssVarPrefix: "univai",
-    colorSchemeSelector: "class",
-  },
-  colorSchemes: {
+export function createAppTheme(direction: "ltr" | "rtl" = "ltr") {
+  return createTheme({
+    direction,
+    cssVariables: {
+      cssVarPrefix: "univai",
+      colorSchemeSelector: "class",
+    },
+    colorSchemes: {
     light: {
       palette: {
         primary: {
@@ -21,8 +23,8 @@ const theme = createTheme({
         },
         secondary: {
           light: "#14B8A6",
-          main: "#0F766E",
-          dark: "#115E59",
+          main: "#0A5752",
+          dark: "#084C48",
           contrastText: "#FFFFFF",
         },
         background: {
@@ -31,24 +33,28 @@ const theme = createTheme({
         },
         text: {
           primary: "#172033",
-          secondary: "#566074",
+          secondary: "#424B5E",
         },
         divider: "rgba(42, 49, 80, 0.14)",
         success: {
-          main: "#257A54",
-          dark: "#155E3F",
+          main: "#125636",
+          dark: "#0D482D",
+          contrastText: "#FFFFFF",
         },
         warning: {
-          main: "#A35B00",
-          dark: "#7A4200",
+          main: "#704000",
+          dark: "#603700",
+          contrastText: "#FFFFFF",
         },
         error: {
-          main: "#B42318",
-          dark: "#8E1B12",
+          main: "#8E1B12",
+          dark: "#74160F",
+          contrastText: "#FFFFFF",
         },
         info: {
-          main: "#176B9B",
-          dark: "#0E527B",
+          main: "#0E527B",
+          dark: "#0A4568",
+          contrastText: "#FFFFFF",
         },
       },
     },
@@ -94,36 +100,36 @@ const theme = createTheme({
       },
     },
   },
-  typography: {
-    fontFamily:
-      'var(--font-univai), "Segoe UI", "Helvetica Neue", Arial, sans-serif',
+    typography: {
+      fontFamily:
+        'var(--font-univai), var(--font-univai-arabic), "Segoe UI", "Helvetica Neue", Arial, sans-serif',
     h1: {
       fontSize: "clamp(2.75rem, 7vw, 5.75rem)",
       fontWeight: 800,
-      letterSpacing: "-0.055em",
+      letterSpacing: direction === "rtl" ? "normal" : "-0.055em",
       lineHeight: 0.98,
     },
     h2: {
       fontSize: "clamp(2rem, 4vw, 3.5rem)",
       fontWeight: 800,
-      letterSpacing: "-0.04em",
+      letterSpacing: direction === "rtl" ? "normal" : "-0.04em",
       lineHeight: 1.05,
     },
     h3: {
       fontSize: "clamp(1.45rem, 2.4vw, 2.25rem)",
       fontWeight: 750,
-      letterSpacing: "-0.025em",
+      letterSpacing: direction === "rtl" ? "normal" : "-0.025em",
       lineHeight: 1.15,
     },
     h4: {
       fontSize: "1.4rem",
       fontWeight: 750,
-      letterSpacing: "-0.018em",
+      letterSpacing: direction === "rtl" ? "normal" : "-0.018em",
       lineHeight: 1.2,
     },
     h5: {
       fontWeight: 750,
-      letterSpacing: "-0.014em",
+      letterSpacing: direction === "rtl" ? "normal" : "-0.014em",
       lineHeight: 1.25,
     },
     h6: {
@@ -143,11 +149,11 @@ const theme = createTheme({
     },
     button: {
       fontWeight: 750,
-      letterSpacing: "-0.005em",
+      letterSpacing: direction === "rtl" ? "normal" : "-0.005em",
     },
     overline: {
       fontWeight: 800,
-      letterSpacing: "0.12em",
+      letterSpacing: direction === "rtl" ? "normal" : "0.12em",
       lineHeight: 1.5,
     },
   },
@@ -186,13 +192,18 @@ const theme = createTheme({
         "a, button, [role='button'], input, textarea, select": {
           WebkitTapHighlightColor: "transparent",
         },
+        "a:not(.MuiButtonBase-root):not(.MuiChip-root)": {
+          textDecorationLine: "underline",
+          textDecorationThickness: "0.1em",
+          textUnderlineOffset: "0.18em",
+        },
         "a:focus-visible, button:focus-visible, [role='button']:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible":
           focusRing,
         ".skip-link": {
           position: "fixed",
           zIndex: 2000,
           top: 12,
-          left: 12,
+          insetInlineStart: 12,
           transform: "translateY(-180%)",
           backgroundColor: "var(--univai-palette-background-paper)",
           color: "var(--univai-palette-text-primary)",
@@ -205,6 +216,13 @@ const theme = createTheme({
           minHeight: "calc(100vh - 72px)",
           paddingTop: 40,
           paddingBottom: 72,
+        },
+        ".legal-document-section": {
+          padding: 24,
+        },
+        ".privacy-request-heading": {
+          alignItems: "center",
+          flexWrap: "wrap",
         },
         ".standalone-notice": {
           paddingTop: 16,
@@ -242,7 +260,7 @@ const theme = createTheme({
           justifyContent: "center",
         },
         ".nav-actions": {
-          marginLeft: "auto !important",
+          marginInlineStart: "auto !important",
         },
         ".nav-link-active": {
           color: "var(--univai-palette-primary-main)",
@@ -284,71 +302,281 @@ const theme = createTheme({
         ".drawer-content": {
           height: "100%",
         },
-        ".signup-plan-intro": {
-          marginTop: 12,
-        },
-        ".signup-plan-grid": {
-          marginBlock: 12,
-        },
-        ".signup-plan-option": {
-          width: "100%",
-          height: "100%",
-          margin: "0 !important",
-          padding: 16,
-          alignItems: "flex-start",
-          border: "1px solid var(--univai-palette-divider)",
-          borderRadius: 16,
-          backgroundColor: "var(--univai-palette-background-paper)",
-          transition: "border-color 160ms ease, background-color 160ms ease",
-        },
-        ".signup-plan-option .MuiFormControlLabel-label": {
-          width: "100%",
-        },
-        ".signup-plan-selected": {
-          borderColor: "var(--univai-palette-primary-main)",
-          backgroundColor:
-            "color-mix(in srgb, var(--univai-palette-primary-main) 7%, var(--univai-palette-background-paper))",
-        },
-        ".signup-plan-copy": {
-          width: "100%",
-          paddingTop: 6,
-        },
-        ".plan-coin-allowance": {
-          fontWeight: "700 !important",
-        },
         ".subscription-workspace": {
           width: "100%",
-          maxWidth: 1180,
+          maxWidth: 1120,
           marginInline: "auto",
+          paddingBottom: 32,
+          gap: "18px !important",
+        },
+        ".subscription-workspace > :not(style) ~ :not(style)": {
+          marginTop: "0 !important",
+        },
+        ".subscription-hero": {
+          alignItems: "flex-start",
+          textAlign: "start",
+          paddingBlock: 0,
         },
         ".subscription-lede": {
-          maxWidth: 780,
+          maxWidth: 720,
+          fontSize: "1rem",
+        },
+        ".subscription-loading": {
+          minHeight: 56,
+          alignItems: "center",
+          justifyContent: "center",
+        },
+        ".subscription-action-rail": {
+          width: "100%",
+          minHeight: 58,
+          justifyContent: "space-between",
+          paddingBlock: 10,
+          borderTop: "1px solid var(--univai-palette-divider)",
+          borderBottom: "1px solid var(--univai-palette-divider)",
+        },
+        ".subscription-action-copy": {
+          flex: 1,
+        },
+        ".subscription-desktop-policy": {
+          display: "flex",
+        },
+        ".subscription-mobile-refund": {
+          display: "none !important",
+        },
+        ".subscription-refund-tooltip": {
+          maxWidth: "320px !important",
+          padding: "10px 12px !important",
+          borderRadius: "8px !important",
+        },
+        ".subscription-pricing-grid": {
+          alignItems: "stretch",
         },
         ".subscription-plan-card": {
           height: "100%",
           display: "flex",
           flexDirection: "column",
-          borderRadius: 20,
+          borderRadius: "16px !important",
+          borderColor: "var(--univai-palette-divider)",
+          background: "var(--univai-palette-background-paper)",
+          boxShadow: "none",
+          transition: "border-color 160ms ease, box-shadow 160ms ease",
+        },
+        ".subscription-plan-card:hover": {
+          borderColor:
+            "color-mix(in srgb, var(--univai-palette-primary-main) 38%, var(--univai-palette-divider))",
+          boxShadow: "0 8px 24px rgba(7, 13, 32, 0.08)",
         },
         ".subscription-plan-card .MuiCardContent-root": {
           flex: 1,
+          padding: "22px 22px 14px",
         },
         ".subscription-plan-card .MuiCardActions-root": {
-          padding: 16,
+          padding: "6px 22px 22px",
         },
-        ".subscription-plan-requested": {
-          borderColor: "var(--univai-palette-primary-main)",
-          backgroundColor:
-            "color-mix(in srgb, var(--univai-palette-primary-main) 5%, var(--univai-palette-background-paper))",
+        ".subscription-plan-featured": {
+          borderColor:
+            "color-mix(in srgb, var(--univai-palette-primary-main) 42%, var(--univai-palette-divider))",
         },
-        ".coin-wallet-card": {
-          borderRadius: 20,
-          background:
-            "linear-gradient(120deg, color-mix(in srgb, var(--univai-palette-primary-main) 9%, var(--univai-palette-background-paper)), color-mix(in srgb, var(--univai-palette-secondary-main) 7%, var(--univai-palette-background-paper)))",
+        ".subscription-plan-label": {
+          color: "var(--univai-palette-text-secondary)",
+          fontWeight: 700,
+          letterSpacing: "0.07em",
         },
-        ".subscription-cancel-row": {
-          maxWidth: 560,
-          alignItems: "flex-start",
+        ".subscription-plan-impact": {
+          minHeight: 44,
+          lineHeight: 1.45,
+        },
+        ".subscription-price-row": {
+          minHeight: 60,
+        },
+        ".subscription-currency": {
+          paddingBottom: 18,
+          fontWeight: 700,
+        },
+        ".subscription-price": {
+          lineHeight: 1,
+          letterSpacing: "-0.04em",
+        },
+        ".subscription-price-period": {
+          paddingBottom: 6,
+        },
+        ".subscription-coin-allowance": {
+          gap: 10,
+          minHeight: 54,
+          paddingBlock: 10,
+          borderTop: "1px solid var(--univai-palette-divider)",
+          borderBottom: "1px solid var(--univai-palette-divider)",
+        },
+        ".subscription-feature-panel": {
+          minHeight: 136,
+        },
+        ".subscription-feature-check": {
+          flexShrink: 0,
+          color: "var(--univai-palette-primary-main)",
+        },
+        ".subscription-plan-action": {
+          minHeight: 44,
+          borderRadius: "8px !important",
+          fontWeight: "700 !important",
+          boxShadow: "none !important",
+        },
+        ".subscription-plan-action.Mui-disabled": {
+          opacity: 0.68,
+        },
+        ".membership-dialog-backdrop": {
+          backdropFilter: "blur(4px)",
+          backgroundColor: "rgba(8, 12, 22, 0.58) !important",
+        },
+        ".membership-dialog-paper, .membership-confirm-paper": {
+          overflow: "hidden",
+          border: "1px solid var(--univai-palette-divider)",
+          borderRadius: "16px !important",
+          background: "var(--univai-palette-background-paper)",
+          boxShadow: "0 24px 70px rgba(4, 9, 24, 0.3)",
+        },
+        ".membership-dialog-paper": {
+          maxWidth: "620px !important",
+        },
+        ".membership-dialog-title": {
+          padding: "16px 20px 14px !important",
+        },
+        ".membership-dialog-content": {
+          padding: "0 20px 8px !important",
+        },
+        ".membership-overview-header": {
+          paddingBlock: 16,
+        },
+        ".membership-overview-balance": {
+          alignItems: "flex-end",
+        },
+        ".membership-dialog-tabs": {
+          minHeight: 40,
+          borderBottom: "1px solid var(--univai-palette-divider)",
+        },
+        ".membership-dialog-tabs .MuiTab-root": {
+          minWidth: 0,
+          minHeight: 44,
+          padding: "8px 12px",
+          textTransform: "none",
+        },
+        ".membership-dialog-tabs .MuiTabs-indicator": {
+          height: 2,
+        },
+        ".membership-tab-panel": {
+          padding: "18px 0 4px",
+        },
+        ".membership-detail-row": {
+          alignItems: "center",
+          paddingBlock: 12,
+          gap: 20,
+        },
+        ".membership-detail-row > :last-child": {
+          textAlign: "end",
+        },
+        ".membership-section-heading": {
+          alignItems: "center",
+          marginTop: "18px !important",
+          minHeight: 32,
+        },
+        ".membership-revoke-button": {
+          width: "fit-content",
+          marginTop: "12px !important",
+          paddingInline: "0 !important",
+        },
+        ".coin-activity-list": {
+          maxHeight: 320,
+          overflowY: "auto",
+          scrollbarGutter: "stable",
+        },
+        ".coin-activity-row": {
+          minHeight: 58,
+          padding: "8px 0 !important",
+        },
+        ".coin-activity-amount": {
+          alignItems: "flex-end",
+          flexShrink: 0,
+        },
+        ".membership-dialog-actions": {
+          padding: "8px 12px !important",
+        },
+        "@media (max-width: 600px)": {
+          ".subscription-workspace": {
+            paddingBottom: 28,
+            gap: "14px !important",
+          },
+          ".subscription-hero": {
+            alignItems: "flex-start",
+            textAlign: "start",
+            paddingBlock: "2px 0",
+          },
+          ".subscription-hero .MuiTypography-h3": {
+            fontSize: "1.8rem",
+            lineHeight: 1.12,
+          },
+          ".subscription-lede": {
+            fontSize: "0.95rem",
+          },
+          ".subscription-action-rail": {
+            minHeight: 0,
+            alignItems: "stretch !important",
+            flexDirection: "column !important",
+            padding: "10px !important",
+          },
+          ".subscription-action-copy": {
+            alignItems: "flex-start !important",
+          },
+          ".subscription-action-buttons": {
+            width: "100%",
+            alignItems: "stretch !important",
+          },
+          ".subscription-action-buttons .MuiButton-root": {
+            width: "100%",
+          },
+          ".subscription-desktop-policy": {
+            display: "none",
+          },
+          ".subscription-mobile-refund": {
+            display: "flex !important",
+            padding: "2px 9px !important",
+            borderRadius: "12px !important",
+            fontSize: "0.78rem",
+          },
+          ".subscription-mobile-refund .MuiAlert-icon": {
+            marginInlineEnd: 8,
+            padding: "5px 0",
+          },
+          ".subscription-mobile-refund .MuiAlert-message": {
+            padding: "5px 0",
+          },
+          ".subscription-plan-card": {
+            height: "auto",
+            borderRadius: "12px !important",
+          },
+          ".subscription-plan-card .MuiCardContent-root": {
+            padding: "18px 18px 12px",
+          },
+          ".subscription-plan-card .MuiCardActions-root": {
+            padding: "6px 18px 18px",
+          },
+          ".subscription-plan-impact": {
+            minHeight: 0,
+          },
+          ".subscription-feature-panel": {
+            minHeight: 0,
+          },
+          ".membership-dialog-paper": {
+            margin: "10px !important",
+            borderRadius: "12px !important",
+          },
+          ".membership-dialog-title": {
+            padding: "14px !important",
+          },
+          ".membership-dialog-content": {
+            padding: "0 14px 6px !important",
+          },
+          ".membership-overview-header": {
+            paddingBlock: 14,
+          },
         },
         ".subscription-teaser": {
           borderRadius: 18,
@@ -375,19 +603,6 @@ const theme = createTheme({
         ".landing-main": {
           overflow: "hidden",
         },
-        "@keyframes journeyLineFlow": {
-          "0%": { strokeDashoffset: 0 },
-          "100%": { strokeDashoffset: -0.145 },
-        },
-        "@keyframes journeyTravel": {
-          "0%": { strokeDashoffset: 0, opacity: 0.18 },
-          "12%, 88%": { opacity: 0.88 },
-          "100%": { strokeDashoffset: -0.945, opacity: 0.18 },
-        },
-        "@keyframes journeyNodePulse": {
-          "0%, 100%": { transform: "scale(0.72)", opacity: 0.22 },
-          "50%": { transform: "scale(1.22)", opacity: 0.58 },
-        },
         "@keyframes voicePulse": {
           "0%, 100%": {
             transform: "scale(0.86)",
@@ -402,115 +617,36 @@ const theme = createTheme({
           position: "absolute",
           zIndex: 0,
           inset: 0,
-          color: "var(--univai-palette-primary-main)",
-          opacity: 0.76,
+          overflow: "hidden",
           pointerEvents: "none",
           contain: "paint",
         },
-        ".background-path-layer": {
+        ".background-path-svg": {
           position: "absolute",
-          inset: "-2%",
-          width: "104%",
-          height: "104%",
-          transformOrigin: "center",
+          inset: 0,
+          width: "100%",
+          height: "100%",
           backfaceVisibility: "hidden",
         },
-        ".journey-field": {
-          transformOrigin: "center",
-          transform: "translate3d(0, 0, 0)",
+        ".background-path-base-layer": {
+          opacity: 0.52,
+          transform: "translateZ(0)",
         },
-        ".journey-base-path": {
-          strokeWidth: 1.15,
-          opacity: 0.29,
-          animation: "journeyLineFlow 4.8s linear infinite normal both",
+        ".background-path-motion-canvas": {
+          position: "absolute",
+          inset: 0,
+          width: "100%",
+          height: "100%",
+          opacity: 0.78,
+          transform: "translateZ(0)",
         },
-        ".journey-base-path-2, .journey-base-path-6": {
-          animationDuration: "7.2s",
-          animationDelay: "-1.3s",
-        },
-        ".journey-base-path-3, .journey-base-path-7": {
-          animationDuration: "6.4s",
-          animationDelay: "-2.5s",
-        },
-        ".journey-base-path-4, .journey-base-path-8": {
-          animationDuration: "8.1s",
-          animationDelay: "-3.8s",
-        },
-        ".journey-base-path-5": {
-          animationDuration: "6.9s",
-          animationDelay: "-4.6s",
-        },
-        ".journey-pulse": {
-          strokeWidth: 2.15,
-          opacity: 0,
-          animationName: "journeyTravel",
-          animationTimingFunction: "linear",
-          animationIterationCount: "infinite",
-          animationDirection: "normal",
-          animationFillMode: "both",
-        },
-        ".journey-pulse-1": {
-          animationDuration: "10.5s",
-          animationDelay: "-1.1s",
-        },
-        ".journey-pulse-2": {
-          animationDuration: "13s",
-          animationDelay: "-2.4s",
-        },
-        ".journey-pulse-3": {
-          animationDuration: "11.5s",
-          animationDelay: "-3.2s",
-        },
-        ".journey-pulse-4": {
-          animationDuration: "15s",
-          animationDelay: "-1.8s",
-        },
-        ".journey-pulse-5": {
-          animationDuration: "12.5s",
-          animationDelay: "-4s",
-        },
-        ".journey-pulse-6": {
-          animationDuration: "14s",
-          animationDelay: "-2.8s",
-        },
-        ".journey-pulse-7": {
-          animationDuration: "11.8s",
-          animationDelay: "-5.1s",
-        },
-        ".journey-pulse-8": {
-          animationDuration: "13.6s",
-          animationDelay: "-6.2s",
-        },
-        ".journey-waypoints": {
+        ".background-path-secondary": {
           color: "var(--univai-palette-secondary-main)",
+          opacity: 0.68,
         },
-        ".journey-node-ring": {
-          fill: "none",
-          stroke: "currentColor",
-          strokeWidth: 1.5,
-          transformBox: "fill-box",
-          transformOrigin: "center",
-          animation: "journeyNodePulse 4.6s ease-in-out infinite",
-        },
-        ".journey-node-core": {
-          fill: "currentColor",
-          stroke: "var(--univai-palette-background-default)",
-          strokeWidth: 1.5,
-        },
-        ".journey-origin, .journey-horizon": {
+        ".background-path-primary": {
           color: "var(--univai-palette-primary-main)",
-        },
-        ".journey-waypoint:nth-child(2) .journey-node-ring": {
-          animationDelay: "700ms",
-        },
-        ".journey-waypoint:nth-child(3) .journey-node-ring": {
-          animationDelay: "1.4s",
-        },
-        ".journey-waypoint:nth-child(4) .journey-node-ring": {
-          animationDelay: "2.1s",
-        },
-        ".journey-waypoint:nth-child(5) .journey-node-ring": {
-          animationDelay: "2.8s",
+          opacity: 0.82,
         },
         ".shape-hero-section": {
           isolation: "isolate",
@@ -582,7 +718,7 @@ const theme = createTheme({
           width: 420,
           height: 420,
           top: -180,
-          right: -120,
+          insetInlineEnd: -120,
           borderRadius: "50%",
           background:
             "color-mix(in srgb, var(--univai-palette-secondary-main) 10%, transparent)",
@@ -595,6 +731,9 @@ const theme = createTheme({
         },
         ".hero-headline-accent": {
           color: "var(--univai-palette-primary-main)",
+        },
+        ".hero-headline-secondary": {
+          color: "var(--univai-palette-secondary-main)",
         },
         ".hero-subhead": {
           maxWidth: 660,
@@ -624,8 +763,7 @@ const theme = createTheme({
         },
         ".hero-progress-card": {
           position: "absolute",
-          left: 18,
-          right: 18,
+          insetInline: 18,
           bottom: 18,
           padding: 16,
           color: "#FFFFFF !important",
@@ -636,7 +774,7 @@ const theme = createTheme({
         ".hero-float-chip": {
           position: "absolute",
           top: 18,
-          right: 18,
+          insetInlineEnd: 18,
           color: "#113A36 !important",
           background: "#CCFBF1 !important",
           boxShadow: "0 10px 28px rgba(8, 18, 42, 0.18)",
@@ -942,7 +1080,7 @@ const theme = createTheme({
           borderBottom: "1px solid var(--univai-palette-divider)",
         },
         ".admin-users-button": {
-          marginLeft: "auto !important",
+          marginInlineStart: "auto !important",
         },
         ".admin-command-card": {
           borderColor:
@@ -1036,11 +1174,11 @@ const theme = createTheme({
         ".lecture-sidebar": {
           height: "100%",
           padding: 28,
-          borderLeft: "1px solid var(--univai-palette-divider)",
+          borderInlineStart: "1px solid var(--univai-palette-divider)",
           backgroundColor: "var(--univai-palette-background-paper)",
         },
         ".source-answer": {
-          borderLeft: "4px solid var(--univai-palette-secondary-main)",
+          borderInlineStart: "4px solid var(--univai-palette-secondary-main)",
         },
         ".synced-voice-player": {
           padding: 16,
@@ -1057,7 +1195,7 @@ const theme = createTheme({
           flexWrap: "wrap",
         },
         ".voice-status-chip": {
-          marginLeft: "auto !important",
+          marginInlineStart: "auto !important",
         },
         ".synced-transcript": {
           lineHeight: 1.9,
@@ -1100,8 +1238,7 @@ const theme = createTheme({
           content: '""',
           position: "absolute",
           top: 23,
-          left: "8%",
-          right: "8%",
+          insetInline: "8%",
           height: 2,
           background:
             "linear-gradient(90deg, var(--univai-palette-primary-main), var(--univai-palette-secondary-main))",
@@ -1137,7 +1274,7 @@ const theme = createTheme({
           position: "absolute",
           width: 260,
           height: 260,
-          right: -80,
+          insetInlineEnd: -80,
           bottom: -150,
           borderRadius: "50%",
           border: "38px solid rgba(255, 255, 255, 0.09)",
@@ -1180,7 +1317,7 @@ const theme = createTheme({
             minHeight: 650,
           },
           ".lecture-sidebar": {
-            borderLeft: 0,
+            borderInlineStart: 0,
             borderTop: "1px solid var(--univai-palette-divider)",
           },
           ".journey-line::before": {
@@ -1232,7 +1369,7 @@ const theme = createTheme({
           },
           ".hero-float-chip": {
             top: 12,
-            right: 12,
+            insetInlineEnd: 12,
           },
           ".final-cta": {
             padding: 32,
@@ -1240,7 +1377,7 @@ const theme = createTheme({
           },
           ".voice-status-chip": {
             width: "100%",
-            marginLeft: "0 !important",
+            marginInlineStart: "0 !important",
           },
           ".footer-bottom": {
             alignItems: "flex-start",
@@ -1249,7 +1386,7 @@ const theme = createTheme({
             alignItems: "flex-start",
           },
           ".admin-users-button": {
-            marginLeft: "0 !important",
+            marginInlineStart: "0 !important",
           },
           ".admin-clock-summary": {
             alignItems: "flex-start",
@@ -1259,11 +1396,19 @@ const theme = createTheme({
           html: {
             scrollBehavior: "auto",
           },
+          body: {
+            backgroundAttachment: "scroll",
+          },
           "*, *::before, *::after": {
             animationDuration: "0.01ms !important",
             animationIterationCount: "1 !important",
             scrollBehavior: "auto !important",
             transitionDuration: "0.01ms !important",
+          },
+        },
+        "@media (forced-colors: active)": {
+          "a:focus-visible, button:focus-visible, [role='button']:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible": {
+            outlineColor: "CanvasText",
           },
         },
       }),
@@ -1306,7 +1451,7 @@ const theme = createTheme({
           textTransform: "none",
         },
         sizeSmall: {
-          minHeight: 36,
+          minHeight: 44,
           borderRadius: 11,
         },
         contained: {
@@ -1431,6 +1576,37 @@ const theme = createTheme({
           minHeight: 32,
           borderRadius: 10,
           fontWeight: 700,
+          "&.MuiChip-clickable": {
+            minHeight: 44,
+          },
+        },
+      },
+    },
+    MuiTab: {
+      styleOverrides: {
+        root: {
+          minHeight: 44,
+        },
+      },
+    },
+    MuiCheckbox: {
+      styleOverrides: {
+        root: {
+          padding: 10,
+        },
+      },
+    },
+    MuiRadio: {
+      styleOverrides: {
+        root: {
+          padding: 10,
+        },
+      },
+    },
+    MuiSwitch: {
+      styleOverrides: {
+        root: {
+          minHeight: 44,
         },
       },
     },
@@ -1570,6 +1746,9 @@ const theme = createTheme({
       },
     },
   },
-});
+  });
+}
+
+const theme = createAppTheme();
 
 export default theme;

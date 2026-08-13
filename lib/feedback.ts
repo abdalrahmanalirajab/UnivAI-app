@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { pool, query, queryOne } from "./db";
+import { ensureAiOutputFeedbackSchema } from "./ai-output-feedback";
+import { raiseHandFeedbackTarget, type AiOutputTarget } from "./ai-output-feedback-types";
 import type { CitationV1 } from "@/test/fixtures/citation-v1";
 
 export type FeedbackRating = "up" | "down";
@@ -13,6 +15,7 @@ export type OutputVersion = {
   book_id: number;
   status: OutputStatus;
   citations: CitationV1[];
+  feedbackTarget: AiOutputTarget;
   created_at: string;
 };
 
@@ -43,10 +46,11 @@ type QaSourceRow = {
   citations: unknown;
 };
 
-type OutputRow = Omit<OutputVersion, "citations"> & {
+type OutputRow = Omit<OutputVersion, "citations" | "feedbackTarget"> & {
   book_title: string | null;
   filename: string | null;
   source_citations: unknown;
+  source_trace_id: string;
 };
 
 let schemaPromise: Promise<void> | null = null;
@@ -157,6 +161,7 @@ function toOutput(row: OutputRow): OutputVersion {
     book_id: Number(row.book_id),
     status: row.status,
     citations: citation ? [citation] : [],
+    feedbackTarget: raiseHandFeedbackTarget(row.source_qa_id, row.source_trace_id),
     created_at: new Date(row.created_at).toISOString(),
   };
 }
@@ -165,7 +170,8 @@ async function selectOutput(registrationNumber: string, outputId: number): Promi
   const row = await queryOne<OutputRow>(
     `SELECT ov.id, ov.source_qa_id, ov.version::text AS output_version,
             ov.trace_id, ov.book_id, ov.status, ov.created_at,
-            b.title AS book_title, b.filename, q.citations AS source_citations
+            b.title AS book_title, b.filename, q.citations AS source_citations,
+            q.trace_id AS source_trace_id
        FROM output_versions ov
        JOIN qa_log q ON q.id = ov.source_qa_id
        JOIN books b ON b.id = ov.book_id
@@ -179,7 +185,7 @@ export async function getLatestLectureOutput(
   registrationNumber: string,
   lectureId: string,
 ): Promise<OutputVersion | null> {
-  await ensureFeedbackSchema();
+  await Promise.all([ensureFeedbackSchema(), ensureAiOutputFeedbackSchema()]);
   const source = await queryOne<QaSourceRow>(
     `SELECT q.id AS source_qa_id, l.book_id, b.title AS book_title,
             b.filename, q.citations
@@ -250,7 +256,7 @@ export async function createRetryVersion(
   registrationNumber: string,
   outputId: number,
 ): Promise<RetryResult> {
-  await ensureFeedbackSchema();
+  await Promise.all([ensureFeedbackSchema(), ensureAiOutputFeedbackSchema()]);
   const client = await pool.connect();
   try {
     await client.query("BEGIN");

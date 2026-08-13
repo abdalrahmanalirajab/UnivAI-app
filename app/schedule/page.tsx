@@ -47,7 +47,18 @@ type Lecture = {
   archiveAvailable: boolean;
   blockedMessage: string | null;
   slides: number;
-  attendance: { status: string; joinedAt: string | null; lateMinutes: number } | null;
+  attendance: {
+    status: string;
+    joinedAt: string | null;
+    lateMinutes: number;
+    attendanceStatus: string;
+    attendancePercentage: number;
+    attendedLectureMinutes: number;
+    connectedSeconds: number;
+    isConnected: boolean;
+    inProgress: boolean;
+    disconnectCount: number;
+  } | null;
 };
 
 /** The weekly practical session scheduled immediately after theory. */
@@ -76,6 +87,8 @@ const ATTENDANCE_COLOR: Record<string, "success" | "warning" | "error" | "defaul
   late: "warning",
   absent: "error",
   upcoming: "default",
+  attended: "success",
+  partially_attended: "warning",
 };
 
 /** The one line that tells you what to do about this lecture right now. */
@@ -87,6 +100,9 @@ function urgency(lecture: Lecture, now: Date | null): string {
   if (lecture.state === "upcoming") return `Starts ${formatRelative(lecture.startsAt, now)}`;
 
   if (lecture.state === "live") {
+    if (lecture.attendance?.inProgress && !lecture.attendance.isConnected) {
+      return "The lecturer is waiting for you to rejoin.";
+    }
     const toCutoff = ms(lecture.joinCutoffAt);
     if (toCutoff > 0) return `Doors close in ${formatCountdown(toCutoff)}`;
     return "The doors have closed for this lecture.";
@@ -301,7 +317,11 @@ export default function SchedulePage() {
             <Fragment key={lecture.id}>
               <ListItemButton onClick={() => setSelected(lecture)}>
                 <ListItemText
-                  primary={`Week ${lecture.week} — ${lecture.title}`}
+                  primary={
+                    <span data-generated-content="true" lang="en" dir="ltr">
+                      Week {lecture.week} — {lecture.title}
+                    </span>
+                  }
                   secondary={`${formatDateTime(lecture.startsAt)} · ${urgency(lecture, now)}`}
                 />
                 <Grid container spacing={1}>
@@ -319,11 +339,9 @@ export default function SchedulePage() {
                     <Grid>
                       <Chip
                         size="small"
-                        color={ATTENDANCE_COLOR[lecture.attendance.status] ?? "default"}
+                        color={ATTENDANCE_COLOR[lecture.attendance.attendanceStatus] ?? "default"}
                         label={
-                          lecture.attendance.status === "late"
-                            ? formatLateness(lecture.attendance.lateMinutes)
-                            : lecture.attendance.status.replace("_", " ")
+                          `${lecture.attendance.attendanceStatus.replaceAll("_", " ")} · ${lecture.attendance.attendancePercentage}%`
                         }
                       />
                     </Grid>
@@ -346,7 +364,11 @@ export default function SchedulePage() {
                 .map((section) => (
                   <ListItemButton key={section.id} component={Link} href={`/section/${section.id}`}>
                     <ListItemText
-                      primary={`Section — ${section.title}`}
+                      primary={
+                        <span data-generated-content="true" lang="en" dir="ltr">
+                          Section — {section.title}
+                        </span>
+                      }
                       secondary={`${formatDateTime(section.startsAt)} · ${section.durationMinutes} min · immediately after this lecture`}
                     />
                     <Grid container spacing={1}>
@@ -366,7 +388,13 @@ export default function SchedulePage() {
       </Accordion>
 
       <Dialog open={Boolean(selected)} onClose={() => setSelected(null)} fullWidth maxWidth="sm">
-        <DialogTitle>{selected ? `Week ${selected.week} — ${selected.title}` : ""}</DialogTitle>
+        <DialogTitle>
+          {selected ? (
+            <span data-generated-content="true" lang="en" dir="ltr">
+              Week {selected.week} — {selected.title}
+            </span>
+          ) : null}
+        </DialogTitle>
         <DialogContent dividers>
           {selected ? (
             <Stack spacing={2}>
@@ -414,11 +442,16 @@ export default function SchedulePage() {
                   Your attendance
                 </Typography>
                 {selected.attendance?.joinedAt ? (
-                  <Typography variant="body1">
-                    {selected.attendance.status === "late"
-                      ? `You joined ${formatLateness(selected.attendance.lateMinutes)}, at ${formatDateTime(selected.attendance.joinedAt)}.`
-                      : `You joined on time, at ${formatDateTime(selected.attendance.joinedAt)}.`}
-                  </Typography>
+                  <Stack spacing={0.5}>
+                    <Typography variant="body1">
+                      {selected.attendance.status === "late"
+                        ? `You joined ${formatLateness(selected.attendance.lateMinutes)}, at ${formatDateTime(selected.attendance.joinedAt)}.`
+                        : `You joined on time, at ${formatDateTime(selected.attendance.joinedAt)}.`}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {selected.attendance.attendancePercentage}% of lecture content · {selected.attendance.attendedLectureMinutes} attended minutes · {selected.attendance.disconnectCount} disconnect(s)
+                    </Typography>
+                  </Stack>
                 ) : selected.state === "done" ? (
                   <Typography variant="body1">You never joined this lecture.</Typography>
                 ) : (

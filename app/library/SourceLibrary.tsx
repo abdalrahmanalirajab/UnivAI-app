@@ -17,8 +17,7 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
 import DeleteIcon from "@mui/icons-material/Delete";
-import MenuBookRounded from "@mui/icons-material/MenuBookRounded";
-import Link from "next/link";
+import DownloadRounded from "@mui/icons-material/DownloadRounded";
 import { formatDateTime, formatRelative, useVirtualClock } from "@/lib/time";
 
 type Document = {
@@ -576,11 +575,12 @@ export default function SourceLibrary({
                         {doc.status === "ready" ? (
                           <Button
                             size="small"
-                            component={Link}
-                            href={`/library/read/${doc.id}`}
-                            startIcon={<MenuBookRounded />}
+                            component="a"
+                            href={`/api/documents/${doc.id}/download`}
+                            download
+                            startIcon={<DownloadRounded />}
                           >
-                            Read book
+                            Download PDF
                           </Button>
                         ) : null}
                         {doc.status === "failed" ||

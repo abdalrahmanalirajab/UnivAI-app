@@ -24,7 +24,7 @@ export default function VerifyEmailPage() {
 
   useEffect(() => {
     if (session?.user.emailVerified) {
-      router.replace("/start");
+      router.replace("/subscribe");
       router.refresh();
     }
   }, [router, session?.user.emailVerified]);
@@ -74,8 +74,8 @@ export default function VerifyEmailPage() {
       >
         {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend email"}
       </Button>
-      <Button component={Link} href="/start" fullWidth>
-        Continue setup
+      <Button component={Link} href="/subscribe" fullWidth>
+        Continue to memberships
       </Button>
     </AuthCard>
   );

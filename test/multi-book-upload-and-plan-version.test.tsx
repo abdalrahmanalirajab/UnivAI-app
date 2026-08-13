@@ -29,11 +29,18 @@ vi.mock("@/lib/db", () => ({
 const SID = "S-2026-000001";
 const OTHER_SID = "S-2026-000002";
 
-const { mockRequireUserApi, mockRequireVerifiedUserApi, mockRunPython, mockSpawnGeneration } = vi.hoisted(() => ({
+const {
+  mockRequireUserApi,
+  mockRequireVerifiedUserApi,
+  mockRunPython,
+  mockSpawnGeneration,
+  mockCancelGeneration,
+} = vi.hoisted(() => ({
   mockRequireUserApi: vi.fn(),
   mockRequireVerifiedUserApi: vi.fn(),
   mockRunPython: vi.fn(),
   mockSpawnGeneration: vi.fn(),
+  mockCancelGeneration: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@/lib/session", () => ({
@@ -53,7 +60,7 @@ vi.mock("@/lib/python", () => ({
 }));
 vi.mock("@/lib/generation", () => ({
   spawnGeneration: mockSpawnGeneration,
-  cancelGenerationForSource: vi.fn().mockResolvedValue(undefined),
+  cancelGenerationForSource: mockCancelGeneration,
 }));
 vi.mock("@/lib/runtime", () => ({ isStandalone: () => false }));
 vi.mock("@/lib/env", () => ({ env: { RAG_MCP_URL: "http://rag.test.local" } }));
@@ -345,6 +352,17 @@ function createDbFake(): FakeDb {
   });
 
   db.query.mockImplementation(async (sql: string, params: unknown[]) => {
+    if (
+      sql.includes('UPDATE "user"') &&
+      sql.includes('"eulaAccepted"')
+    ) {
+      return [];
+    }
+
+    if (sql.includes("INSERT INTO legal_acceptances")) {
+      return [];
+    }
+
     if (sql.includes("UPDATE books SET status = 'failed'")) {
       const row = db.books.find((b) => b.id === params[1]);
       if (row) {
@@ -423,7 +441,10 @@ function makeRequest(url: string, init?: ConstructorParameters<typeof NextReques
 
 function postForm(
   file: NodeFile | null,
-  metadata: Record<string, string> = {},
+  metadata: Record<string, string> = {
+    eulaAccepted: "true",
+    eulaVersion: "2026-08-12",
+  },
   url = "http://localhost/api/upload",
 ): NextRequest {
   const req = new NextRequest(url, { method: "POST" });
@@ -500,6 +521,11 @@ describe("MultiBookUploader — independent upload statuses", () => {
 
     expect(globalThis.fetch).not.toHaveBeenCalled();
     expect(screen.queryAllByText("Selected")).toHaveLength(3);
+    await user.click(
+      screen.getByRole("checkbox", {
+        name: /I accept the current EULA and Content Use Agreement/i,
+      }),
+    );
     await user.click(screen.getByRole("button", { name: "Start upload" }));
 
     await waitFor(() => {
@@ -941,6 +967,11 @@ describe("Documents route — safe removal", () => {
     db = createDbFake();
     useFakeDb(db);
     mockRequireUserApi.mockResolvedValue({ registrationNumber: SID });
+    mockRunPython.mockResolvedValue({
+      ok: true,
+      stdout: '{"ok":true,"message":"Removed tenant-scoped chunks."}',
+      stderr: "",
+    });
   });
 
   it("removing an unreferenced document succeeds and leaves the other documents intact", async () => {
@@ -969,6 +1000,32 @@ describe("Documents route — safe removal", () => {
     expect(remaining).toContainEqual({ id: 10, filename: "a.pdf", status: "ready" });
     expect(remaining).toContainEqual({ id: 12, filename: "c.pdf", status: "ready" });
     expect(db.books).toHaveLength(0);
+    expect(mockRunPython.mock.calls[0]?.slice(0, 3)).toEqual([
+      "services/rag-tools/rag_delete.py",
+      [SID, "1", "b.pdf"],
+      300_000,
+    ]);
+  });
+
+  it("retains SQL and file identities when tenant vector cleanup cannot be confirmed", async () => {
+    const { DELETE } = await import("@/app/api/collections/[collectionId]/documents/route");
+
+    seedCollection(db, 1, SID, "My Library");
+    seedDocument(db, 11, 1, SID, "private.pdf", "ready");
+    mockRunPython.mockResolvedValue({
+      ok: false,
+      stdout: '{"ok":false,"error":"RAG unavailable"}',
+      stderr: "",
+    });
+
+    const res = await DELETE(
+      makeRequest("http://localhost/api/collections/1/documents?documentId=11"),
+      { params: Promise.resolve({ collectionId: "1" }) },
+    );
+
+    expect(res.status).toBe(502);
+    expect(db.documents).toHaveLength(1);
+    expect(mockCancelGeneration).not.toHaveBeenCalled();
   });
 
   it("removes an unapproved source even while its course generation is active", async () => {
@@ -1055,6 +1112,23 @@ describe("Cross-user access — denied via mocked session identity", () => {
     );
     expect(res.status).toBe(403);
     expect(db.documents.length).toBe(1);
+    expect(mockRunPython).not.toHaveBeenCalled();
+  });
+
+  it("cannot smuggle another learner's document ID through an owned collection", async () => {
+    const { DELETE } = await import("@/app/api/collections/[collectionId]/documents/route");
+
+    seedCollection(db, 1, SID, "My Library");
+    seedDocument(db, 10, 1, OTHER_SID, "theirs.pdf", "ready");
+
+    const res = await DELETE(
+      makeRequest("http://localhost/api/collections/1/documents?documentId=10"),
+      { params: Promise.resolve({ collectionId: "1" }) },
+    );
+
+    expect(res.status).toBe(404);
+    expect(db.documents).toHaveLength(1);
+    expect(mockRunPython).not.toHaveBeenCalled();
   });
 
   it("retrying another user's document is denied — the student-scoped update touches no rows", async () => {
