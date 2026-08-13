@@ -29,4 +29,16 @@ describe("revoked session routing", () => {
       "http://localhost/login?redirect=%2Fprofile",
     );
   });
+
+  it.each([
+    "/legal",
+    "/legal/privacy?lang=en",
+    "/legal/eula?lang=en",
+  ])("allows anonymous access to the legal page %s", (path) => {
+    mocks.hasSessionCookie = false;
+    const response = proxy(new NextRequest(`http://localhost${path}`));
+
+    expect(response.headers.get("location")).toBeNull();
+    expect(response.headers.get("x-middleware-next")).toBe("1");
+  });
 });

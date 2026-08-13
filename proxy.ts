@@ -17,12 +17,19 @@ const PUBLIC_PATHS = new Set([
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const hasSession = Boolean(getSessionCookie(req));
+  const publicLegalPage = pathname === "/legal" || pathname.startsWith("/legal/");
   const publicCertificatePage = pathname.startsWith("/verify-certificate");
   const standaloneDevPage =
     process.env.UNIVAI_MODE === "standalone" &&
     (pathname === "/dev/scenarios" || pathname.startsWith("/lecture/"));
 
-  if (!hasSession && !PUBLIC_PATHS.has(pathname) && !publicCertificatePage && !standaloneDevPage) {
+  if (
+    !hasSession &&
+    !PUBLIC_PATHS.has(pathname) &&
+    !publicLegalPage &&
+    !publicCertificatePage &&
+    !standaloneDevPage
+  ) {
     const url = new URL("/login", req.url);
     url.searchParams.set("redirect", pathname);
     return NextResponse.redirect(url);
