@@ -10,6 +10,15 @@ function inline(value: string, fallback: string): string {
   return clean || fallback;
 }
 
+function paragraph(value: string, fallback: string): string {
+  const clean = value
+    .replace(/[\u0000-\u001f\u007f]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 2000);
+  return clean || fallback;
+}
+
 function finiteScore(value: number, label: string): string {
   if (!Number.isFinite(value) || value < 0) throw new Error(`${label} must be non-negative.`);
   return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
@@ -151,6 +160,49 @@ export function renderNotification(event: NotificationEvent): RenderedNotificati
           "Open your transcript",
           "/transcript",
         ),
+      };
+    }
+    case "absence.clarification_required": {
+      const question = paragraph(event.question, "Open your absence case to continue.");
+      return {
+        category: "assessment",
+        eventType: event.type,
+        subject: "Your absence case needs more information",
+        text: message(
+          "Your absence case needs more information",
+          question,
+          "Respond to your case",
+          "/absences",
+        ),
+      };
+    }
+    case "absence.decision": {
+      const labels = {
+        excused: "Absent with no grade lost for an approved cause",
+        access_only: "Replay access approved; the absence remains graded normally",
+        unexcused: "Absence not accepted",
+      } as const;
+      const reason = paragraph(event.decisionReason, "Open UnivAI to review the decision.");
+      return {
+        category: "assessment",
+        eventType: event.type,
+        subject: "Your absence case was decided",
+        text: message(
+          "Your absence case was decided",
+          `${labels[event.outcome]}. Administrator note: ${reason}`,
+          "Review the decision",
+          "/absences",
+        ),
+      };
+    }
+    case "admin.action_required": {
+      const title = inline(event.title, "Administrative action required");
+      const summary = paragraph(event.safeSummary, "Open the admin inbox to review this action.");
+      return {
+        category: "admin",
+        eventType: event.type,
+        subject: title,
+        text: message(title, summary, "Open the admin action inbox", "/admin#actions"),
       };
     }
     case "security.password_changed":

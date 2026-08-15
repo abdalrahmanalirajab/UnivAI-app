@@ -1,7 +1,7 @@
 import "server-only";
 
 import { pool, queryOne } from "./db";
-import { sendEmail, type EmailDeliveryOutcome } from "./email";
+import { submitEmail, type EmailDeliveryOutcome } from "./email";
 import type { NotificationCategory } from "./notification-types";
 
 type MonitoredEmailInput = {
@@ -45,7 +45,7 @@ function safeErrorLabel(error: unknown): string {
  */
 export async function sendMonitoredEmail(
   input: MonitoredEmailInput,
-  deliver: Delivery = sendEmail,
+  deliver?: Delivery,
 ): Promise<EmailDeliveryOutcome> {
   const eventType = safeInline(input.eventType, 80, "eventType");
   if (!/^[a-z][a-z0-9._-]{0,79}$/.test(eventType)) {
@@ -70,24 +70,32 @@ export async function sendMonitoredEmail(
   }
 
   try {
-    const outcome = (await deliver({
+    const options = {
       to: input.to,
       subject,
       text: input.text,
       idempotencyKey: input.idempotencyKey,
       terminalPreview: input.terminalPreview,
-    })) ?? "sent";
+    };
+    const receipt = deliver
+      ? {
+          outcome: ((await deliver(options)) ?? "sent") === "sent" ? "submitted" as const : "skipped" as const,
+          providerMessageId: null,
+        }
+      : await submitEmail(options);
+    const outcome: EmailDeliveryOutcome = receipt.outcome === "submitted" ? "sent" : "skipped";
     if (deliveryId) {
       try {
         await pool.query(
           `UPDATE notification_email_delivery_log
               SET status = $2,
-                  attempts = CASE WHEN $2 = 'sent' THEN 1 ELSE 0 END,
-                  sent_at = CASE WHEN $2 = 'sent' THEN CURRENT_TIMESTAMP ELSE NULL END,
+                  attempts = CASE WHEN $2 = 'submitted' THEN 1 ELSE 0 END,
+                  sent_at = CASE WHEN $2 = 'submitted' THEN CURRENT_TIMESTAMP ELSE NULL END,
+                  provider_message_id = $3,
                   last_error = NULL,
                   updated_at = CURRENT_TIMESTAMP
             WHERE id = $1::uuid AND status = 'queued'`,
-          [deliveryId, outcome],
+          [deliveryId, receipt.outcome, receipt.providerMessageId],
         );
       } catch {
         // The email was already delivered (or intentionally skipped). A

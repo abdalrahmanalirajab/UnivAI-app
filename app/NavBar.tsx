@@ -36,6 +36,7 @@ import SettingsOutlined from "@mui/icons-material/SettingsOutlined";
 import UploadFileOutlined from "@mui/icons-material/UploadFileOutlined";
 import TollOutlined from "@mui/icons-material/TollOutlined";
 import PrivacyTipOutlined from "@mui/icons-material/PrivacyTipOutlined";
+import FactCheckOutlined from "@mui/icons-material/FactCheckOutlined";
 import ThemeModeMenu from "./ThemeModeMenu";
 import BrandMark from "./components/BrandMark";
 import { useHydratedSession } from "@/lib/use-hydrated-session";
@@ -62,6 +63,7 @@ const STUDENT_ICONS = {
   schedule: EventOutlined,
   library: FolderCopyOutlined,
   dashboard: DashboardOutlined,
+  absences: FactCheckOutlined,
 } as const;
 
 export default function NavBar() {

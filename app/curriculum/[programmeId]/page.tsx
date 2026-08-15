@@ -74,7 +74,7 @@ export default function CurriculumPage({ params }: Props) {
 
   async function handleApprove() {
     if (!programme || !programmeId) return;
-    if (approvalBlocks.length > 0) return;
+    if (approvalBlocks.length > 0 || !programme.schedule) return;
     setApproving(true);
     setApproveError(null);
     try {
@@ -154,7 +154,7 @@ export default function CurriculumPage({ params }: Props) {
             variant="contained"
             color="primary"
             onClick={() => setConfirmOpen(true)}
-            disabled={approving || approvalBlocks.length > 0}
+            disabled={approving || approvalBlocks.length > 0 || !programme.schedule}
           >
             {approving ? "Approving…" : "Approve"}
           </Button>
@@ -170,6 +170,13 @@ export default function CurriculumPage({ params }: Props) {
           <AlertTitle>Approval blocked</AlertTitle>
           The learning path has unresolved issues. Review the specific reasons
           listed below before requesting approval.
+        </Alert>
+      ) : null}
+
+      {programme.status !== "approved" && !programme.schedule ? (
+        <Alert severity="warning">
+          <AlertTitle>Weekly schedule required</AlertTitle>
+          Choose and save the permanent lecture and section day/time before approval.
         </Alert>
       ) : null}
 
@@ -210,6 +217,11 @@ export default function CurriculumPage({ params }: Props) {
           <DialogContentText>
             Are you sure you want to approve &ldquo;{programme.name}&rdquo;?
           </DialogContentText>
+          {programme.schedule ? (
+            <DialogContentText>
+              Lecture: {programme.schedule.lectureLocalTime} every week; section: {programme.schedule.sectionLocalTime} every week ({programme.schedule.timezone}). These slots cannot be changed after approval.
+            </DialogContentText>
+          ) : null}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setConfirmOpen(false)} disabled={approving}>

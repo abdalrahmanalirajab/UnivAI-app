@@ -46,7 +46,8 @@ describe("direct email monitoring", () => {
     expect(JSON.stringify(insertParams)).not.toContain("never-store-this");
     expect(mocks.poolQuery.mock.calls[0][1]).toEqual([
       "4afd0cf8-3ac5-49b9-935f-6f40127d4567",
-      "sent",
+      "submitted",
+      null,
     ]);
   });
 
@@ -54,7 +55,7 @@ describe("direct email monitoring", () => {
     const deliver = vi.fn().mockResolvedValue("skipped");
     await expect(sendMonitoredEmail(input, deliver)).resolves.toBe("skipped");
     expect(mocks.poolQuery.mock.calls[0][1][1]).toBe("skipped");
-    expect(mocks.poolQuery.mock.calls[0][0]).toContain("CASE WHEN $2 = 'sent' THEN 1 ELSE 0 END");
+    expect(mocks.poolQuery.mock.calls[0][0]).toContain("CASE WHEN $2 = 'submitted' THEN 1 ELSE 0 END");
   });
 
   it("records only a safe failure label and rethrows the delivery failure", async () => {

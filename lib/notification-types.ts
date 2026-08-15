@@ -5,7 +5,7 @@ export const OPTIONAL_NOTIFICATION_CATEGORIES = [
   "transcript",
 ] as const;
 
-export const REQUIRED_NOTIFICATION_CATEGORIES = ["security", "billing"] as const;
+export const REQUIRED_NOTIFICATION_CATEGORIES = ["security", "billing", "admin"] as const;
 
 export type OptionalNotificationCategory =
   (typeof OPTIONAL_NOTIFICATION_CATEGORIES)[number];
@@ -39,6 +39,13 @@ export type NotificationEvent =
   | { type: "final.retake_scheduled"; availableAt: string | Date }
   | { type: "final.retake_declined"; reason: string }
   | { type: "transcript.ready"; courseTitle: string; grade: string }
+  | { type: "absence.clarification_required"; question: string }
+  | {
+      type: "absence.decision";
+      outcome: "excused" | "access_only" | "unexcused";
+      decisionReason: string;
+    }
+  | { type: "admin.action_required"; title: string; safeSummary: string }
   | { type: "security.password_changed" }
   | { type: "security.sessions_revoked" }
   | { type: "billing.subscription_activated"; planName: string }

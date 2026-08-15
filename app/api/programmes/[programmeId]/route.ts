@@ -3,12 +3,14 @@ import { requireUserApi } from "@/lib/session";
 import {
   getProgramme,
   updateProgrammePlan,
+  updateProgrammeSchedule,
   renameCourse,
   reorderCourses,
   mergeCourses,
   splitCourse,
   excludeCourse,
 } from "@/lib/programmes";
+import { ScheduleContractError, type Weekday } from "@/lib/schedule-contract";
 import type { ProgrammePlanV1 } from "@/test/fixtures/programme-plan-v1";
 import { enforceUserRateLimit } from "@/lib/rate-limits";
 
@@ -69,10 +71,10 @@ export async function PATCH(
 
   if (
     !operation ||
-    !["rename", "reorder", "override", "merge", "split", "exclude"].includes(operation)
+    !["rename", "reorder", "override", "merge", "split", "exclude", "schedule"].includes(operation)
   ) {
     return Response.json(
-      { error: "operation must be one of: rename, reorder, override, merge, split, exclude." },
+      { error: "operation must be one of: rename, reorder, override, merge, split, exclude, schedule." },
       { status: 400 },
     );
   }
@@ -101,6 +103,52 @@ export async function PATCH(
       { error: "Stale plan version. Refresh and try again.", current: programme },
       { status: 409 },
     );
+  }
+
+  if (operation === "schedule") {
+    const { timezone, lectureWeekday, lectureLocalTime, sectionWeekday, sectionLocalTime } = body;
+    if (
+      typeof timezone !== "string" ||
+      typeof lectureWeekday !== "number" ||
+      typeof lectureLocalTime !== "string" ||
+      typeof sectionWeekday !== "number" ||
+      typeof sectionLocalTime !== "string"
+    ) {
+      return Response.json(
+        { error: "timezone, lectureWeekday, lectureLocalTime, sectionWeekday, and sectionLocalTime are required." },
+        { status: 400 },
+      );
+    }
+    if (
+      !Number.isInteger(lectureWeekday) || lectureWeekday < 0 || lectureWeekday > 6 ||
+      !Number.isInteger(sectionWeekday) || sectionWeekday < 0 || sectionWeekday > 6
+    ) {
+      return Response.json({ error: "Lecture and section weekdays must be between 0 and 6." }, { status: 400 });
+    }
+    try {
+      const result = await updateProgrammeSchedule(
+        programmeId,
+        gate.registrationNumber,
+        {
+          timezone,
+          lectureWeekday: lectureWeekday as Weekday,
+          lectureLocalTime,
+          sectionWeekday: sectionWeekday as Weekday,
+          sectionLocalTime,
+        },
+        expectedVersion,
+      );
+      if (!result.ok) {
+        const status = result.error === "Programme not found." ? 404 : 409;
+        return Response.json({ error: result.error, current: result.current }, { status });
+      }
+      return Response.json({ programme: result.programme });
+    } catch (error) {
+      if (error instanceof ScheduleContractError) {
+        return Response.json({ error: error.message }, { status: 400 });
+      }
+      throw error;
+    }
   }
 
   let updatedPlan: ProgrammePlanV1;

@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   queryOne: vi.fn(),
   poolQuery: vi.fn(),
   sendEmail: vi.fn(),
+  submitEmail: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -13,10 +14,14 @@ vi.mock("@/lib/db", () => ({
   queryOne: mocks.queryOne,
   pool: { query: mocks.poolQuery },
 }));
-vi.mock("@/lib/email", () => ({ sendEmail: mocks.sendEmail }));
+vi.mock("@/lib/email", () => ({
+  sendEmail: mocks.sendEmail,
+  submitEmail: mocks.submitEmail,
+}));
 
 import {
   dispatchEmailNotifications,
+  enqueueCourseBuildNotificationForBook,
   enqueueCourseBuildNotifications,
   enqueueDueLectureReminders,
   enqueueEmailNotification,
@@ -117,7 +122,10 @@ describe("notification outbox", () => {
         attempts: 1,
       },
     ]);
-    mocks.sendEmail.mockResolvedValue(undefined);
+    mocks.submitEmail.mockResolvedValue({
+      outcome: "submitted",
+      providerMessageId: "provider-message-1",
+    });
     mocks.poolQuery.mockResolvedValue({ rows: [] });
 
     await expect(
@@ -125,12 +133,13 @@ describe("notification outbox", () => {
     ).resolves.toEqual({ claimed: 1, sent: 1, retrying: 0, failed: 0 });
 
     expect(mocks.query.mock.calls[0][0]).toContain("FOR UPDATE SKIP LOCKED");
-    expect(mocks.sendEmail).toHaveBeenCalledWith(
+    expect(mocks.submitEmail).toHaveBeenCalledWith(
       expect.objectContaining({
         idempotencyKey: "univai/a4d9f816-e097-4149-9992-c3eb76a386b1",
       }),
     );
-    expect(mocks.poolQuery.mock.calls[0][0]).toContain("status = 'sent'");
+    expect(mocks.poolQuery.mock.calls[0][0]).toContain("status = 'submitted'");
+    expect(mocks.poolQuery.mock.calls[0][1][2]).toBe("provider-message-1");
   });
 
   it("queues one stable reminder for a lecture inside the 24-hour window", async () => {
@@ -181,6 +190,24 @@ describe("notification outbox", () => {
     expect(mocks.queryOne.mock.calls[1][1][3]).toBe("course.failed");
   });
 
+  it("enqueues a terminal course event immediately from the generation producer", async () => {
+    mocks.queryOne
+      .mockResolvedValueOnce({
+        user_id: "55cbe793-8a4b-4518-88ea-25b43f19e24a",
+        book_id: 44,
+        course_title: "Operating Systems",
+        status: "ready",
+        failed_week: null,
+        failed_stage: null,
+        failed_attempt: null,
+      })
+      .mockResolvedValueOnce({ id: "course-ready-message", status: "pending" });
+
+    await expect(enqueueCourseBuildNotificationForBook(44)).resolves.toBe(true);
+    expect(mocks.queryOne.mock.calls[0][0]).toContain("book.id = $1");
+    expect(mocks.queryOne.mock.calls[1][1][3]).toBe("course.ready");
+  });
+
   it("queues the transcript email only after the review window releases", async () => {
     mocks.query
       .mockResolvedValueOnce([{ id: "tr_1" }])
@@ -213,7 +240,7 @@ describe("notification outbox", () => {
         attempts: 2,
       },
     ]);
-    mocks.sendEmail.mockRejectedValue(
+    mocks.submitEmail.mockRejectedValue(
       new Error("provider echoed private@example.test and secret=re_should_not_log"),
     );
     mocks.poolQuery.mockResolvedValue({ rows: [] });
@@ -234,7 +261,7 @@ describe("notification outbox", () => {
     mocks.query.mockResolvedValue([
       { id: "outbox-8", email: "x@y.test", subject: "X", text_body: "Y", attempts: 8 },
     ]);
-    mocks.sendEmail.mockRejectedValue(new TypeError("network"));
+    mocks.submitEmail.mockRejectedValue(new TypeError("network"));
     mocks.poolQuery.mockResolvedValue({ rows: [] });
 
     await expect(dispatchEmailNotifications({ workerId: "worker-8" })).resolves.toEqual({

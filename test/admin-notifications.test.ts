@@ -13,7 +13,7 @@ import {
 const deliveryRow = {
   id: "delivery-1",
   delivery_source: "outbox" as const,
-  delivery_status: "sent",
+  delivery_status: "submitted",
   category: "assessment",
   event_type: "assessment.result",
   subject: "Your assessment result",
@@ -24,6 +24,9 @@ const deliveryRow = {
   available_at: null,
   processing_started_at: null,
   sent_at: "2026-08-11T10:01:00.000Z",
+  provider_status: "sent",
+  provider_event_at: "2026-08-11T10:01:01.000Z",
+  delivered_at: null,
   learner_sid: "S-2026-000014",
   learner_name: "Ahmed",
   learner_email: "student@example.test",
@@ -34,7 +37,7 @@ describe("admin notification monitoring", () => {
 
   it("validates bounded filters", () => {
     expect(parseAdminNotificationFilters(new URLSearchParams("status=sent&page=2&pageSize=50")))
-      .toMatchObject({ status: "sent", page: 2, pageSize: 50 });
+      .toMatchObject({ status: "submitted", page: 2, pageSize: 50 });
     expect(() => parseAdminNotificationFilters(new URLSearchParams("status=unknown")))
       .toThrow("Unknown notification status");
     expect(() => parseAdminNotificationFilters(new URLSearchParams("event=reset token")))
@@ -44,7 +47,7 @@ describe("admin notification monitoring", () => {
   it("defaults to a global feed with learner identity and no message bodies", async () => {
     mocks.query
       .mockResolvedValueOnce([deliveryRow])
-      .mockResolvedValueOnce([{ delivery_status: "sent", count: "1" }]);
+      .mockResolvedValueOnce([{ delivery_status: "submitted", count: "1" }]);
     mocks.queryOne.mockResolvedValueOnce({ total: "1" });
 
     const result = await getAdminNotificationMonitor(null, {
@@ -54,7 +57,7 @@ describe("admin notification monitoring", () => {
 
     expect(result).toMatchObject({
       registrationNumber: null,
-      summary: { sent: 1 },
+      summary: { submitted: 1 },
       notifications: [{
         subject: "Your assessment result",
         error: "Email delivery failed.",
@@ -83,7 +86,7 @@ describe("admin notification monitoring", () => {
       .mockResolvedValueOnce({ total: "1" });
     mocks.query
       .mockResolvedValueOnce([deliveryRow])
-      .mockResolvedValueOnce([{ delivery_status: "sent", count: "1" }]);
+      .mockResolvedValueOnce([{ delivery_status: "submitted", count: "1" }]);
 
     const result = await getAdminNotificationMonitor("S-2026-000014", {
       category: "assessment",

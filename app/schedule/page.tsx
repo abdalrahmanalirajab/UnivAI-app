@@ -22,6 +22,11 @@ import ListItemButton from "@mui/material/ListItemButton";
 import ListItemText from "@mui/material/ListItemText";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
+import Table from "@mui/material/Table";
+import TableBody from "@mui/material/TableBody";
+import TableCell from "@mui/material/TableCell";
+import TableHead from "@mui/material/TableHead";
+import TableRow from "@mui/material/TableRow";
 import ExpandMoreRounded from "@mui/icons-material/ExpandMoreRounded";
 import Link from "next/link";
 import {
@@ -31,6 +36,11 @@ import {
   formatRelative,
   useVirtualClock,
 } from "@/lib/time";
+import {
+  scheduleTimeLabel,
+  WEEKDAY_NAMES,
+  type CourseScheduleContract,
+} from "@/lib/schedule-contract";
 
 type Lecture = {
   /** Set by the server; lectures whose payload predates session_type are still lectures. */
@@ -61,14 +71,14 @@ type Lecture = {
   } | null;
 };
 
-/** The weekly practical session scheduled immediately after theory. */
+/** The weekly practical session at its learner-selected fixed slot. */
 type Section = {
   session_type: "section";
   id: string;
   week: number;
   kind: string;
   title: string;
-  /** Immediately after its lecture ends. */
+  /** Fixed weekly section occurrence. */
   startsAt: string;
   endsAt: string;
   durationMinutes: number;
@@ -113,6 +123,7 @@ function urgency(lecture: Lecture, now: Date | null): string {
 
 export default function SchedulePage() {
   const [records, setRecords] = useState<ScheduleRecord[] | null>(null);
+  const [schedule, setSchedule] = useState<CourseScheduleContract | null>(null);
   const [selected, setSelected] = useState<Lecture | null>(null);
   const [stale, setStale] = useState<{ from: number; to: number } | null>(null);
   const [generation, setGeneration] = useState<{ status: string; error: string | null } | null>(
@@ -137,6 +148,7 @@ export default function SchedulePage() {
       planVersion?: number | null;
       generation?: { status: string; error: string | null } | null;
       lectures?: ScheduleRecord[];
+      schedule?: CourseScheduleContract | null;
     };
     try {
       data = await res.json();
@@ -164,6 +176,7 @@ export default function SchedulePage() {
     }
     planVersionRef.current = version;
     setGeneration(data.generation ?? null);
+    setSchedule(data.schedule ?? null);
     setRecords(loadedRecords);
     setSelected((current) => {
       if (!current) return null;
@@ -297,6 +310,50 @@ export default function SchedulePage() {
         </Alert>
       ) : null}
 
+      {schedule ? (
+        <Card variant="outlined">
+          <CardContent>
+            <Stack spacing={2}>
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={1} className="spread-row">
+                <Stack spacing={0.5}>
+                  <Typography variant="h6">Your weekly rhythm</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    One lecture and one section every week. Times use {schedule.timezone}.
+                  </Typography>
+                </Stack>
+                <Chip color="success" variant="outlined" label="Fixed schedule" />
+              </Stack>
+              <Table size="small" aria-label="Fixed weekly schedule">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Day</TableCell>
+                    <TableCell>Lecture</TableCell>
+                    <TableCell>Section</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {WEEKDAY_NAMES.map((day, index) => {
+                    const lectureTime = index === schedule.lectureWeekday
+                      ? scheduleTimeLabel(schedule.lectureLocalTime)
+                      : null;
+                    const sectionTime = index === schedule.sectionWeekday
+                      ? scheduleTimeLabel(schedule.sectionLocalTime)
+                      : null;
+                    return (
+                      <TableRow key={day} selected={Boolean(lectureTime || sectionTime)}>
+                        <TableCell component="th" scope="row">{day}</TableCell>
+                        <TableCell>{lectureTime ? <Chip color="primary" label={lectureTime} /> : "—"}</TableCell>
+                        <TableCell>{sectionTime ? <Chip color="secondary" label={sectionTime} /> : "—"}</TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </Stack>
+          </CardContent>
+        </Card>
+      ) : null}
+
       <Accordion>
         <AccordionSummary
           expandIcon={<ExpandMoreRounded />}
@@ -369,7 +426,7 @@ export default function SchedulePage() {
                           Section — {section.title}
                         </span>
                       }
-                      secondary={`${formatDateTime(section.startsAt)} · ${section.durationMinutes} min · immediately after this lecture`}
+                      secondary={`${formatDateTime(section.startsAt)} · ${section.durationMinutes} min · fixed weekly section time`}
                     />
                     <Grid container spacing={1}>
                       <Grid>

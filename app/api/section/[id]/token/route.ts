@@ -28,11 +28,11 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
   if (!section) return Response.json({ error: "No such section." }, { status: 404 });
   // Open on the clock, like the week's quiz: a section is practice for a
   // lecture that has been delivered, not a reward for staying to the last line.
-  if (!section.lectureEnded) {
+  if (!section.sectionOpen) {
     return Response.json(
       {
-        error: "This section opens when its lecture ends.",
-        opensAt: section.lectureEndsAt.toISOString(),
+        error: "This section opens at its fixed weekly time.",
+        opensAt: section.sectionStartsAt.toISOString(),
       },
       { status: 403 },
     );

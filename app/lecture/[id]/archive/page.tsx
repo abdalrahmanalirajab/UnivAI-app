@@ -6,7 +6,7 @@ import Typography from "@mui/material/Typography";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLectureMaterialAccess } from "@/lib/lecture-materials";
-import { readSlides } from "@/lib/lectures";
+import { readScript, readSlides } from "@/lib/lectures";
 import { requireLearningAction } from "@/lib/session";
 import OutputFeedback from "@/app/components/OutputFeedback";
 import { lectureFeedbackTarget } from "@/lib/ai-output-feedback-types";
@@ -41,7 +41,10 @@ export default async function LectureArchivePage({
     );
   }
 
-  const deck = await readSlides(user.registrationNumber, id);
+  const [deck, script] = await Promise.all([
+    readSlides(user.registrationNumber, id),
+    readScript(user.registrationNumber, access.week),
+  ]);
 
   return (
     <Stack spacing={3}>
@@ -60,7 +63,7 @@ export default async function LectureArchivePage({
       {deck ? (
         <>
           <Stack data-generated-content="true" lang="en" dir="ltr">
-            <LectureArchive deck={deck} />
+            <LectureArchive deck={deck} narration={script?.segments ?? []} />
           </Stack>
           {access.artifactId && access.artifactVersion ? (
             <OutputFeedback

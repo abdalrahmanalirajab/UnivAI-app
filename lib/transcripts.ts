@@ -230,7 +230,7 @@ export async function upsertCourseTranscript(
   );
   if (!finalGrade || Number(finalGrade.max_score) <= 0) return null;
 
-  const [book, lectureCountRow, attendanceRow, grades, semesterPlan] = await Promise.all([
+  const [book, lectureCountRow, attendanceRow, grades, semesterPlan, remedies] = await Promise.all([
     queryOne<{ id: number; title: string | null; filename: string }>(
       `SELECT id, title, filename FROM books
         WHERE student_id = $1 ORDER BY uploaded_at DESC, id DESC LIMIT 1`,
@@ -253,7 +253,14 @@ export async function upsertCourseTranscript(
          FROM lectures l
          LEFT JOIN attendance a
            ON a.lecture_id = l.id AND a.student_id = l.student_id
-        WHERE l.student_id = $1`,
+        WHERE l.student_id = $1
+          AND NOT EXISTS (
+            SELECT 1 FROM absence_case_items AS remedy
+             WHERE remedy.student_id = l.student_id
+               AND remedy.item_type = 'lecture'
+               AND remedy.week = l.week
+               AND remedy.remedy = 'exclude_from_denominator'
+          )`,
       [registrationNumber],
     ),
     query<GradeRow>(
@@ -262,16 +269,33 @@ export async function upsertCourseTranscript(
       [registrationNumber],
     ),
     readGeneratedSemesterPlan(registrationNumber),
+    query<{ item_type: "lecture" | "quiz"; week: number }>(
+      `SELECT DISTINCT item_type, week FROM absence_case_items
+        WHERE student_id = $1 AND remedy = 'exclude_from_denominator'`,
+      [registrationNumber],
+    ),
   ]);
 
   const lectureCount = Number(lectureCountRow?.total ?? 0);
-  const attendancePercentage = Number(attendanceRow?.percentage ?? 0);
+  const excusedLectureWeeks = new Set(
+    remedies.filter((item) => item.item_type === "lecture").map((item) => item.week),
+  );
+  const excusedQuizWeeks = new Set(
+    remedies.filter((item) => item.item_type === "quiz").map((item) => item.week),
+  );
+  const gradedAttendanceCount = Math.max(0, lectureCount - excusedLectureWeeks.size);
+  const expectedQuizCount = Math.max(0, lectureCount - excusedQuizWeeks.size);
+  const attendancePercentage = gradedAttendanceCount === 0 && lectureCount > 0
+    ? 100
+    : Number(attendanceRow?.percentage ?? 0);
+  const quizGrades = grades.filter(
+    (grade) => grade.kind === "quiz" && (grade.week === null || !excusedQuizWeeks.has(grade.week)),
+  );
   const expectedMidterms = expectedMidtermCount(semesterPlan?.semesterCount);
   const score = scoreCourse({
-    quizPercentage: assessmentPercentage(
-      grades.filter((grade) => grade.kind === "quiz"),
-      lectureCount,
-    ),
+    quizPercentage: expectedQuizCount === 0 && lectureCount > 0
+      ? 100
+      : assessmentPercentage(quizGrades, expectedQuizCount),
     attendancePercentage: lectureCount > 0 ? attendancePercentage : 0,
     midtermPercentage: assessmentPercentage(
       grades.filter((grade) => grade.kind === "midterm"),

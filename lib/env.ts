@@ -74,6 +74,7 @@ export const env = {
   // Empty RESEND_API_KEY => reset/verify links are logged to the console instead
   // of emailed (dev fallback); see lib/email.ts.
   RESEND_API_KEY: read("RESEND_API_KEY"),
+  RESEND_WEBHOOK_SECRET: read("RESEND_WEBHOOK_SECRET"),
   EMAIL_FROM: read("EMAIL_FROM", "UnivAI <onboarding@resend.dev>"),
   NOTIFICATION_DISPATCH_SECRET: read("NOTIFICATION_DISPATCH_SECRET"),
 

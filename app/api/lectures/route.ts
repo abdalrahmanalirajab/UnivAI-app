@@ -1,5 +1,6 @@
 import {
   approvedPlanVersion,
+  approvedCourseSchedule,
   BLOCKED_MESSAGE,
   getLectures,
   getSections,
@@ -20,10 +21,11 @@ export async function GET() {
 
   try {
     const lectures = await getLectures(sid);
-    const [sections, attendance, planVersion, book] = await Promise.all([
+    const [sections, attendance, planVersion, schedule, book] = await Promise.all([
       getSections(sid),
       getAttendance(sid),
       approvedPlanVersion(sid),
+      approvedCourseSchedule(sid),
       query<{ status: string; error: string | null }>(
         `SELECT status, error FROM books WHERE student_id = $1 ORDER BY id DESC LIMIT 1`,
         [sid],
@@ -81,6 +83,7 @@ export async function GET() {
     return Response.json({
       lectures: records,
       planVersion,
+      schedule,
       generation: book[0] ? { status: book[0].status, error: book[0].error } : null,
     });
   } catch (error) {

@@ -478,6 +478,13 @@ function fakeProgramme(overrides: Record<string, unknown> = {}) {
       workload: { total_credits: 0, total_lecture_hours: 0, total_tutorial_hours: 0, total_lab_hours: 0, weeks_per_semester: 0 },
       source_coverage: [],
     },
+    schedule_timezone: "Africa/Cairo",
+    lecture_weekday: 0,
+    lecture_local_time: "10:00:00",
+    section_weekday: 2,
+    section_local_time: "12:00:00",
+    schedule_locked_at: null,
+    first_lecture_at: null,
     approved_at: null,
     created_at: "2026-07-01T00:00:00Z",
     updated_at: "2026-07-01T00:00:00Z",
@@ -647,6 +654,7 @@ describe("Programme plan version — stale rejection", () => {
 
       mockQueryOne
         .mockResolvedValueOnce(fakeProgramme({ plan_version: 2, status: "proposed" }))
+        .mockResolvedValueOnce(null)
         .mockResolvedValueOnce(null);
 
       const result = await approveProgramme(1, "S-2026-000001", 2);
@@ -673,6 +681,7 @@ describe("Programme plan version — stale rejection", () => {
 
       mockQueryOne
         .mockResolvedValueOnce(fakeProgramme({ plan_version: 2, status: "proposed" }))
+        .mockResolvedValueOnce(null)
         .mockResolvedValueOnce(fakeProgramme({ plan_version: 2, status: "approved", approved_at: "2026-07-28T00:00:00Z" }));
 
       const result = await approveProgramme(1, "S-2026-000001", 2);
@@ -1178,12 +1187,13 @@ describe("Generation — exact-version approval only", () => {
 
     mockQueryOne
       .mockResolvedValueOnce(fakeProgramme({ plan_version: 3, status: "proposed" }))
+      .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(fakeProgramme({ plan_version: 3, status: "approved", approved_at: "2026-07-28T00:00:00Z" }));
 
     const result = await approveProgramme(1, "S-2026-000001", 3);
 
     expect(result.ok).toBe(true);
-    expect(mockQueryOne).toHaveBeenCalledTimes(2);
+    expect(mockQueryOne).toHaveBeenCalledTimes(3);
   });
 });
 

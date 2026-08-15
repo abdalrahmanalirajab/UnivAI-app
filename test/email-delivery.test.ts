@@ -13,7 +13,7 @@ describe("email delivery", () => {
   beforeEach(() => vi.restoreAllMocks());
 
   it("passes the stable idempotency key to Resend", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ id: "provider-message-1" }));
     vi.stubGlobal("fetch", fetchMock);
 
     await sendEmail({
@@ -35,7 +35,7 @@ describe("email delivery", () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(new Response(null, { status: 200 })),
+      vi.fn().mockResolvedValue(Response.json({ id: "provider-message-2" })),
     );
 
     await sendEmail({

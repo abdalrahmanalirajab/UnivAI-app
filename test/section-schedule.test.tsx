@@ -75,6 +75,21 @@ const LECTURE_WINDOW_MS = 60 * 60_000;
 const APPROVED_PLAN = { ...SEVEN_WEEK_PLAN_V1, section_packs: SECTION_PACKS_V1 };
 const SCHEDULE_BINDING = JSON.stringify({ programmeId: 1, planVersion: 1, weekCount: 7 });
 
+function approvedProgrammeRow(plan: unknown = APPROVED_PLAN) {
+  return {
+    id: 1,
+    plan_version: 1,
+    plan,
+    schedule_timezone: "UTC",
+    lecture_weekday: 2,
+    lecture_local_time: "10:00:00",
+    section_weekday: 4,
+    section_local_time: "15:00:00",
+    schedule_locked_at: new Date("2026-08-03T09:00:00.000Z"),
+    first_lecture_at: new Date(WEEK_STARTS[0]),
+  };
+}
+
 function lectureRows(weeks: number) {
   return WEEK_STARTS.slice(0, weeks).map((startsAt, index) => {
     const week = index + 1;
@@ -110,8 +125,8 @@ describe("getSections — sections only after their lecture", () => {
     mockQueryOne.mockResolvedValue({ offset_ms: "0" });
     mockQuery.mockImplementation(async (sql) => {
       const text = String(sql);
-      if (text.includes("SELECT id, plan_version, plan FROM programmes")) {
-        return [{ id: 1, plan_version: 1, plan: APPROVED_PLAN }];
+      if (text.includes("FROM programmes")) {
+        return [approvedProgrammeRow()];
       }
       if (text.includes("FROM section_packs")) return storedSectionRows();
       if (text.includes("SELECT week FROM lectures")) {
@@ -147,7 +162,7 @@ describe("getSections — sections only after their lecture", () => {
     expect(sections.every((s) => s.session_type === "section")).toBe(true);
   });
 
-  it("starts every section immediately after its own lecture ends", async () => {
+  it("starts every section at its immutable selected weekday and time", async () => {
     const { getSections, getLectures } = await import("@/lib/lectures");
     const lectures = await getLectures("S-2026-000001");
     const sections = await getSections("S-2026-000001");
@@ -155,7 +170,10 @@ describe("getSections — sections only after their lecture", () => {
     for (const section of sections) {
       const lecture = lectures.find((l) => l.week === section.week);
       expect(lecture).toBeDefined();
-      expect(section.startsAt.getTime()).toBe(lecture!.endsAt.getTime());
+      expect(section.startsAt.getUTCDay()).toBe(4);
+      expect(section.startsAt.getUTCHours()).toBe(15);
+      expect(section.startsAt.getUTCMinutes()).toBe(0);
+      expect(section.startsAt.getTime()).toBeGreaterThan(lecture!.endsAt.getTime());
       expect(lecture!.endsAt.getTime() - lecture!.startsAt.getTime()).toBe(LECTURE_WINDOW_MS);
     }
   });
@@ -174,8 +192,8 @@ describe("getSections — sections only after their lecture", () => {
   it("does not invent a placeholder when generated SectionPacks are absent", async () => {
     mockQuery.mockImplementation(async (sql) => {
       const text = String(sql);
-      if (text.includes("SELECT id, plan_version, plan FROM programmes")) {
-        return [{ id: 1, plan_version: 1, plan: SEVEN_WEEK_PLAN_V1 }];
+      if (text.includes("FROM programmes")) {
+        return [approvedProgrammeRow(SEVEN_WEEK_PLAN_V1)];
       }
       if (text.includes("FROM section_packs")) return [];
       if (text.includes("SELECT week FROM lectures")) {
@@ -362,8 +380,8 @@ describe("api routes — real backend behavior", () => {
       return null;
     });
     mockQuery.mockImplementation(async (sql: string) => {
-      if (sql.includes("SELECT id, plan_version, plan FROM programmes")) {
-        return [{ id: 1, plan_version: 1, plan: APPROVED_PLAN }];
+      if (sql.includes("FROM programmes")) {
+        return [approvedProgrammeRow()];
       }
       if (sql.includes("FROM section_packs")) return storedSectionRows();
       if (sql.includes("SELECT week FROM lectures")) return WEEK_ROWS;
@@ -417,8 +435,8 @@ describe("api routes — real backend behavior", () => {
   it("an approved plan with unusable data is rejected by the real corruption check", async () => {
     await setSession(sessionUser());
     mockQuery.mockImplementation(async (sql: string) => {
-      if (sql.includes("SELECT id, plan_version, plan FROM programmes")) {
-        return [{ id: 1, plan_version: 1, plan: { workload: {} } }];
+      if (sql.includes("FROM programmes")) {
+        return [approvedProgrammeRow({ workload: {} })];
       }
       if (sql.includes("SELECT status, error FROM books")) return [];
       throw new Error(`unexpected query: ${sql}`);
@@ -437,8 +455,8 @@ describe("api routes — real backend behavior", () => {
     mockGeneratedWeekCount.mockResolvedValue(5);
     mockGetSetting.mockResolvedValue(SCHEDULE_BINDING);
     mockQuery.mockImplementation(async (sql: string) => {
-      if (sql.includes("SELECT id, plan_version, plan FROM programmes")) {
-        return [{ id: 1, plan_version: 1, plan: APPROVED_PLAN }];
+      if (sql.includes("FROM programmes")) {
+        return [approvedProgrammeRow()];
       }
       if (sql.includes("FROM section_packs")) return storedSectionRows().filter((row) => row.week <= 5);
       if (sql.includes("SELECT week FROM lectures")) return WEEK_ROWS;
@@ -495,7 +513,7 @@ describe("api routes — real backend behavior", () => {
     expect(res.status).toBe(200);
 
     const planCall = mockQuery.mock.calls.find(([sql]) =>
-      String(sql).includes("SELECT id, plan_version, plan FROM programmes")
+      String(sql).includes("FROM programmes")
     );
     expect(planCall).toBeDefined();
     expect(planCall?.[1]).toEqual(["S-2026-000002"]);
@@ -535,8 +553,8 @@ describe("api routes — real backend behavior", () => {
       mockQuery.mockImplementation(async (sql: string) => {
         if (sql.includes("MIN(starts_at)"))
           return [{ starts_at: new Date("2099-01-01T10:00:00.000Z") }];
-        if (sql.includes("SELECT id, plan_version, plan FROM programmes"))
-          return [{ id: 1, plan_version: 1, plan: APPROVED_PLAN }];
+        if (sql.includes("FROM programmes"))
+          return [approvedProgrammeRow()];
         if (sql.includes("FROM section_packs")) return storedSectionRows();
         if (sql.includes("SELECT week FROM lectures")) return WEEK_ROWS;
         if (sql.includes("WITH latest AS")) return [];

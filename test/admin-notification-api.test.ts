@@ -19,10 +19,10 @@ import { GET } from "@/app/api/admin/notifications/route";
 
 const safeMonitor = {
   registrationNumber: null,
-  summary: { queued: 0, retrying: 0, processing: 0, sent: 1, failed: 0, skipped: 0 },
+  summary: { queued: 0, retrying: 0, processing: 0, submitted: 1, failed: 0, skipped: 0 },
   notifications: [{
     id: "delivery-1",
-    status: "sent",
+    status: "submitted",
     subject: "Verify your UnivAI email",
     learner: { registrationNumber: "S-2026-000014", name: "Ahmed", email: "a@example.test" },
   }],
@@ -66,7 +66,7 @@ describe("admin notification API", () => {
     expect(selected.status).toBe(200);
     expect(mocks.getMonitor).toHaveBeenCalledWith(
       "S-2026-000014",
-      expect.objectContaining({ status: "sent" }),
+      expect.objectContaining({ status: "submitted" }),
     );
 
     expect((await GET(new NextRequest("http://localhost/api/admin/notifications?sid=bad"))).status)

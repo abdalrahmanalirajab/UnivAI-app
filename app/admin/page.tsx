@@ -48,6 +48,7 @@ import TranscriptReviewManager from "./TranscriptReviewManager";
 import FinalRetakeReviewManager from "./FinalRetakeReviewManager";
 import AdminNotificationMonitor from "./AdminNotificationMonitor";
 import AdminFeedbackReports from "./AdminFeedbackReports";
+import AdminActionInbox from "./AdminActionInbox";
 
 type Student = { sid: string; name: string; email: string; role: string };
 type Book = {
@@ -407,6 +408,8 @@ export default function AdminPage() {
           {notice}
         </Alert>
       ) : null}
+
+      <AdminActionInbox />
 
       <Card className="admin-command-card">
         <CardContent>

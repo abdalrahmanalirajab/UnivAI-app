@@ -39,6 +39,7 @@ import ProgrammeGraph, {
   type ApprovalBlock,
   type LearningPathLoad,
 } from "./ProgrammeGraph";
+import WeeklyScheduleEditor from "./WeeklyScheduleEditor";
 
 type Props = {
   programme: Programme;
@@ -367,6 +368,16 @@ export default function CurriculumWorkspace({
         plan={plan}
         learningPath={resolvedLearningPath}
         completedBookIds={completedBookIds}
+      />
+
+      <WeeklyScheduleEditor
+        key={`schedule:${programme.id}:${programme.plan_version}`}
+        programme={programme}
+        programmeId={programmeId}
+        onProgrammeUpdated={(updated) => {
+          setProgramme(updated);
+          onProgrammeUpdated(updated);
+        }}
       />
 
       {programme.status !== "approved" ? (

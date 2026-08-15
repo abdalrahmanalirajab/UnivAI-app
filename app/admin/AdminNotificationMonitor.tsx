@@ -22,8 +22,8 @@ import MailOutlineRounded from "@mui/icons-material/MailOutlineRounded";
 
 import { formatDateTime } from "@/lib/time";
 
-const STATUSES = ["queued", "retrying", "processing", "sent", "failed", "skipped"] as const;
-const CATEGORIES = ["course", "lecture", "assessment", "transcript", "security", "billing"] as const;
+const STATUSES = ["queued", "retrying", "processing", "submitted", "failed", "skipped"] as const;
+const CATEGORIES = ["course", "lecture", "assessment", "transcript", "security", "billing", "admin"] as const;
 
 type DeliveryStatus = (typeof STATUSES)[number];
 type DeliveryCategory = (typeof CATEGORIES)[number];
@@ -43,6 +43,9 @@ type Delivery = {
   nextAttemptAt: string | null;
   processingStartedAt: string | null;
   sentAt: string | null;
+  providerStatus: string;
+  providerEventAt: string | null;
+  deliveredAt: string | null;
 };
 type MonitorResponse = {
   summary: Record<DeliveryStatus, number>;
@@ -53,7 +56,7 @@ type MonitorResponse = {
 const EMPTY_FILTERS: Filters = { status: "", category: "", event: "" };
 
 function statusColor(status: DeliveryStatus): "default" | "success" | "error" | "warning" | "info" {
-  if (status === "sent") return "success";
+  if (status === "submitted") return "info";
   if (status === "failed") return "error";
   if (status === "retrying") return "warning";
   if (status === "queued" || status === "processing") return "info";
@@ -221,19 +224,20 @@ export default function AdminNotificationMonitor({
                 <Table size="small">
                   <TableHead>
                     <TableRow>
-                      <TableCell>Learner</TableCell>
+                      <TableCell>Recipient</TableCell>
                       <TableCell>Status</TableCell>
                       <TableCell>Notification</TableCell>
                       <TableCell>Subject</TableCell>
                       <TableCell>Attempts</TableCell>
                       <TableCell>Timing</TableCell>
+                      <TableCell>Provider</TableCell>
                       <TableCell>Error</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {data.notifications.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={7}>No delivery records match these filters.</TableCell>
+                        <TableCell colSpan={8}>No delivery records match these filters.</TableCell>
                       </TableRow>
                     ) : data.notifications.map((delivery) => (
                       <TableRow key={`${delivery.source}-${delivery.id}`}>
@@ -260,9 +264,22 @@ export default function AdminNotificationMonitor({
                         <TableCell>{delivery.attempts}</TableCell>
                         <TableCell>
                           <Typography component="div" variant="caption">Created: {formatDateTime(delivery.createdAt)}</Typography>
-                          {delivery.sentAt ? <Typography component="div" variant="caption">Sent: {formatDateTime(delivery.sentAt)}</Typography> : null}
+                          {delivery.sentAt ? <Typography component="div" variant="caption">Submitted: {formatDateTime(delivery.sentAt)}</Typography> : null}
                           {delivery.nextAttemptAt ? <Typography component="div" variant="caption">Next: {formatDateTime(delivery.nextAttemptAt)}</Typography> : null}
                           {delivery.processingStartedAt ? <Typography component="div" variant="caption">Started: {formatDateTime(delivery.processingStartedAt)}</Typography> : null}
+                        </TableCell>
+                        <TableCell>
+                          <Chip
+                            size="small"
+                            color={delivery.providerStatus === "delivered" ? "success" : delivery.providerStatus === "failed" || delivery.providerStatus === "bounced" ? "error" : "default"}
+                            label={titleCase(delivery.providerStatus)}
+                            variant="outlined"
+                          />
+                          {delivery.deliveredAt ? (
+                            <Typography component="div" variant="caption">Delivered: {formatDateTime(delivery.deliveredAt)}</Typography>
+                          ) : delivery.providerEventAt ? (
+                            <Typography component="div" variant="caption">Updated: {formatDateTime(delivery.providerEventAt)}</Typography>
+                          ) : null}
                         </TableCell>
                         <TableCell>{delivery.error ?? "—"}</TableCell>
                       </TableRow>

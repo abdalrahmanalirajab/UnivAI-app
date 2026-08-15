@@ -1,6 +1,13 @@
 import { queryOne } from "./db";
 import type { ProgrammePlanV1, Course } from "@/test/fixtures/programme-plan-v1";
 import type { LearningPathV1 } from "@/test/fixtures/learning-path-v1";
+import { now } from "./clock";
+import {
+  nextLectureOccurrence,
+  validateScheduleContract,
+  type CourseScheduleContract,
+  type EditableCourseSchedule,
+} from "./schedule-contract";
 
 export type ProgrammeStatus = "proposed" | "approved";
 
@@ -12,6 +19,7 @@ export type Programme = {
   status: ProgrammeStatus;
   plan_version: number;
   plan: ProgrammePlanV1;
+  schedule?: CourseScheduleContract | null;
   approved_at: string | null;
   created_at: string;
   updated_at: string;
@@ -61,11 +69,51 @@ export function learningPathApprovalErrors(
   return [...new Set(errors)];
 }
 
-const COLUMNS =
-  "id, student_id, collection_id, name, status, plan_version, plan, approved_at, created_at, updated_at";
+const COLUMNS = `id, student_id, collection_id, name, status, plan_version, plan,
+  schedule_timezone, lecture_weekday, lecture_local_time,
+  section_weekday, section_local_time, schedule_locked_at, first_lecture_at,
+  approved_at, created_at, updated_at`;
+
+function iso(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  const date = value instanceof Date ? value : new Date(String(value));
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function localTime(value: unknown): string {
+  return String(value ?? "").slice(0, 5);
+}
 
 function toProgramme(row: Record<string, unknown>): Programme {
-  return row as unknown as Programme;
+  const {
+    schedule_timezone: timezone,
+    lecture_weekday: lectureWeekday,
+    lecture_local_time: lectureLocalTime,
+    section_weekday: sectionWeekday,
+    section_local_time: sectionLocalTime,
+    schedule_locked_at: scheduleLockedAt,
+    first_lecture_at: firstLectureAt,
+    ...programme
+  } = row;
+  const schedule =
+    typeof timezone === "string" &&
+    typeof lectureWeekday === "number" &&
+    typeof sectionWeekday === "number" &&
+    lectureLocalTime !== null &&
+    lectureLocalTime !== undefined &&
+    sectionLocalTime !== null &&
+    sectionLocalTime !== undefined
+      ? {
+          timezone,
+          lectureWeekday,
+          lectureLocalTime: localTime(lectureLocalTime),
+          sectionWeekday,
+          sectionLocalTime: localTime(sectionLocalTime),
+          lockedAt: iso(scheduleLockedAt),
+          firstLectureAt: iso(firstLectureAt),
+        } as CourseScheduleContract
+      : null;
+  return { ...programme, schedule } as unknown as Programme;
 }
 
 export async function getProgramme(
@@ -165,6 +213,64 @@ export async function updateProgrammePlan(
   return { ok: true, programme: toProgramme(row) };
 }
 
+/** Save the learner's weekly rhythm as part of the optimistic programme contract. */
+export async function updateProgrammeSchedule(
+  programmeId: number,
+  registrationNumber: string,
+  scheduleInput: EditableCourseSchedule,
+  expectedVersion: number,
+): Promise<ProgrammeResult> {
+  const schedule = validateScheduleContract(scheduleInput);
+  const current = await getProgramme(programmeId, registrationNumber);
+  if (!current) return { ok: false, error: "Programme not found.", current: null };
+  if (current.status === "approved") {
+    return { ok: false, error: "Programme schedule is locked after approval.", current };
+  }
+  if (current.plan_version !== expectedVersion) {
+    return { ok: false, error: "Stale plan version. Refresh and try again.", current };
+  }
+
+  const nextVersion = expectedVersion + 1;
+  const nextPlan: ProgrammePlanV1 = current.plan.learning_path
+    ? {
+        ...current.plan,
+        learning_path: { ...current.plan.learning_path, plan_version: nextVersion },
+      }
+    : current.plan;
+  const row = await queryOne<Record<string, unknown>>(
+    `UPDATE programmes
+        SET plan = $1::jsonb,
+            plan_version = plan_version + 1,
+            schedule_timezone = $2,
+            lecture_weekday = $3,
+            lecture_local_time = $4::time,
+            section_weekday = $5,
+            section_local_time = $6::time,
+            schedule_locked_at = NULL,
+            first_lecture_at = NULL,
+            updated_at = NOW()
+      WHERE id = $7 AND student_id = $8
+        AND plan_version = $9 AND status = 'proposed'
+      RETURNING ${COLUMNS}`,
+    [
+      JSON.stringify(nextPlan),
+      schedule.timezone,
+      schedule.lectureWeekday,
+      schedule.lectureLocalTime,
+      schedule.sectionWeekday,
+      schedule.sectionLocalTime,
+      programmeId,
+      registrationNumber,
+      expectedVersion,
+    ],
+  );
+  if (!row) {
+    const refreshed = await getProgramme(programmeId, registrationNumber);
+    return { ok: false, error: "Stale plan version. Refresh and try again.", current: refreshed };
+  }
+  return { ok: true, programme: toProgramme(row) };
+}
+
 export async function approveProgramme(
   programmeId: number,
   registrationNumber: string,
@@ -194,6 +300,13 @@ export async function approveProgramme(
   if (current.plan_version !== planVersion) {
     return { ok: false, error: "Stale plan version. Refresh and try again.", current };
   }
+  if (!current.schedule) {
+    return {
+      ok: false,
+      error: "Choose the fixed lecture and section schedule before approval.",
+      current,
+    };
+  }
   const learningPathErrors = learningPathApprovalErrors(current.plan.learning_path, planVersion);
   if (learningPathErrors.length > 0) {
     return {
@@ -202,12 +315,16 @@ export async function approveProgramme(
       current,
     };
   }
+  const approvedAt = await now();
+  const firstLectureAt = nextLectureOccurrence(approvedAt, current.schedule);
   const row = await queryOne<Record<string, unknown>>(
     `UPDATE programmes
-     SET status = 'approved', approved_at = NOW(), updated_at = NOW()
+     SET status = 'approved', approved_at = $4,
+         schedule_locked_at = $4, first_lecture_at = $5,
+         updated_at = NOW()
      WHERE id = $1 AND student_id = $2 AND plan_version = $3 AND status = 'proposed'
      RETURNING ${COLUMNS}`,
-    [programmeId, registrationNumber, planVersion],
+    [programmeId, registrationNumber, planVersion, approvedAt, firstLectureAt],
   );
   if (!row) {
     const refreshed = await getProgramme(programmeId, registrationNumber);

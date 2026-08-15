@@ -6,7 +6,7 @@ export const ADMIN_NOTIFICATION_STATUSES = [
   "queued",
   "retrying",
   "processing",
-  "sent",
+  "submitted",
   "failed",
   "skipped",
 ] as const;
@@ -18,6 +18,7 @@ export const ADMIN_NOTIFICATION_CATEGORIES = [
   "transcript",
   "security",
   "billing",
+  "admin",
 ] as const;
 
 export type AdminNotificationStatus = (typeof ADMIN_NOTIFICATION_STATUSES)[number];
@@ -45,6 +46,9 @@ type MonitorRow = {
   available_at: Date | string | null;
   processing_started_at: Date | string | null;
   sent_at: Date | string | null;
+  provider_status: string;
+  provider_event_at: Date | string | null;
+  delivered_at: Date | string | null;
   learner_sid: string;
   learner_name: string;
   learner_email: string;
@@ -68,6 +72,9 @@ const DELIVERY_CTE = `WITH delivery AS (
          outbox.available_at,
          outbox.locked_at AS processing_started_at,
          outbox.sent_at,
+         outbox.provider_status,
+         outbox.provider_event_at,
+         outbox.delivered_at,
          learner."registrationNumber" AS learner_sid,
          learner.name AS learner_name,
          learner.email AS learner_email
@@ -87,6 +94,9 @@ const DELIVERY_CTE = `WITH delivery AS (
          NULL::timestamptz AS available_at,
          NULL::timestamptz AS processing_started_at,
          direct.sent_at,
+         direct.provider_status,
+         direct.provider_event_at,
+         direct.delivered_at,
          learner."registrationNumber" AS learner_sid,
          learner.name AS learner_name,
          learner.email AS learner_email
@@ -120,8 +130,14 @@ export function parseAdminNotificationFilters(params: URLSearchParams): AdminNot
   if (eventType && !/^[a-z][a-z0-9._-]{0,79}$/.test(eventType)) {
     throw new Error("Invalid notification event.");
   }
+  const requestedStatus = params.get("status");
+  // Keep old bookmarked admin URLs useful after the delivery ledger started
+  // distinguishing provider submission from confirmed delivery.
+  const status = requestedStatus?.trim().toLowerCase() === "sent"
+    ? "submitted"
+    : optionalEnum(requestedStatus, ADMIN_NOTIFICATION_STATUSES, "status");
   return {
-    status: optionalEnum(params.get("status"), ADMIN_NOTIFICATION_STATUSES, "status"),
+    status,
     category: optionalEnum(params.get("category"), ADMIN_NOTIFICATION_CATEGORIES, "category"),
     eventType,
     page: boundedInteger(params.get("page"), 1, 100_000),
@@ -135,8 +151,12 @@ function iso(value: Date | string | null): string | null {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
-function safeInline(value: string, maximum: number): string {
-  return value.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, maximum);
+function safeInline(value: string | null | undefined, maximum: number): string {
+  return (value ?? "")
+    .replace(/[\u0000-\u001f\u007f]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maximum);
 }
 
 function safeError(value: string | null): string | null {
@@ -215,6 +235,9 @@ export async function getAdminNotificationMonitor(
               delivery.available_at,
               delivery.processing_started_at,
               delivery.sent_at,
+              delivery.provider_status,
+              delivery.provider_event_at,
+              delivery.delivered_at,
               delivery.learner_sid,
               delivery.learner_name,
               delivery.learner_email
@@ -275,6 +298,9 @@ export async function getAdminNotificationMonitor(
       processingStartedAt:
         row.delivery_status === "processing" ? iso(row.processing_started_at) : null,
       sentAt: iso(row.sent_at),
+      providerStatus: safeInline(row.provider_status, 40) || "unknown",
+      providerEventAt: iso(row.provider_event_at),
+      deliveredAt: iso(row.delivered_at),
     })),
     pagination: {
       page: filters.page,

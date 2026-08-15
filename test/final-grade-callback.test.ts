@@ -167,6 +167,9 @@ vi.mock("@/lib/db", () => {
           (grade.kind === "quiz" || grade.kind === "midterm"),
       );
     }
+    if (text.includes("FROM absence_case_items")) {
+      return [];
+    }
     if (text.includes("INSERT INTO course_transcripts")) {
       state.transcripts.push({
         id: params[0],

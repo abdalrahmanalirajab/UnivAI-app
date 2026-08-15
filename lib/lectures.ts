@@ -7,6 +7,12 @@ import {
   readGeneratedSemesterWeekCount,
 } from "./semester-plan";
 import { LEGACY_LECTURE_MINUTES, scriptDurationMinutes } from "./lecture-duration";
+import {
+  lectureOccurrenceForWeek,
+  sectionOccurrenceForLecture,
+  type CourseScheduleContract,
+  type EditableCourseSchedule,
+} from "./schedule-contract";
 
 /** Database-owned generated lecture and section read models. */
 
@@ -144,6 +150,7 @@ type ApprovedSchedulePlan = {
   weekCount: number;
   sectionPacks: SectionPackV1[];
   generated: boolean;
+  schedule: CourseScheduleContract | null;
 };
 
 type ScheduleBinding = {
@@ -167,10 +174,25 @@ function scheduleBindingKey(sid: string): string {
 }
 
 async function approvedSchedulePlan(sid: string): Promise<ApprovedSchedulePlan | null> {
-  let rows: Array<{ id: number; plan_version: number; plan: unknown }>;
+  type ApprovedProgrammeRow = {
+    id: number;
+    plan_version: number;
+    plan: unknown;
+    schedule_timezone: string | null;
+    lecture_weekday: number | null;
+    lecture_local_time: string | null;
+    section_weekday: number | null;
+    section_local_time: string | null;
+    schedule_locked_at: Date | null;
+    first_lecture_at: Date | null;
+  };
+  let rows: ApprovedProgrammeRow[];
   try {
-    rows = await query<{ id: number; plan_version: number; plan: unknown }>(
-      `SELECT id, plan_version, plan FROM programmes
+    rows = await query<ApprovedProgrammeRow>(
+      `SELECT id, plan_version, plan, schedule_timezone, lecture_weekday,
+              lecture_local_time::text, section_weekday, section_local_time::text,
+              schedule_locked_at, first_lecture_at
+         FROM programmes
         WHERE student_id = $1 AND status = 'approved'
         ORDER BY id DESC LIMIT 1`,
       [sid],
@@ -182,6 +204,22 @@ async function approvedSchedulePlan(sid: string): Promise<ApprovedSchedulePlan |
   if (rows.length === 0) return null;
 
   const row = rows[0];
+  const schedule =
+    row.schedule_timezone !== null &&
+    row.lecture_weekday !== null &&
+    row.lecture_local_time !== null &&
+    row.section_weekday !== null &&
+    row.section_local_time !== null
+      ? {
+          timezone: row.schedule_timezone,
+          lectureWeekday: row.lecture_weekday,
+          lectureLocalTime: row.lecture_local_time.slice(0, 5),
+          sectionWeekday: row.section_weekday,
+          sectionLocalTime: row.section_local_time.slice(0, 5),
+          lockedAt: row.schedule_locked_at?.toISOString() ?? null,
+          firstLectureAt: row.first_lecture_at?.toISOString() ?? null,
+        } as CourseScheduleContract
+      : null;
   const plan = row.plan as Partial<ProgrammePlanV1>;
   let generatedWeeks: number | null;
   try {
@@ -246,7 +284,13 @@ async function approvedSchedulePlan(sid: string): Promise<ApprovedSchedulePlan |
     weekCount: weeks,
     sectionPacks,
     generated: generatedWeeks !== null,
+    schedule,
   };
+}
+
+/** The learner-selected contract for the current approved programme. */
+export async function approvedCourseSchedule(sid: string): Promise<CourseScheduleContract | null> {
+  return (await approvedSchedulePlan(sid))?.schedule ?? null;
 }
 
 async function scheduleBinding(sid: string): Promise<ScheduleBinding | null> {
@@ -276,6 +320,21 @@ function firstLectureStart(virtualNow: Date): Date {
   start.setUTCDate(start.getUTCDate() + 1);
   start.setUTCHours(10, 0, 0, 0);
   return start;
+}
+
+function approvedFirstLectureStart(approved: ApprovedSchedulePlan, virtualNow: Date): Date {
+  const stored = approved.schedule?.firstLectureAt;
+  return stored ? new Date(stored) : firstLectureStart(virtualNow);
+}
+
+function lectureStartForWeek(
+  approved: ApprovedSchedulePlan,
+  firstLectureAt: Date,
+  week: number,
+): Date {
+  return approved.schedule
+    ? lectureOccurrenceForWeek(firstLectureAt, week, approved.schedule)
+    : new Date(firstLectureAt.getTime() + (week - 1) * WEEK_MS);
 }
 
 /**
@@ -365,16 +424,18 @@ export async function ensureSchedule(sid: string): Promise<ApprovedSchedulePlan 
         "SELECT MIN(starts_at) AS starts_at FROM lectures WHERE student_id = $1",
         [sid],
       );
-      const start = starts[0]?.starts_at
-        ? new Date(starts[0].starts_at)
-        : firstLectureStart(await now());
+      const start = approved.schedule?.firstLectureAt
+        ? new Date(approved.schedule.firstLectureAt)
+        : starts[0]?.starts_at
+          ? new Date(starts[0].starts_at)
+          : firstLectureStart(await now());
       await query("DELETE FROM lectures WHERE student_id = $1 AND week > $2", [
         sid,
         approved.weekCount,
       ]);
       const existingWeeks = new Set(rows.map((row) => row.week));
       for (let week = 1; week <= approved.weekCount; week++) {
-        const startsAt = new Date(start.getTime() + (week - 1) * WEEK_MS);
+        const startsAt = lectureStartForWeek(approved, start, week);
         if (existingWeeks.has(week)) {
           await query("UPDATE lectures SET starts_at = $1 WHERE student_id = $2 AND week = $3", [
             startsAt,
@@ -410,11 +471,11 @@ export async function ensureSchedule(sid: string): Promise<ApprovedSchedulePlan 
     );
   }
 
-  const start = firstLectureStart(await now());
+  const start = approvedFirstLectureStart(approved, await now());
 
   for (let week = 1; week <= approved.weekCount; week++) {
     const script = await readScript(sid, week);
-    const startsAt = new Date(start.getTime() + (week - 1) * WEEK_MS);
+    const startsAt = lectureStartForWeek(approved, start, week);
     await query(
       `INSERT INTO lectures (student_id, week, title, starts_at, status) VALUES ($1, $2, $3, $4, 'ready')
        ON CONFLICT (student_id, week) DO NOTHING`,
@@ -447,9 +508,9 @@ export async function rescheduleLectures(sid: string): Promise<void> {
   }
   const approved = await ensureSchedule(sid);
   if (!approved) return;
-  const start = firstLectureStart(await now());
+  const start = approvedFirstLectureStart(approved, await now());
   for (let week = 1; week <= approved.weekCount; week++) {
-    const startsAt = new Date(start.getTime() + (week - 1) * WEEK_MS);
+    const startsAt = lectureStartForWeek(approved, start, week);
     await query("UPDATE lectures SET starts_at = $1 WHERE week = $2 AND student_id = $3", [
       startsAt,
       week,
@@ -622,7 +683,9 @@ export async function getSections(sid: string): Promise<Section[]> {
   const sections: Section[] = [];
   for (const lecture of lectures) {
     const pack = approved.sectionPacks.find((candidate) => candidate.week === lecture.week);
-    const startsAt = new Date(lecture.endsAt.getTime());
+    const startsAt = approved.schedule
+      ? sectionOccurrenceForLecture(lecture.startsAt, approved.schedule)
+      : new Date(lecture.endsAt.getTime());
     const plannedSections = pack?.sections ?? [];
     for (const record of plannedSections) {
       const durationMinutes = record.duration_minutes ?? DEFAULT_SECTION_MINUTES;
@@ -655,8 +718,8 @@ export type StoredSectionPack = {
    * lecture early forfeited that week's section permanently, with no way back.
    * A section now opens on the clock, exactly like the week's quiz.
    */
-  lectureEnded: boolean;
-  lectureEndsAt: Date;
+  sectionOpen: boolean;
+  sectionStartsAt: Date;
   programmeId: string;
   programmeTitle: string;
   planVersion: number;
@@ -691,13 +754,20 @@ export async function getSectionPack(sid: string, sectionId: string): Promise<St
     lecture_starts_at: Date;
     lecture_script: { durationMinutes?: number } | null;
     programme_title: string;
+    schedule_timezone: string | null;
+    lecture_weekday: number | null;
+    lecture_local_time: string | null;
+    section_weekday: number | null;
+    section_local_time: string | null;
   }>(
     `SELECT sp.section_pack_id, sp.week, sp.programme_id,
             sp.approved_plan_version, sp.payload_hash, sp.pack_payload,
             l.id AS lecture_internal_id, l.public_id::text AS lecture_public_id,
             l.starts_at AS lecture_starts_at,
             la.script_payload AS lecture_script,
-            p.name AS programme_title
+            p.name AS programme_title,
+            p.schedule_timezone, p.lecture_weekday, p.lecture_local_time::text,
+            p.section_weekday, p.section_local_time::text
        FROM section_packs sp
        JOIN programmes p ON p.id::text = sp.programme_id
         AND p.student_id = sp.tenant_id
@@ -715,13 +785,28 @@ export async function getSectionPack(sid: string, sectionId: string): Promise<St
     new Date(row.lecture_starts_at).getTime() +
       scriptDurationMinutes(row.lecture_script) * MINUTE_MS,
   );
+  const schedule =
+    row.schedule_timezone !== null && row.lecture_weekday !== null &&
+    row.lecture_local_time !== null && row.section_weekday !== null &&
+    row.section_local_time !== null
+      ? {
+          timezone: row.schedule_timezone,
+          lectureWeekday: row.lecture_weekday,
+          lectureLocalTime: row.lecture_local_time.slice(0, 5),
+          sectionWeekday: row.section_weekday,
+          sectionLocalTime: row.section_local_time.slice(0, 5),
+        } as EditableCourseSchedule
+      : null;
+  const sectionStartsAt = schedule
+    ? sectionOccurrenceForLecture(new Date(row.lecture_starts_at), schedule)
+    : lectureEndsAt;
   return {
     id: row.section_pack_id,
     week: row.week,
     lectureInternalId: row.lecture_internal_id,
     lecturePublicId: row.lecture_public_id,
-    lectureEnded: (await now()) >= lectureEndsAt,
-    lectureEndsAt,
+    sectionOpen: (await now()) >= sectionStartsAt,
+    sectionStartsAt,
     programmeId: row.programme_id,
     programmeTitle: row.programme_title,
     planVersion: row.approved_plan_version,

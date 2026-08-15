@@ -60,10 +60,21 @@ export function spawnGeneration(
   if (pid) {
     void query("UPDATE books SET generation_pid = $1 WHERE id = $2", [pid, bookId]);
     child.once("close", () => {
-      void query(
-        "UPDATE books SET generation_pid = NULL WHERE id = $1 AND generation_pid = $2",
-        [bookId, pid],
-      ).catch(() => undefined);
+      void (async () => {
+        await query(
+          "UPDATE books SET generation_pid = NULL WHERE id = $1 AND generation_pid = $2",
+          [bookId, pid],
+        );
+        if (mode === "full" || mode === "rebuild") {
+          const { enqueueCourseBuildNotificationForBook } = await import("./notification-outbox");
+          await enqueueCourseBuildNotificationForBook(bookId);
+        }
+      })().catch((error) => {
+        console.error(
+          `[generation] could not finalize notification metadata for book ${bookId}`,
+          error instanceof Error ? error.name : "UnknownError",
+        );
+      });
     });
   }
   child.unref();

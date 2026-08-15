@@ -3,7 +3,7 @@ import type { PoolClient } from "pg";
 
 import { now } from "./clock";
 import { pool, query, queryOne } from "./db";
-import { sendEmail } from "./email";
+import { sendEmail, submitEmail } from "./email";
 import { renderNotification } from "./notification-templates";
 import {
   DEFAULT_NOTIFICATION_PREFERENCES,
@@ -116,8 +116,9 @@ export async function enqueueEmailNotification(input: {
        (event_key, user_id, category, event_type, subject, text_body, status)
      SELECT $1, $2::uuid, $3, $4, $5, $6,
             CASE
-              WHEN $3 IN ('security', 'billing')
+              WHEN $3 IN ('security', 'billing', 'admin')
                 OR $4 = 'final.retake_declined'
+                OR $4 LIKE 'absence.%'
                 OR COALESCE(
                   (SELECT email_enabled
                      FROM notification_preferences
@@ -157,8 +158,9 @@ export async function enqueueEmailNotificationWithClient(
        (event_key, user_id, category, event_type, subject, text_body, status)
      SELECT $1, $2::uuid, $3, $4, $5, $6,
             CASE
-              WHEN $3 IN ('security', 'billing')
+              WHEN $3 IN ('security', 'billing', 'admin')
                 OR $4 = 'final.retake_declined'
+                OR $4 LIKE 'absence.%'
                 OR COALESCE(
                   (SELECT email_enabled
                      FROM notification_preferences
@@ -238,6 +240,73 @@ export async function enqueueDueLectureReminders(referenceTime?: Date): Promise<
   return queued;
 }
 
+type CourseBuildNotificationRow = {
+  user_id: string;
+  book_id: number;
+  course_title: string;
+  status: string;
+  failed_week: number | null;
+  failed_stage: string | null;
+  failed_attempt: number | null;
+};
+
+async function enqueueCourseBuildNotification(
+  course: CourseBuildNotificationRow,
+): Promise<boolean> {
+  const failed = course.status === "failed" || course.status === "partial_failed";
+  const result = await enqueueEmailNotification({
+    userId: course.user_id,
+    eventId: failed
+      ? `book:${course.book_id}:failed:${course.failed_week ?? 0}:${course.failed_stage ?? "course"}:${course.failed_attempt ?? 0}`
+      : `book:${course.book_id}:course-ready`,
+    event: failed
+      ? { type: "course.failed", courseTitle: course.course_title }
+      : { type: "course.ready", courseTitle: course.course_title },
+  });
+  return result.queued;
+}
+
+/**
+ * Producer-side terminal notification. The detached generator calls this as
+ * soon as it exits; the bulk scanner below remains a crash/restart recovery
+ * path and both converge on the same durable event key.
+ */
+export async function enqueueCourseBuildNotificationForBook(bookId: number): Promise<boolean> {
+  if (!Number.isSafeInteger(bookId) || bookId < 1) return false;
+  const course = await queryOne<CourseBuildNotificationRow>(
+    `SELECT learner."id"::text AS user_id,
+            book.id AS book_id,
+            COALESCE(NULLIF(book.title, ''), book.filename) AS course_title,
+            book.status,
+            failed.week AS failed_week,
+            failed.stage AS failed_stage,
+            failed.attempt_count AS failed_attempt
+       FROM books AS book
+       JOIN "user" AS learner
+         ON learner."registrationNumber" = book.student_id
+       LEFT JOIN LATERAL (
+         SELECT milestone.week, milestone.stage, milestone.attempt_count
+           FROM course_generation_milestones AS milestone
+          WHERE milestone.book_id = book.id AND milestone.status = 'failed'
+          ORDER BY milestone.updated_at DESC, milestone.id DESC
+          LIMIT 1
+       ) AS failed ON true
+      WHERE book.id = $1
+        AND (
+          (
+            book.status = 'ready'
+            AND book.generation_stage = 'complete'
+            AND book.generation_total_weeks > 0
+            AND book.generation_ready_weeks = book.generation_total_weeks
+            AND book.generation_audio_ready_weeks = book.generation_total_weeks
+          )
+          OR book.status IN ('failed', 'partial_failed')
+        )`,
+    [bookId],
+  );
+  return course ? enqueueCourseBuildNotification(course) : false;
+}
+
 /**
  * Finds completed or failed course builds produced by the Python worker.
  * Ready notifications happen only after every generated week and narration
@@ -245,15 +314,7 @@ export async function enqueueDueLectureReminders(referenceTime?: Date): Promise<
  * distinct while cron overlap remains idempotent.
  */
 export async function enqueueCourseBuildNotifications(): Promise<number> {
-  const courses = await query<{
-    user_id: string;
-    book_id: number;
-    course_title: string;
-    status: string;
-    failed_week: number | null;
-    failed_stage: string | null;
-    failed_attempt: number | null;
-  }>(
+  const courses = await query<CourseBuildNotificationRow>(
     `SELECT learner."id"::text AS user_id,
             book.id AS book_id,
             COALESCE(NULLIF(book.title, ''), book.filename) AS course_title,
@@ -285,17 +346,7 @@ export async function enqueueCourseBuildNotifications(): Promise<number> {
 
   let queued = 0;
   for (const course of courses) {
-    const failed = course.status === "failed" || course.status === "partial_failed";
-    const result = await enqueueEmailNotification({
-      userId: course.user_id,
-      eventId: failed
-        ? `book:${course.book_id}:failed:${course.failed_week ?? 0}:${course.failed_stage ?? "course"}:${course.failed_attempt ?? 0}`
-        : `book:${course.book_id}:course-ready`,
-      event: failed
-        ? { type: "course.failed", courseTitle: course.course_title }
-        : { type: "course.ready", courseTitle: course.course_title },
-    });
-    if (result.queued) queued += 1;
+    if (await enqueueCourseBuildNotification(course)) queued += 1;
   }
   return queued;
 }
@@ -381,14 +432,20 @@ async function claimBatch(limit: number, workerId: string): Promise<OutboxRow[]>
   );
 }
 
-async function markSent(id: string, workerId: string): Promise<void> {
+async function markSubmitted(
+  id: string,
+  workerId: string,
+  providerMessageId: string | null,
+): Promise<void> {
   await pool.query(
     `UPDATE notification_email_outbox
-        SET status = 'sent', sent_at = CURRENT_TIMESTAMP,
+        SET status = 'submitted', sent_at = CURRENT_TIMESTAMP,
+            provider_message_id = $3,
+            provider_status = CASE WHEN $3::text IS NULL THEN 'unknown' ELSE provider_status END,
             locked_at = NULL, locked_by = NULL, last_error = NULL,
             updated_at = CURRENT_TIMESTAMP
       WHERE id = $1 AND status = 'processing' AND locked_by = $2`,
-    [id, workerId],
+    [id, workerId, providerMessageId],
   );
 }
 
@@ -423,21 +480,30 @@ export async function dispatchEmailNotifications(options?: {
 }): Promise<{ claimed: number; sent: number; retrying: number; failed: number }> {
   const limit = Math.min(Math.max(Math.trunc(options?.limit ?? 20), 1), MAX_BATCH_SIZE);
   const workerId = options?.workerId ?? randomUUID();
-  const deliver = options?.deliver ?? sendEmail;
+  const deliver = options?.deliver;
   const rows = await claimBatch(limit, workerId);
   let sent = 0;
   let retrying = 0;
   let failed = 0;
 
   for (const row of rows) {
+    let providerMessageId: string | null = null;
     try {
-      await deliver({
-        to: row.email,
-        subject: row.subject,
-        text: row.text_body,
-        idempotencyKey: `univai/${row.id}`,
-        requireDelivery: true,
-      });
+      const email = {
+          to: row.email,
+          subject: row.subject,
+          text: row.text_body,
+          idempotencyKey: `univai/${row.id}`,
+          requireDelivery: true,
+        };
+      if (deliver) {
+        await deliver(email);
+      } else if (typeof submitEmail === "function") {
+        providerMessageId = (await submitEmail(email)).providerMessageId;
+      } else {
+        // Supports older/mocked email adapters while rolling out provider receipts.
+        await sendEmail(email);
+      }
     } catch (error) {
       await releaseForRetry(row, workerId, error);
       if (row.attempts >= MAX_ATTEMPTS) failed += 1;
@@ -448,7 +514,7 @@ export async function dispatchEmailNotifications(options?: {
     // Keep a successful provider send locked if this write fails. A later
     // worker retries with the same provider idempotency key after the stale
     // lock timeout instead of immediately sending a duplicate.
-    await markSent(row.id, workerId);
+    await markSubmitted(row.id, workerId, providerMessageId);
     sent += 1;
   }
 
