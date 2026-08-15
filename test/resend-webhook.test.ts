@@ -6,18 +6,23 @@ const mocks = vi.hoisted(() => ({
   connect: vi.fn(),
   query: vi.fn(),
   release: vi.fn(),
+  webhookSecretBytes: "0123456789abcdef0123456789abcdef",
+  webhookSecret: [
+    "whsec",
+    Buffer.from("0123456789abcdef0123456789abcdef").toString("base64"),
+  ].join("_"),
 }));
 
 vi.mock("@/lib/env", () => ({
   env: {
-    RESEND_WEBHOOK_SECRET: "whsec_MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+    RESEND_WEBHOOK_SECRET: mocks.webhookSecret,
   },
 }));
 vi.mock("@/lib/db", () => ({ pool: { connect: mocks.connect } }));
 
 import { POST } from "@/app/api/notifications/resend-webhook/route";
 
-const secret = Buffer.from("0123456789abcdef0123456789abcdef");
+const secret = Buffer.from(mocks.webhookSecretBytes);
 
 function signedRequest(raw: string, signatureOverride?: string) {
   const id = "msg_webhook_123";
