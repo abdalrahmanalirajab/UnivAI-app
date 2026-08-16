@@ -27,6 +27,42 @@ const eligibleLecture = {
   lecturePublicId: "2f7392f0-8038-45dc-92a1-edf78c04b940",
 };
 
+function learnerCase(options: { attachmentRequested: boolean; evidenceAttached?: boolean }) {
+  return {
+    id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    status: "needs_clarification",
+    reason: "I was unable to attend during the scheduled lecture window.",
+    waitingOn: "learner",
+    questionCode: null,
+    question: "Which dates and times were you unable to attend?",
+    outcome: null,
+    decisionReason: null,
+    submittedAt: "2026-08-16T10:00:00.000Z",
+    decidedAt: null,
+    items: [{
+      itemType: "lecture",
+      week: 2,
+      remedy: "pending",
+      lecturePublicId: eligibleLecture.lecturePublicId,
+    }],
+    messages: [{
+      id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      actor: "admin",
+      message: "Which dates and times were you unable to attend?",
+      responseRequested: true,
+      attachmentRequested: options.attachmentRequested,
+      createdAt: "2026-08-16T11:00:00.000Z",
+    }],
+    pendingRequest: {
+      messageId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      question: "Which dates and times were you unable to attend?",
+      attachmentRequested: options.attachmentRequested,
+      evidenceAttached: options.evidenceAttached ?? false,
+    },
+    evidenceCount: options.evidenceAttached ? 1 : 0,
+  };
+}
+
 function response(body: unknown, status = 200): Response {
   return Response.json(body, { status });
 }
@@ -93,5 +129,34 @@ describe("absence appeal entry flow", () => {
 
     expect(await screen.findByText("This item cannot be appealed")).toBeTruthy();
     expect(screen.queryByRole("textbox", { name: /why were you absent/i })).toBeNull();
+  });
+
+  it("never renders a file input for an admin request marked text-only", async () => {
+    globalThis.fetch = vi.fn(async () => response({
+      cases: [learnerCase({ attachmentRequested: false })],
+      eligibleItems: [],
+    }));
+
+    const { container } = render(<AbsencesPage />);
+
+    expect(await screen.findByText(/administrator did not authorize an image/i)).toBeTruthy();
+    expect(container.querySelector('input[type="file"]')).toBeNull();
+    expect(screen.getByRole("textbox", { name: "Your reply" })).toBeTruthy();
+  });
+
+  it("renders one file input only when the latest admin question requires an image", async () => {
+    globalThis.fetch = vi.fn(async () => response({
+      cases: [learnerCase({ attachmentRequested: true })],
+      eligibleItems: [],
+    }));
+
+    const { container } = render(<AbsencesPage />);
+
+    expect(await screen.findByText("Attach requested JPEG or PNG")).toBeTruthy();
+    expect(container.querySelectorAll('input[type="file"]')).toHaveLength(1);
+    expect(
+      (screen.getByRole("button", { name: "Send reply to administrator" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
   });
 });

@@ -128,6 +128,7 @@ function AbsenceCases() {
       if (!response.ok) throw new Error(body.error ?? "Could not send clarification.");
       setAnswers((current) => ({ ...current, [absenceCase.id]: "" }));
       await load();
+      setNotice("Your reply was sent to the administrator.");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not send clarification.");
     } finally {
@@ -149,6 +150,7 @@ function AbsenceCases() {
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? "Could not attach evidence.");
       await load();
+      setNotice("The requested image is attached. Send your written reply when ready.");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not attach evidence.");
     } finally {
@@ -297,59 +299,102 @@ function AbsenceCases() {
                   </Alert>
                 ) : absenceCase.waitingOn === "admin" ? (
                   <Alert severity="warning">
-                    A human administrator has been notified in the app and by email. You are
-                    waiting for their decision.
+                    A human administrator is reviewing this case. They may decide it or return it
+                    with another question.
                   </Alert>
                 ) : null}
 
-                {absenceCase.status === "needs_clarification" && absenceCase.question ? (
+                {absenceCase.messages.length ? (
                   <Stack spacing={1}>
-                    <Alert severity="warning">
-                      <AlertTitle>Clarification required</AlertTitle>
-                      {absenceCase.question}
-                    </Alert>
-                    <TextField
-                      label="Your answer"
-                      multiline
-                      minRows={3}
-                      value={answers[absenceCase.id] ?? ""}
-                      onChange={(event) => setAnswers((current) => ({
-                        ...current,
-                        [absenceCase.id]: event.target.value,
-                      }))}
-                      slotProps={{ htmlInput: { maxLength: 2000 } }}
-                    />
-                    <Button
-                      variant="contained"
-                      disabled={
-                        busy !== null || (answers[absenceCase.id] ?? "").trim().length < 10
-                      }
-                      onClick={() => void respond(absenceCase)}
-                    >
-                      Send clarification
-                    </Button>
+                    <Typography variant="overline">Case conversation</Typography>
+                    {absenceCase.messages.map((message) => (
+                      <Alert
+                        key={message.id}
+                        severity={message.actor === "learner" ? "info" : "warning"}
+                      >
+                        <AlertTitle>
+                          {message.actor === "learner"
+                            ? "You"
+                            : message.actor === "admin"
+                              ? "Administrator"
+                              : "System"}
+                          {" · "}{formatDateTime(message.createdAt)}
+                        </AlertTitle>
+                        {message.message}
+                        {message.responseRequested ? (
+                          <Typography variant="caption" component="span">
+                            {message.attachmentRequested
+                              ? "A protected image was requested with this reply."
+                              : "Text reply requested; no attachment authorized."}
+                          </Typography>
+                        ) : null}
+                      </Alert>
+                    ))}
                   </Stack>
                 ) : null}
 
-                {absenceCase.status === "evidence_required" && absenceCase.question ? (
-                  <Stack spacing={1}>
-                    <Alert severity="warning">
-                      <AlertTitle>Human-readable evidence requested</AlertTitle>
-                      {absenceCase.question}
-                    </Alert>
-                    <Button component="label" variant="contained" disabled={busy !== null}>
-                      Attach JPEG or PNG
-                      <input
-                        hidden
-                        type="file"
-                        accept="image/jpeg,image/png"
-                        onChange={(event) => void uploadEvidence(
-                          absenceCase,
-                          event.target.files?.[0] ?? null,
+                {absenceCase.pendingRequest ? (
+                  <Card variant="outlined">
+                    <CardContent>
+                      <Stack spacing={1.5}>
+                        <Alert severity="warning">
+                          <AlertTitle>Administrator requested more information</AlertTitle>
+                          {absenceCase.pendingRequest.question}
+                        </Alert>
+                        {absenceCase.pendingRequest.attachmentRequested ? (
+                          absenceCase.pendingRequest.evidenceAttached ? (
+                            <Alert severity="success">
+                              The requested image is attached securely for human review.
+                            </Alert>
+                          ) : (
+                            <Button component="label" variant="outlined" disabled={busy !== null}>
+                              Attach requested JPEG or PNG
+                              <input
+                                hidden
+                                type="file"
+                                accept="image/jpeg,image/png"
+                                onChange={(event) => void uploadEvidence(
+                                  absenceCase,
+                                  event.target.files?.[0] ?? null,
+                                )}
+                              />
+                            </Button>
+                          )
+                        ) : (
+                          <Alert severity="info">
+                            Reply with text only. The administrator did not authorize an image
+                            attachment for this question.
+                          </Alert>
                         )}
-                      />
-                    </Button>
-                  </Stack>
+                        <TextField
+                          label="Your reply"
+                          multiline
+                          minRows={3}
+                          value={answers[absenceCase.id] ?? ""}
+                          onChange={(event) => setAnswers((current) => ({
+                            ...current,
+                            [absenceCase.id]: event.target.value,
+                          }))}
+                          slotProps={{ htmlInput: { maxLength: 2000 } }}
+                          helperText="At least 10 characters. Your reply becomes part of the case history."
+                        />
+                        <Button
+                          variant="contained"
+                          disabled={
+                            busy !== null ||
+                            (answers[absenceCase.id] ?? "").trim().length < 10 ||
+                            (
+                              absenceCase.pendingRequest.attachmentRequested &&
+                              !absenceCase.pendingRequest.evidenceAttached
+                            )
+                          }
+                          onClick={() => void respond(absenceCase)}
+                        >
+                          Send reply to administrator
+                        </Button>
+                      </Stack>
+                    </CardContent>
+                  </Card>
                 ) : null}
 
                 {absenceCase.items.some(

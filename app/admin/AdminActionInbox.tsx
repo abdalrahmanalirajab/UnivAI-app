@@ -6,6 +6,7 @@ import AlertTitle from "@mui/material/AlertTitle";
 import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
+import Checkbox from "@mui/material/Checkbox";
 import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
 import Dialog from "@mui/material/Dialog";
@@ -13,6 +14,7 @@ import DialogActions from "@mui/material/DialogActions";
 import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
 import Divider from "@mui/material/Divider";
+import FormControlLabel from "@mui/material/FormControlLabel";
 import MenuItem from "@mui/material/MenuItem";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
@@ -25,15 +27,30 @@ type CaseDetail = {
   id: string;
   student: { registrationNumber: string; name: string; email: string };
   status: string;
+  waitingOn: "learner" | "admin" | "none";
   reason: string;
   recommendation: string | null;
+  suggestedQuestion: string | null;
   policyClauseIds: string[];
   sensitivityFlags: string[];
   adminSummary: string | null;
   aiConfidence: number | null;
   items: Array<{ itemType: string; week: number; remedy: string }>;
-  messages: Array<{ actor: string; message: string; createdAt: string }>;
-  evidence: Array<{ id: string; filename: string; byteLength: number; createdAt: string }>;
+  messages: Array<{
+    id: string;
+    actor: string;
+    message: string;
+    responseRequested: boolean;
+    attachmentRequested: boolean;
+    createdAt: string;
+  }>;
+  evidence: Array<{
+    id: string;
+    filename: string;
+    byteLength: number;
+    requestMessageId: string | null;
+    createdAt: string;
+  }>;
 };
 
 const DECISIONS: Array<{ value: AbsenceOutcome; label: string; effect: string }> = [
@@ -51,6 +68,8 @@ export default function AdminActionInbox() {
   const [selected, setSelected] = useState<CaseDetail | null>(null);
   const [outcome, setOutcome] = useState<AbsenceOutcome>("excused");
   const [reason, setReason] = useState("");
+  const [question, setQuestion] = useState("");
+  const [attachmentRequested, setAttachmentRequested] = useState(false);
   const [loadingCase, setLoadingCase] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -80,9 +99,12 @@ export default function AdminActionInbox() {
       const response = await fetch(`/api/admin/absence-cases/${action.caseId}`, { cache: "no-store" });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? "Could not load the absence case.");
-      setSelected(body.case as CaseDetail);
+      const detail = body.case as CaseDetail;
+      setSelected(detail);
       setOutcome("excused");
       setReason("");
+      setQuestion(detail.suggestedQuestion ?? "");
+      setAttachmentRequested(false);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not load the absence case.");
     } finally {
@@ -98,7 +120,7 @@ export default function AdminActionInbox() {
       const response = await fetch(`/api/admin/absence-cases/${selected.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ outcome, reason }),
+        body: JSON.stringify({ action: "decide", outcome, reason }),
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? "Could not save the decision.");
@@ -106,6 +128,33 @@ export default function AdminActionInbox() {
       await load();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not save the decision.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function requestMoreInformation() {
+    if (!selected) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/admin/absence-cases/${selected.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "request_information",
+          question,
+          attachmentRequested,
+        }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "Could not request more information.");
+      setSelected(body.case as CaseDetail);
+      setQuestion("");
+      setAttachmentRequested(false);
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not request more information.");
     } finally {
       setSaving(false);
     }
@@ -139,6 +188,12 @@ export default function AdminActionInbox() {
                     <Stack direction="row" spacing={1} className="align-center">
                       <Typography variant="subtitle1">{action.title}</Typography>
                       <Chip size="small" color={action.priority === "high" ? "warning" : "default"} label={title(action.priority)} />
+                      <Chip
+                        size="small"
+                        color={action.waitingOn === "learner" ? "info" : "warning"}
+                        variant="outlined"
+                        label={`Waiting on ${action.waitingOn}`}
+                      />
                     </Stack>
                     <Typography>{action.studentName} · {action.studentId}</Typography>
                     <Typography variant="body2" color="text.secondary">{action.safeSummary}</Typography>
@@ -155,7 +210,7 @@ export default function AdminActionInbox() {
       </CardContent>
 
       <Dialog open={Boolean(selected)} onClose={() => !saving && setSelected(null)} fullWidth maxWidth="md">
-        <DialogTitle>Human absence decision</DialogTitle>
+        <DialogTitle>Human absence review</DialogTitle>
         <DialogContent dividers>
           {selected ? (
             <Stack spacing={2}>
@@ -182,13 +237,23 @@ export default function AdminActionInbox() {
                   {selected.sensitivityFlags.map((flag) => <Chip key={flag} size="small" color="warning" label={title(flag)} />)}
                 </Stack>
               </Stack>
-              {selected.messages.length > 1 ? (
+              {selected.messages.length ? (
                 <Stack spacing={1}>
                   <Typography variant="overline">Case conversation</Typography>
                   {selected.messages.map((message, index) => (
                     <Alert key={`${message.createdAt}:${index}`} severity={message.actor === "learner" ? "info" : "warning"}>
                       <AlertTitle>{title(message.actor)} · {formatDateTime(message.createdAt)}</AlertTitle>
                       {message.message}
+                      {message.responseRequested ? (
+                        <Stack direction="row" spacing={1} className="wrap-row">
+                          <Chip size="small" label="Reply requested" />
+                          <Chip
+                            size="small"
+                            color={message.attachmentRequested ? "warning" : "default"}
+                            label={message.attachmentRequested ? "Image required" : "Text only"}
+                          />
+                        </Stack>
+                      ) : null}
                     </Alert>
                   ))}
                 </Stack>
@@ -209,8 +274,62 @@ export default function AdminActionInbox() {
                     </Button>
                   ))}
                 </Stack>
-              ) : <Typography color="text.secondary">No evidence image is attached.</Typography>}
+              ) : <Typography color="text.secondary">No administrator-requested image is attached.</Typography>}
               <Divider />
+              {selected.waitingOn === "learner" ? (
+                <Alert severity="info">
+                  <AlertTitle>Waiting for the learner</AlertTitle>
+                  The final decision and another question unlock after the learner sends this
+                  reply. An image upload is available only if your latest question required it.
+                </Alert>
+              ) : (
+                <>
+                  <Card variant="outlined">
+                    <CardContent>
+                      <Stack spacing={1.5}>
+                        <Stack spacing={0.25}>
+                          <Typography variant="h6">Ask for more information</Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            Return the case to the learner with one precise question. You can
+                            repeat this after each reply.
+                          </Typography>
+                        </Stack>
+                        <TextField
+                          label="Question shown to learner"
+                          multiline
+                          minRows={3}
+                          value={question}
+                          onChange={(event) => setQuestion(event.target.value)}
+                          slotProps={{ htmlInput: { maxLength: 2000 } }}
+                          helperText="At least 10 characters. The learner is notified by email and in this case history."
+                        />
+                        <FormControlLabel
+                          control={(
+                            <Checkbox
+                              checked={attachmentRequested}
+                              onChange={(event) => setAttachmentRequested(event.target.checked)}
+                            />
+                          )}
+                          label="Require one JPEG or PNG image with the learner's reply"
+                        />
+                        <Alert severity={attachmentRequested ? "warning" : "info"}>
+                          {attachmentRequested
+                            ? "This explicitly unlocks one protected image upload for this question only."
+                            : "The learner will have no attachment control and the upload API remains locked."}
+                        </Alert>
+                        <Button
+                          variant="outlined"
+                          color="warning"
+                          disabled={saving || question.trim().length < 10}
+                          onClick={() => void requestMoreInformation()}
+                        >
+                          {saving ? "Sending…" : "Send question to learner"}
+                        </Button>
+                      </Stack>
+                    </CardContent>
+                  </Card>
+
+                  <Divider>or make the final decision</Divider>
               <TextField select label="Final decision" value={outcome} onChange={(event) => setOutcome(event.target.value as AbsenceOutcome)}>
                 {DECISIONS.map((decision) => (
                   <MenuItem key={decision.value} value={decision.value}>{decision.label}</MenuItem>
@@ -227,14 +346,20 @@ export default function AdminActionInbox() {
                 slotProps={{ htmlInput: { maxLength: 2000 } }}
                 helperText="At least 10 characters. This becomes part of the case record and email."
               />
+                </>
+              )}
             </Stack>
           ) : null}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setSelected(null)} disabled={saving}>Cancel</Button>
-          <Button variant="contained" onClick={() => void decide()} disabled={saving || reason.trim().length < 10}>
-            {saving ? "Saving…" : "Record final decision"}
+          <Button onClick={() => setSelected(null)} disabled={saving}>
+            {selected?.waitingOn === "learner" ? "Close" : "Cancel"}
           </Button>
+          {selected?.waitingOn === "admin" ? (
+            <Button variant="contained" onClick={() => void decide()} disabled={saving || reason.trim().length < 10}>
+              {saving ? "Saving…" : "Record final decision"}
+            </Button>
+          ) : null}
         </DialogActions>
       </Dialog>
     </Card>

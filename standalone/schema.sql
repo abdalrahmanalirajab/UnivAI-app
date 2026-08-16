@@ -823,7 +823,7 @@ CREATE TABLE IF NOT EXISTS absence_cases (
   status text NOT NULL CHECK (status IN ('needs_clarification','evidence_required','pending_admin','approved','rejected','expired','withdrawn')),
   reason text NOT NULL CHECK (length(reason) BETWEEN 20 AND 2000),
   waiting_on text NOT NULL CHECK (waiting_on IN ('learner','admin','none')),
-  clarification_rounds integer NOT NULL DEFAULT 0 CHECK (clarification_rounds BETWEEN 0 AND 2),
+  clarification_rounds integer NOT NULL DEFAULT 0 CHECK (clarification_rounds >= 0),
   question_code text,
   recommendation text CHECK (recommendation IS NULL OR recommendation IN ('recommend_excused','recommend_access_only','recommend_unexcused','human_review')),
   policy_clause_ids text[] NOT NULL DEFAULT '{}', sensitivity_flags text[] NOT NULL DEFAULT '{}',
@@ -851,10 +851,26 @@ CREATE UNIQUE INDEX IF NOT EXISTS absence_case_items_active_unique ON absence_ca
 
 CREATE TABLE IF NOT EXISTS absence_case_messages (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), case_id uuid NOT NULL REFERENCES absence_cases(id) ON DELETE CASCADE,
-  actor text NOT NULL CHECK (actor IN ('system','learner','admin')), question_code text,
+  actor text NOT NULL CHECK (actor IN ('system','learner','admin')),
+  actor_user_id uuid REFERENCES "user" ("id") ON DELETE SET NULL,
+  question_code text,
+  response_requested boolean NOT NULL DEFAULT false,
+  attachment_requested boolean NOT NULL DEFAULT false,
   message text NOT NULL CHECK (length(message) BETWEEN 1 AND 2000), created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS absence_case_messages_case_idx ON absence_case_messages (case_id, created_at ASC);
+
+ALTER TABLE absence_cases DROP CONSTRAINT IF EXISTS absence_cases_clarification_rounds_check;
+ALTER TABLE absence_cases DROP CONSTRAINT IF EXISTS absence_cases_clarification_rounds_nonnegative;
+ALTER TABLE absence_cases ADD CONSTRAINT absence_cases_clarification_rounds_nonnegative CHECK (clarification_rounds >= 0);
+ALTER TABLE absence_case_messages
+  ADD COLUMN IF NOT EXISTS actor_user_id uuid REFERENCES "user" ("id") ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS response_requested boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS attachment_requested boolean NOT NULL DEFAULT false;
+ALTER TABLE absence_case_messages DROP CONSTRAINT IF EXISTS absence_case_messages_response_actor_check;
+ALTER TABLE absence_case_messages ADD CONSTRAINT absence_case_messages_response_actor_check CHECK (NOT response_requested OR actor = 'admin');
+ALTER TABLE absence_case_messages DROP CONSTRAINT IF EXISTS absence_case_messages_attachment_request_check;
+ALTER TABLE absence_case_messages ADD CONSTRAINT absence_case_messages_attachment_request_check CHECK (NOT attachment_requested OR response_requested);
 
 CREATE TABLE IF NOT EXISTS absence_evidence (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), case_id uuid NOT NULL REFERENCES absence_cases(id) ON DELETE CASCADE,
@@ -862,10 +878,13 @@ CREATE TABLE IF NOT EXISTS absence_evidence (
   original_filename text NOT NULL CHECK (length(original_filename) BETWEEN 1 AND 180),
   byte_length integer NOT NULL CHECK (byte_length BETWEEN 1 AND 5242880),
   sha256 text NOT NULL CHECK (sha256 ~ '^[a-f0-9]{64}$'), image_data bytea NOT NULL,
+  request_message_id uuid REFERENCES absence_case_messages(id) ON DELETE SET NULL,
   expires_at timestamptz NOT NULL, created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE (case_id, sha256)
 );
 CREATE INDEX IF NOT EXISTS absence_evidence_expiry_idx ON absence_evidence (expires_at);
+ALTER TABLE absence_evidence ADD COLUMN IF NOT EXISTS request_message_id uuid REFERENCES absence_case_messages(id) ON DELETE SET NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS absence_evidence_request_unique ON absence_evidence (request_message_id) WHERE request_message_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS absence_ai_runs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), case_id uuid NOT NULL REFERENCES absence_cases(id) ON DELETE CASCADE,
@@ -889,6 +908,36 @@ CREATE TABLE IF NOT EXISTS admin_action_items (
   UNIQUE (action_type, entity_type, entity_id)
 );
 CREATE INDEX IF NOT EXISTS admin_action_items_queue_idx ON admin_action_items (status, priority, due_at, created_at);
+
+UPDATE absence_cases
+   SET status = 'pending_admin', waiting_on = 'admin', updated_at = CURRENT_TIMESTAMP
+ WHERE status IN ('needs_clarification', 'evidence_required')
+   AND NOT EXISTS (
+     SELECT 1
+       FROM absence_case_messages AS message
+      WHERE message.case_id = absence_cases.id
+        AND message.actor = 'admin'
+        AND message.response_requested = true
+   );
+
+INSERT INTO admin_action_items
+  (action_type, entity_type, entity_id, student_id, title, safe_summary, priority, status)
+SELECT 'absence_review', 'absence_case', absence_case.id, absence_case.student_id,
+       'Absence case requires review',
+       'A learner is waiting for a human absence decision or information request.',
+       CASE
+         WHEN absence_case.sensitivity_flags && ARRAY['legal', 'personal_safety']::text[]
+           THEN 'high'
+         ELSE 'normal'
+       END,
+       'pending'
+  FROM absence_cases AS absence_case
+ WHERE absence_case.status = 'pending_admin'
+   AND absence_case.outcome IS NULL
+ON CONFLICT (action_type, entity_type, entity_id) DO UPDATE
+  SET status = 'pending', title = EXCLUDED.title,
+      safe_summary = EXCLUDED.safe_summary, priority = EXCLUDED.priority,
+      resolved_at = NULL, resolved_by = NULL, updated_at = CURRENT_TIMESTAMP;
 
 ALTER TABLE notification_email_outbox DROP CONSTRAINT IF EXISTS notification_email_outbox_status_check;
 UPDATE notification_email_outbox SET status = 'submitted' WHERE status = 'sent';

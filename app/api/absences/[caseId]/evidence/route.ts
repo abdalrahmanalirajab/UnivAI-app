@@ -2,7 +2,11 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import { NextRequest } from "next/server";
 import sharp from "sharp";
-import { AbsenceCaseError, attachAbsenceEvidence } from "@/lib/absence-cases";
+import {
+  AbsenceCaseError,
+  attachAbsenceEvidence,
+  getOpenAbsenceAttachmentRequest,
+} from "@/lib/absence-cases";
 import { enforceUserRateLimit } from "@/lib/rate-limits";
 import { requireLearningActionApi } from "@/lib/session";
 
@@ -20,6 +24,17 @@ export async function POST(
   if (limited) return limited;
   const { caseId } = await params;
   if (!UUID.test(caseId)) return Response.json({ error: "Case not found." }, { status: 404 });
+
+  const openRequest = await getOpenAbsenceAttachmentRequest(gate.registrationNumber, caseId);
+  if (!openRequest) {
+    return Response.json(
+      {
+        error: "An administrator must request an attachment before you can upload one.",
+        code: "ATTACHMENT_NOT_REQUESTED",
+      },
+      { status: 409 },
+    );
+  }
 
   const form = await request.formData().catch(() => null);
   const file = form?.get("evidence");

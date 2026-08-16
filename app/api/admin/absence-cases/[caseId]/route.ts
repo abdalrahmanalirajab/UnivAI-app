@@ -3,6 +3,7 @@ import {
   AbsenceCaseError,
   decideAbsenceCase,
   getAdminAbsenceCase,
+  requestAbsenceInformation,
   type AbsenceOutcome,
 } from "@/lib/absence-cases";
 import { requireAdminApi } from "@/lib/session";
@@ -32,18 +33,46 @@ export async function PATCH(
   if (gate instanceof Response) return gate;
   const { caseId } = await params;
   if (!UUID.test(caseId)) return Response.json({ error: "Case not found." }, { status: 404 });
-  const body = await request.json().catch(() => null) as { outcome?: unknown; reason?: unknown } | null;
-  if (!body || typeof body.outcome !== "string" || typeof body.reason !== "string") {
-    return Response.json({ error: "A decision and administrator reason are required." }, { status: 400 });
-  }
+  const body = await request.json().catch(() => null) as {
+    action?: unknown;
+    outcome?: unknown;
+    reason?: unknown;
+    question?: unknown;
+    attachmentRequested?: unknown;
+  } | null;
   try {
+    if (body?.action === "request_information") {
+      if (typeof body.question !== "string" || typeof body.attachmentRequested !== "boolean") {
+        return Response.json(
+          { error: "A question and attachment choice are required." },
+          { status: 400 },
+        );
+      }
+      await requestAbsenceInformation(
+        gate.id,
+        caseId,
+        body.question,
+        body.attachmentRequested,
+      );
+      return Response.json({ case: await getAdminAbsenceCase(caseId) });
+    }
+    if (
+      (body?.action !== "decide" && body?.action !== undefined) ||
+      typeof body?.outcome !== "string" ||
+      typeof body?.reason !== "string"
+    ) {
+      return Response.json(
+        { error: "A decision and administrator reason are required." },
+        { status: 400 },
+      );
+    }
     await decideAbsenceCase(gate.id, caseId, body.outcome as AbsenceOutcome, body.reason);
     return Response.json({ case: await getAdminAbsenceCase(caseId) });
   } catch (error) {
     if (error instanceof AbsenceCaseError) {
       return Response.json({ error: error.message, code: error.code }, { status: error.status });
     }
-    console.error("Could not decide absence case", error);
-    return Response.json({ error: "Could not save the absence decision." }, { status: 500 });
+    console.error("Could not update absence case", error);
+    return Response.json({ error: "Could not update the absence case." }, { status: 500 });
   }
 }

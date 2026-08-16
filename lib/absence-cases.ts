@@ -43,7 +43,20 @@ export type LearnerAbsenceCase = {
   submittedAt: string;
   decidedAt: string | null;
   items: Array<{ itemType: AbsenceItemType; week: number; remedy: string; lecturePublicId: string | null }>;
-  messages: Array<{ actor: string; message: string; createdAt: string }>;
+  messages: Array<{
+    id: string;
+    actor: "system" | "learner" | "admin";
+    message: string;
+    responseRequested: boolean;
+    attachmentRequested: boolean;
+    createdAt: string;
+  }>;
+  pendingRequest: {
+    messageId: string;
+    question: string;
+    attachmentRequested: boolean;
+    evidenceAttached: boolean;
+  } | null;
   evidenceCount: number;
 };
 
@@ -62,10 +75,10 @@ const ACTIVE_CASE_STATUSES = [
   "needs_clarification", "evidence_required", "pending_admin", "approved", "rejected",
 ];
 
-function cleanReason(value: string, minimum = 20): string {
+function cleanReason(value: string, minimum = 20, label = "reason"): string {
   const clean = value.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "").trim();
   if (clean.length < minimum || clean.length > 2000) {
-    throw new AbsenceCaseError(`The reason must contain ${minimum} to 2000 characters.`);
+    throw new AbsenceCaseError(`The ${label} must contain ${minimum} to 2000 characters.`);
   }
   return clean;
 }
@@ -112,39 +125,31 @@ export async function getEligibleAbsenceItems(studentId: string): Promise<Eligib
   return [...lectureItems, ...quizItems].filter((item) => !unavailable.has(itemKey(item)));
 }
 
-function statusForTriage(triage: AbsenceTriage): {
-  status: AbsenceStatus;
-  waitingOn: "learner" | "admin";
-} {
-  if (triage.nextAction === "ask_clarification") {
-    return { status: "needs_clarification", waitingOn: "learner" };
-  }
-  if (triage.nextAction === "request_evidence") {
-    return { status: "evidence_required", waitingOn: "learner" };
-  }
-  return { status: "pending_admin", waitingOn: "admin" };
-}
-
 async function createAdminAction(
   client: PoolClient,
   caseId: string,
   studentId: string,
   sensitivityFlags: string[],
+  reviewVersion: number,
+  learnerReplied = false,
 ): Promise<void> {
   const priority = sensitivityFlags.some((flag) => flag === "legal" || flag === "personal_safety")
     ? "high"
     : "normal";
+  const safeSummary = learnerReplied
+    ? "The learner replied to an administrator question. Open UnivAI to continue the protected review."
+    : "A learner is waiting for a human absence decision or information request.";
   await client.query(
     `INSERT INTO admin_action_items
        (action_type, entity_type, entity_id, student_id, title, safe_summary, priority, status)
      VALUES ('absence_review', 'absence_case', $1::uuid, $2,
              'Absence case requires review',
-             'A learner is waiting for a human absence decision. Open UnivAI to review the protected case details.',
-             $3, 'pending')
+             $3, $4, 'pending')
      ON CONFLICT (action_type, entity_type, entity_id) DO UPDATE
-       SET status = 'pending', priority = EXCLUDED.priority,
+       SET status = 'pending', title = EXCLUDED.title,
+           safe_summary = EXCLUDED.safe_summary, priority = EXCLUDED.priority,
            resolved_at = NULL, resolved_by = NULL, updated_at = CURRENT_TIMESTAMP`,
-    [caseId, studentId, priority],
+    [caseId, studentId, safeSummary, priority],
   );
 
   const admins = await client.query<{ id: string }>(
@@ -153,11 +158,11 @@ async function createAdminAction(
   for (const admin of admins.rows) {
     await enqueueEmailNotificationWithClient(client, {
       userId: admin.id,
-      eventId: `absence-case:${caseId}:admin-review`,
+      eventId: `absence-case:${caseId}:admin-review:${reviewVersion}`,
       event: {
         type: "admin.action_required",
         title: "Absence case requires review",
-        safeSummary: "A learner is waiting for a human absence decision. Evidence remains available only inside the admin dashboard.",
+        safeSummary,
       },
     });
   }
@@ -232,7 +237,6 @@ export async function submitAbsenceCase(
   const selected = items as EligibleAbsenceItem[];
   const facts = factsFor(reason, selected);
   const triage = await triageAbsence(facts, "None");
-  const next = statusForTriage(triage);
   const client = await pool.connect();
   let caseId = "";
   try {
@@ -241,12 +245,12 @@ export async function submitAbsenceCase(
       `INSERT INTO absence_cases
          (student_id, status, reason, waiting_on, question_code, recommendation,
           policy_clause_ids, sensitivity_flags, admin_summary, ai_confidence, submitted_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7::text[], $8::text[], $9, $10, CURRENT_TIMESTAMP)
+       VALUES ($1, 'pending_admin', $2, 'admin', $3, $4, $5::text[], $6::text[], $7, $8,
+               CURRENT_TIMESTAMP)
        RETURNING id::text`,
       [
-        user.registrationNumber, next.status, reason, next.waitingOn, triage.questionCode,
-        triage.recommendation, triage.policyClauseIds, triage.sensitivityFlags,
-        triage.adminSummary, triage.confidence,
+        user.registrationNumber, reason, triage.questionCode, triage.recommendation,
+        triage.policyClauseIds, triage.sensitivityFlags, triage.adminSummary, triage.confidence,
       ],
     );
     caseId = inserted.rows[0].id;
@@ -259,29 +263,12 @@ export async function submitAbsenceCase(
       );
     }
     await client.query(
-      `INSERT INTO absence_case_messages (case_id, actor, message)
-       VALUES ($1::uuid, 'learner', $2)`,
-      [caseId, reason],
+      `INSERT INTO absence_case_messages (case_id, actor, actor_user_id, message)
+       VALUES ($1::uuid, 'learner', $2::uuid, $3)`,
+      [caseId, user.id, reason],
     );
-    if (triage.questionCode) {
-      await client.query(
-        `INSERT INTO absence_case_messages (case_id, actor, question_code, message)
-         VALUES ($1::uuid, 'system', $2, $3)`,
-        [caseId, triage.questionCode, ABSENCE_QUESTION_TEXT[triage.questionCode]],
-      );
-      await enqueueEmailNotificationWithClient(client, {
-        userId: user.id,
-        eventId: `absence-case:${caseId}:question:0`,
-        event: {
-          type: "absence.clarification_required",
-          question: ABSENCE_QUESTION_TEXT[triage.questionCode],
-        },
-      });
-    }
     await recordTriage(client, caseId, facts, triage);
-    if (next.status === "pending_admin") {
-      await createAdminAction(client, caseId, user.registrationNumber, triage.sensitivityFlags);
-    }
+    await createAdminAction(client, caseId, user.registrationNumber, triage.sensitivityFlags, 0);
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");
@@ -318,44 +305,77 @@ async function mapCases(studentId: string, rows: CaseRow[]): Promise<LearnerAbse
         WHERE student_id = $1 AND case_id = ANY($2::uuid[]) ORDER BY week, item_type`,
       [studentId, ids],
     ),
-    query<{ case_id: string; actor: string; message: string; created_at: Date }>(
-      `SELECT message.case_id::text, message.actor, message.message, message.created_at
+    query<{
+      id: string;
+      case_id: string;
+      actor: "system" | "learner" | "admin";
+      message: string;
+      response_requested: boolean;
+      attachment_requested: boolean;
+      created_at: Date;
+    }>(
+      `SELECT message.id::text, message.case_id::text, message.actor, message.message,
+              message.response_requested, message.attachment_requested, message.created_at
          FROM absence_case_messages AS message
          JOIN absence_cases AS absence_case ON absence_case.id = message.case_id
         WHERE absence_case.student_id = $1 AND message.case_id = ANY($2::uuid[])
         ORDER BY message.created_at ASC, message.id ASC`,
       [studentId, ids],
     ),
-    query<{ case_id: string; count: string | number }>(
-      `SELECT case_id::text, COUNT(*) AS count FROM absence_evidence
-        WHERE student_id = $1 AND case_id = ANY($2::uuid[]) GROUP BY case_id`,
+    query<{ case_id: string; request_message_id: string | null }>(
+      `SELECT case_id::text, request_message_id::text
+         FROM absence_evidence
+        WHERE student_id = $1 AND case_id = ANY($2::uuid[])`,
       [studentId, ids],
     ),
   ]);
-  return rows.map((row) => ({
-    id: row.id,
-    status: row.status,
-    reason: row.reason,
-    waitingOn: row.waiting_on,
-    questionCode: row.question_code,
-    question: row.question_code ? ABSENCE_QUESTION_TEXT[row.question_code] : null,
-    outcome: row.outcome,
-    decisionReason: row.decision_reason,
-    submittedAt: iso(row.submitted_at)!,
-    decidedAt: iso(row.decided_at),
-    items: items.filter((item) => item.case_id === row.id).map((item) => ({
-      itemType: item.item_type,
-      week: item.week,
-      remedy: item.remedy,
-      lecturePublicId: item.lecture_public_id,
-    })),
-    messages: messages.filter((message) => message.case_id === row.id).map((message) => ({
-      actor: message.actor,
-      message: message.message,
-      createdAt: iso(message.created_at)!,
-    })),
-    evidenceCount: Number(evidence.find((item) => item.case_id === row.id)?.count ?? 0),
-  }));
+  return rows.map((row) => {
+    const caseMessages = messages.filter((message) => message.case_id === row.id);
+    const caseEvidence = evidence.filter((item) => item.case_id === row.id);
+    const pendingMessage = row.status === "needs_clarification" && row.waiting_on === "learner"
+      ? [...caseMessages].reverse().find(
+          (message) => message.actor === "admin" && message.response_requested,
+        ) ?? null
+      : null;
+    const pendingRequest = pendingMessage
+      ? {
+          messageId: pendingMessage.id,
+          question: pendingMessage.message,
+          attachmentRequested: pendingMessage.attachment_requested,
+          evidenceAttached: caseEvidence.some(
+            (item) => item.request_message_id === pendingMessage.id,
+          ),
+        }
+      : null;
+    return {
+      id: row.id,
+      status: row.status,
+      reason: row.reason,
+      waitingOn: row.waiting_on,
+      questionCode: row.waiting_on === "learner" ? row.question_code : null,
+      question: pendingRequest?.question ?? null,
+      outcome: row.outcome,
+      decisionReason: row.decision_reason,
+      submittedAt: iso(row.submitted_at)!,
+      decidedAt: iso(row.decided_at),
+      items: items.filter((item) => item.case_id === row.id).map((item) => ({
+        itemType: item.item_type,
+        week: item.week,
+        remedy: item.remedy,
+        lecturePublicId: item.lecture_public_id,
+      })),
+      messages: caseMessages.map((message) => ({
+        id: message.id,
+        actor: message.actor,
+        message: message.message,
+        responseRequested: message.response_requested,
+        attachmentRequested: message.attachment_requested,
+        createdAt: iso(message.created_at)!,
+      })),
+      pendingRequest,
+      evidenceCount: caseEvidence.length,
+    };
+  });
 }
 
 export async function getLearnerAbsenceCases(studentId: string): Promise<LearnerAbsenceCase[]> {
@@ -386,77 +406,76 @@ export async function respondToAbsenceClarification(
   caseId: string,
   answerValue: string,
 ): Promise<LearnerAbsenceCase> {
-  const answer = cleanReason(answerValue, 10);
-  const current = await queryOne<{
-    reason: string;
-    clarification_rounds: number;
-    question_code: AbsenceQuestionCode | null;
-  }>(
-    `SELECT reason, clarification_rounds, question_code FROM absence_cases
-      WHERE id = $1::uuid AND student_id = $2 AND status = 'needs_clarification'`,
-    [caseId, user.registrationNumber],
-  );
-  if (!current) throw new AbsenceCaseError("This case is not waiting for clarification.", 409);
-  const items = await query<{ item_type: AbsenceItemType; week: number }>(
-    `SELECT item_type, week FROM absence_case_items WHERE case_id = $1::uuid ORDER BY week`,
-    [caseId],
-  );
-  const priorMessages = await query<{ message: string }>(
-    `SELECT message FROM absence_case_messages
-      WHERE case_id = $1::uuid AND actor = 'learner' ORDER BY created_at`,
-    [caseId],
-  );
-  const facts = JSON.stringify({
-    claimed_items: items,
-    learner_statement: current.reason,
-    latest_answer: answer,
-    verification_state: "unverified",
-  });
-  let triage = await triageAbsence(facts, JSON.stringify(priorMessages.map((row) => row.message)));
-  const nextRound = current.clarification_rounds + 1;
-  if (nextRound >= 2 && triage.nextAction === "ask_clarification") {
-    triage = { ...triage, nextAction: "pending_admin", questionCode: null, recommendation: "human_review" };
-  }
-  const next = statusForTriage(triage);
+  const answer = cleanReason(answerValue, 10, "answer");
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    const locked = await client.query<{
+      clarification_rounds: number;
+      sensitivity_flags: string[];
+    }>(
+      `SELECT clarification_rounds, sensitivity_flags
+         FROM absence_cases
+        WHERE id = $1::uuid AND student_id = $2
+          AND status = 'needs_clarification' AND waiting_on = 'learner'
+        FOR UPDATE`,
+      [caseId, user.registrationNumber],
+    );
+    const current = locked.rows[0];
+    if (!current) {
+      throw new AbsenceCaseError("This case is not waiting for your reply.", 409);
+    }
+    const request = await client.query<{ id: string; attachment_requested: boolean }>(
+      `SELECT id::text, attachment_requested
+         FROM absence_case_messages
+        WHERE case_id = $1::uuid AND actor = 'admin' AND response_requested = true
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1`,
+      [caseId],
+    );
+    const pendingRequest = request.rows[0];
+    if (!pendingRequest) {
+      throw new AbsenceCaseError("This case has no active administrator question.", 409);
+    }
+    if (pendingRequest.attachment_requested) {
+      const attached = await client.query<{ exists: boolean }>(
+        `SELECT EXISTS (
+           SELECT 1 FROM absence_evidence
+            WHERE case_id = $1::uuid AND student_id = $2
+              AND request_message_id = $3::uuid
+         ) AS exists`,
+        [caseId, user.registrationNumber, pendingRequest.id],
+      );
+      if (!attached.rows[0]?.exists) {
+        throw new AbsenceCaseError(
+          "Attach the image requested by the administrator before sending your reply.",
+          409,
+          "ATTACHMENT_REQUIRED",
+        );
+      }
+    }
     const updated = await client.query(
       `UPDATE absence_cases SET
-         status = $1, waiting_on = $2, clarification_rounds = $3,
-         question_code = $4, recommendation = $5, policy_clause_ids = $6::text[],
-         sensitivity_flags = $7::text[], admin_summary = $8, ai_confidence = $9,
+         status = 'pending_admin', waiting_on = 'admin', question_code = NULL,
          updated_at = CURRENT_TIMESTAMP
-       WHERE id = $10::uuid AND student_id = $11
-         AND status = 'needs_clarification' AND clarification_rounds = $12`,
-      [
-        next.status, next.waitingOn, nextRound, triage.questionCode, triage.recommendation,
-        triage.policyClauseIds, triage.sensitivityFlags, triage.adminSummary, triage.confidence,
-        caseId, user.registrationNumber, current.clarification_rounds,
-      ],
+       WHERE id = $1::uuid AND student_id = $2
+         AND status = 'needs_clarification' AND waiting_on = 'learner'`,
+      [caseId, user.registrationNumber],
     );
     if (updated.rowCount !== 1) throw new AbsenceCaseError("The case changed; refresh and try again.", 409);
     await client.query(
-      `INSERT INTO absence_case_messages (case_id, actor, message) VALUES ($1::uuid, 'learner', $2)`,
-      [caseId, answer],
+      `INSERT INTO absence_case_messages (case_id, actor, actor_user_id, message)
+       VALUES ($1::uuid, 'learner', $2::uuid, $3)`,
+      [caseId, user.id, answer],
     );
-    if (triage.questionCode) {
-      const question = ABSENCE_QUESTION_TEXT[triage.questionCode];
-      await client.query(
-        `INSERT INTO absence_case_messages (case_id, actor, question_code, message)
-         VALUES ($1::uuid, 'system', $2, $3)`,
-        [caseId, triage.questionCode, question],
-      );
-      await enqueueEmailNotificationWithClient(client, {
-        userId: user.id,
-        eventId: `absence-case:${caseId}:question:${nextRound}`,
-        event: { type: "absence.clarification_required", question },
-      });
-    }
-    await recordTriage(client, caseId, `${facts}\n${answer}`, triage);
-    if (next.status === "pending_admin") {
-      await createAdminAction(client, caseId, user.registrationNumber, triage.sensitivityFlags);
-    }
+    await createAdminAction(
+      client,
+      caseId,
+      user.registrationNumber,
+      current.sensitivity_flags ?? [],
+      current.clarification_rounds,
+      true,
+    );
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");
@@ -465,6 +484,34 @@ export async function respondToAbsenceClarification(
     client.release();
   }
   return (await getLearnerAbsenceCase(user.registrationNumber, caseId))!;
+}
+
+export async function getOpenAbsenceAttachmentRequest(
+  studentId: string,
+  caseId: string,
+): Promise<{ requestMessageId: string } | null> {
+  const row = await queryOne<{ request_message_id: string }>(
+    `SELECT request.id::text AS request_message_id
+       FROM absence_cases AS absence_case
+       JOIN LATERAL (
+         SELECT message.id, message.attachment_requested
+           FROM absence_case_messages AS message
+          WHERE message.case_id = absence_case.id
+            AND message.actor = 'admin'
+            AND message.response_requested = true
+          ORDER BY message.created_at DESC, message.id DESC
+          LIMIT 1
+       ) AS request ON true
+       LEFT JOIN absence_evidence AS evidence
+         ON evidence.request_message_id = request.id
+      WHERE absence_case.id = $1::uuid AND absence_case.student_id = $2
+        AND absence_case.status = 'needs_clarification'
+        AND absence_case.waiting_on = 'learner'
+        AND request.attachment_requested = true
+        AND evidence.id IS NULL`,
+    [caseId, studentId],
+  );
+  return row ? { requestMessageId: row.request_message_id } : null;
 }
 
 export async function attachAbsenceEvidence(
@@ -480,36 +527,61 @@ export async function attachAbsenceEvidence(
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const locked = await client.query<{ sensitivity_flags: string[] }>(
-      `SELECT sensitivity_flags FROM absence_cases
-        WHERE id = $1::uuid AND student_id = $2 AND status = 'evidence_required'
+    const locked = await client.query<{ id: string }>(
+      `SELECT id::text FROM absence_cases
+        WHERE id = $1::uuid AND student_id = $2
+          AND status = 'needs_clarification' AND waiting_on = 'learner'
         FOR UPDATE`,
       [caseId, studentId],
     );
-    if (!locked.rows[0]) throw new AbsenceCaseError("This case is not waiting for evidence.", 409);
+    if (!locked.rows[0]) {
+      throw new AbsenceCaseError("This case has no open administrator attachment request.", 409);
+    }
+    const request = await client.query<{ id: string; attachment_requested: boolean }>(
+      `SELECT message.id::text, message.attachment_requested
+         FROM absence_case_messages AS message
+        WHERE message.case_id = $1::uuid AND message.actor = 'admin'
+          AND message.response_requested = true
+        ORDER BY message.created_at DESC, message.id DESC
+        LIMIT 1`,
+      [caseId],
+    );
+    const pendingRequest = request.rows[0];
+    if (!pendingRequest?.attachment_requested) {
+      throw new AbsenceCaseError(
+        "The administrator did not request an attachment for this reply.",
+        409,
+        "ATTACHMENT_NOT_REQUESTED",
+      );
+    }
+    const requestMessageId = pendingRequest.id;
+    const existing = await client.query<{ exists: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM absence_evidence
+          WHERE case_id = $1::uuid AND student_id = $2
+            AND request_message_id = $3::uuid
+       ) AS exists`,
+      [caseId, studentId, requestMessageId],
+    );
+    if (existing.rows[0]?.exists) {
+      throw new AbsenceCaseError("The requested attachment is already uploaded.", 409);
+    }
     await client.query(
       `INSERT INTO absence_evidence
          (case_id, student_id, mime_type, original_filename, byte_length,
-          sha256, image_data, expires_at)
-       VALUES ($1::uuid, $2, $3, $4, $5, $6, $7,
+          sha256, image_data, request_message_id, expires_at)
+       VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8::uuid,
                CURRENT_TIMESTAMP + INTERVAL '90 days')`,
       [
         caseId, studentId, evidence.mimeType, evidence.originalFilename,
-        evidence.bytes.length, evidence.sha256, evidence.bytes,
+        evidence.bytes.length, evidence.sha256, evidence.bytes, requestMessageId,
       ],
     );
     await client.query(
-      `UPDATE absence_cases SET status = 'pending_admin', waiting_on = 'admin',
-              question_code = NULL, updated_at = CURRENT_TIMESTAMP
-        WHERE id = $1::uuid`,
-      [caseId],
-    );
-    await client.query(
       `INSERT INTO absence_case_messages (case_id, actor, message)
-       VALUES ($1::uuid, 'system', 'Evidence received and secured for human review.')`,
+       VALUES ($1::uuid, 'system', 'The requested image was received and secured for human review.')`,
       [caseId],
     );
-    await createAdminAction(client, caseId, studentId, locked.rows[0].sensitivity_flags ?? []);
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");
@@ -523,6 +595,96 @@ export async function attachAbsenceEvidence(
   return (await getLearnerAbsenceCase(studentId, caseId))!;
 }
 
+export async function requestAbsenceInformation(
+  adminUserId: string,
+  caseId: string,
+  questionValue: string,
+  attachmentRequested: boolean,
+): Promise<void> {
+  const question = cleanReason(questionValue, 10, "question");
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const locked = await client.query<{
+      student_id: string;
+      user_id: string;
+      clarification_rounds: number;
+      sensitivity_flags: string[];
+    }>(
+      `SELECT absence_case.student_id, learner."id"::text AS user_id,
+              absence_case.clarification_rounds, absence_case.sensitivity_flags
+         FROM absence_cases AS absence_case
+         JOIN "user" AS learner
+           ON learner."registrationNumber" = absence_case.student_id
+        WHERE absence_case.id = $1::uuid
+          AND absence_case.status = 'pending_admin'
+          AND absence_case.waiting_on = 'admin'
+        FOR UPDATE OF absence_case`,
+      [caseId],
+    );
+    const current = locked.rows[0];
+    if (!current) {
+      throw new AbsenceCaseError("This case is not ready for an administrator question.", 409);
+    }
+    const nextRound = current.clarification_rounds + 1;
+    await client.query(
+      `INSERT INTO absence_case_messages
+         (case_id, actor, actor_user_id, message, response_requested, attachment_requested)
+       VALUES ($1::uuid, 'admin', $2::uuid, $3, true, $4)`,
+      [caseId, adminUserId, question, attachmentRequested],
+    );
+    await client.query(
+      `UPDATE absence_cases
+          SET status = 'needs_clarification', waiting_on = 'learner',
+              clarification_rounds = $2, question_code = NULL,
+              updated_at = CURRENT_TIMESTAMP
+        WHERE id = $1::uuid`,
+      [caseId, nextRound],
+    );
+    const safeSummary = attachmentRequested
+      ? "Waiting for the learner's reply and one protected image requested by an administrator."
+      : "Waiting for the learner's text reply to an administrator question.";
+    await client.query(
+      `INSERT INTO admin_action_items
+         (action_type, entity_type, entity_id, student_id, title, safe_summary,
+          priority, status, assigned_to)
+       VALUES ('absence_review', 'absence_case', $1::uuid, $2,
+               'Waiting for learner information', $3, $4, 'assigned', $5::uuid)
+       ON CONFLICT (action_type, entity_type, entity_id) DO UPDATE
+         SET status = 'assigned', assigned_to = EXCLUDED.assigned_to,
+             title = EXCLUDED.title, safe_summary = EXCLUDED.safe_summary,
+             priority = EXCLUDED.priority, resolved_at = NULL, resolved_by = NULL,
+             updated_at = CURRENT_TIMESTAMP`,
+      [
+        caseId,
+        current.student_id,
+        safeSummary,
+        current.sensitivity_flags.some(
+          (flag) => flag === "legal" || flag === "personal_safety",
+        ) ? "high" : "normal",
+        adminUserId,
+      ],
+    );
+    const attachmentInstruction = attachmentRequested
+      ? " The administrator also requires one JPEG or PNG image with your reply."
+      : " No attachment was requested; reply with text only.";
+    await enqueueEmailNotificationWithClient(client, {
+      userId: current.user_id,
+      eventId: `absence-case:${caseId}:question:${nextRound}`,
+      event: {
+        type: "absence.clarification_required",
+        question: `${question}${attachmentInstruction}`,
+      },
+    });
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export type AdminAction = {
   id: string;
   caseId: string;
@@ -532,18 +694,24 @@ export type AdminAction = {
   safeSummary: string;
   priority: string;
   status: string;
+  waitingOn: "learner" | "admin" | "none";
   createdAt: string;
 };
 
 export async function getAdminActions(): Promise<AdminAction[]> {
   const rows = await query<{
     id: string; entity_id: string; student_id: string; student_name: string;
-    title: string; safe_summary: string; priority: string; status: string; created_at: Date;
+    title: string; safe_summary: string; priority: string; status: string;
+    waiting_on: "learner" | "admin" | "none"; created_at: Date;
   }>(
     `SELECT action.id::text, action.entity_id::text, action.student_id,
             learner.name AS student_name, action.title, action.safe_summary,
-            action.priority, action.status, action.created_at
+            action.priority, action.status, absence_case.waiting_on, action.created_at
        FROM admin_action_items AS action
+       JOIN absence_cases AS absence_case
+         ON action.action_type = 'absence_review'
+        AND action.entity_type = 'absence_case'
+        AND absence_case.id = action.entity_id
        LEFT JOIN "user" AS learner ON learner."registrationNumber" = action.student_id
       WHERE action.status IN ('pending', 'assigned')
       ORDER BY CASE action.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 ELSE 2 END,
@@ -558,6 +726,7 @@ export async function getAdminActions(): Promise<AdminAction[]> {
     safeSummary: row.safe_summary,
     priority: row.priority,
     status: row.status,
+    waitingOn: row.waiting_on,
     createdAt: iso(row.created_at)!,
   }));
 }
@@ -585,13 +754,29 @@ export async function getAdminAbsenceCase(caseId: string) {
       `SELECT item_type, week, remedy FROM absence_case_items WHERE case_id = $1::uuid ORDER BY week, item_type`,
       [caseId],
     ),
-    query<{ actor: string; message: string; created_at: Date }>(
-      `SELECT actor, message, created_at FROM absence_case_messages
+    query<{
+      id: string;
+      actor: "system" | "learner" | "admin";
+      message: string;
+      response_requested: boolean;
+      attachment_requested: boolean;
+      created_at: Date;
+    }>(
+      `SELECT id::text, actor, message, response_requested, attachment_requested, created_at
+         FROM absence_case_messages
         WHERE case_id = $1::uuid ORDER BY created_at, id`,
       [caseId],
     ),
-    query<{ id: string; mime_type: string; original_filename: string; byte_length: number; created_at: Date }>(
-      `SELECT id::text, mime_type, original_filename, byte_length, created_at
+    query<{
+      id: string;
+      mime_type: string;
+      original_filename: string;
+      byte_length: number;
+      request_message_id: string | null;
+      created_at: Date;
+    }>(
+      `SELECT id::text, mime_type, original_filename, byte_length,
+              request_message_id::text, created_at
          FROM absence_evidence WHERE case_id = $1::uuid AND expires_at > CURRENT_TIMESTAMP
         ORDER BY created_at`,
       [caseId],
@@ -601,8 +786,12 @@ export async function getAdminAbsenceCase(caseId: string) {
     id: absenceCase.id,
     student: { registrationNumber: absenceCase.student_id, name: absenceCase.student_name, email: absenceCase.student_email },
     status: absenceCase.status,
+    waitingOn: absenceCase.waiting_on,
     reason: absenceCase.reason,
     recommendation: absenceCase.recommendation,
+    suggestedQuestion: absenceCase.question_code
+      ? ABSENCE_QUESTION_TEXT[absenceCase.question_code]
+      : null,
     policyClauseIds: absenceCase.policy_clause_ids,
     sensitivityFlags: absenceCase.sensitivity_flags,
     adminSummary: absenceCase.admin_summary,
@@ -611,10 +800,18 @@ export async function getAdminAbsenceCase(caseId: string) {
     decisionReason: absenceCase.decision_reason,
     submittedAt: iso(absenceCase.submitted_at),
     items: items.map((item) => ({ itemType: item.item_type, week: item.week, remedy: item.remedy })),
-    messages: messages.map((message) => ({ actor: message.actor, message: message.message, createdAt: iso(message.created_at) })),
+    messages: messages.map((message) => ({
+      id: message.id,
+      actor: message.actor,
+      message: message.message,
+      responseRequested: message.response_requested,
+      attachmentRequested: message.attachment_requested,
+      createdAt: iso(message.created_at),
+    })),
     evidence: evidence.map((item) => ({
       id: item.id, mimeType: item.mime_type, filename: item.original_filename,
-      byteLength: item.byte_length, createdAt: iso(item.created_at),
+      byteLength: item.byte_length, requestMessageId: item.request_message_id,
+      createdAt: iso(item.created_at),
     })),
   };
 }
@@ -639,8 +836,9 @@ export async function decideAbsenceCase(
     const locked = await client.query<{ student_id: string; user_id: string }>(
       `SELECT absence_case.student_id, learner."id"::text AS user_id
          FROM absence_cases AS absence_case
-         JOIN "user" AS learner ON learner."registrationNumber" = absence_case.student_id
+        JOIN "user" AS learner ON learner."registrationNumber" = absence_case.student_id
         WHERE absence_case.id = $1::uuid AND absence_case.status = 'pending_admin'
+          AND absence_case.waiting_on = 'admin'
         FOR UPDATE OF absence_case`,
       [caseId],
     );
@@ -659,9 +857,9 @@ export async function decideAbsenceCase(
       [remedy, caseId],
     );
     await client.query(
-      `INSERT INTO absence_case_messages (case_id, actor, message)
-       VALUES ($1::uuid, 'admin', $2)`,
-      [caseId, decisionReason],
+      `INSERT INTO absence_case_messages (case_id, actor, actor_user_id, message)
+       VALUES ($1::uuid, 'admin', $2::uuid, $3)`,
+      [caseId, adminUserId, decisionReason],
     );
     await client.query(
       `UPDATE admin_action_items SET status = 'resolved', resolved_at = CURRENT_TIMESTAMP,
