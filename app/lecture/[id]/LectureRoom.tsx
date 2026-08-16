@@ -35,6 +35,10 @@ import type { CitationV1 } from "@/test/fixtures/citation-v1";
 import { formatLateness } from "@/lib/time";
 import LectureSlides from "./LectureSlides";
 import VoiceStateCard from "@/components/ui/voice-state-card";
+import {
+  encodeReliableLiveMessage,
+  shouldRecoverLivePresence,
+} from "@/lib/live-presence-client";
 import { LIVE_SPEECH_STATES, LIVE_STATES } from "@/lib/standalone-contracts";
 
 /**
@@ -141,11 +145,12 @@ export default function LectureRoom({ lectureId }: Props) {
 
   const reply = useCallback(async (message: Record<string, unknown>) => {
     try {
+      const encoded = encodeReliableLiveMessage(message);
       await room.localParticipant.publishData(
-        new TextEncoder().encode(JSON.stringify(message)),
-        // Heartbeats are current-state signals; stale queued heartbeats after a
-        // reconnect are harmful. Learner actions remain reliable.
-        { reliable: message.type !== "presence" },
+        encoded.payload,
+        // Presence drives attendance and worker pause/resume state, so dropping
+        // one must not leave the browser and lecturer disagreeing indefinitely.
+        encoded.options,
       );
       if (message.type === "question" || message.type === "retry" || message.type === "cancel") {
         setTranscript(null);
@@ -351,6 +356,13 @@ export default function LectureRoom({ lectureId }: Props) {
   }, [agentState, connected, reply]);
 
   useEffect(() => {
+    if (!shouldRecoverLivePresence(connected, agentState)) return;
+    // The SDK can remain connected while a lossy presence packet disappears.
+    // Recover the worker immediately instead of requiring a page refresh.
+    reply({ type: "presence", state: "present" }).catch(() => undefined);
+  }, [agentState, connected, reply]);
+
+  useEffect(() => {
     if (turnTimer.current) clearTimeout(turnTimer.current);
     if (agentState === "listening") {
       turnTimer.current = setTimeout(() => {
@@ -499,17 +511,28 @@ export default function LectureRoom({ lectureId }: Props) {
         </Stack>
       ) : null}
 
-      {!connected && agentState === "waiting" ? (
+      {agentState === "waiting" ? (
         <Alert
           severity="warning"
           action={
-            <Button color="inherit" variant="outlined" onClick={() => window.location.reload()}>
-              Reconnect
+            <Button
+              color="inherit"
+              variant="outlined"
+              onClick={() => {
+                if (connected) {
+                  reply({ type: "presence", state: "present" }).catch(() => undefined);
+                } else {
+                  window.location.reload();
+                }
+              }}
+            >
+              {connected ? "Resume now" : "Reconnect"}
             </Button>
           }
         >
-          Your connection was lost. The lecturer is waiting and will welcome you back,
-          replay three sentences, and continue from your saved place.
+          {connected
+            ? "The room is connected, but the lecturer lost your presence signal. We are resuming automatically; use Resume now if it does not continue."
+            : "Your connection was lost. The lecturer is waiting and will welcome you back, replay three sentences, and continue from your saved place."}
         </Alert>
       ) : null}
 
