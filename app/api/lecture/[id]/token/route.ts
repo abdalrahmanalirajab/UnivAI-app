@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { NextRequest } from "next/server";
 import { AccessToken, RoomServiceClient } from "livekit-server-sdk";
 import { queryOne } from "@/lib/db";
@@ -7,54 +6,14 @@ import { getLectureMakeupAccess } from "@/lib/lecture-makeup";
 import { requireLearningActionApi } from "@/lib/session";
 import { env } from "@/lib/env";
 import { enforceUserRateLimit } from "@/lib/rate-limits";
-import { hasOnlyNameLetters, normalizeName } from "@/lib/validators";
+import {
+  buildLiveSessionMetadata,
+  safeSpokenName,
+  TOKEN_TTL_SECONDS,
+  type LiveRoomMetadataV2,
+} from "@/lib/live-session-metadata";
 
 export const dynamic = "force-dynamic";
-
-/**
- * Live session metadata v1 (signed into the LiveKit JWT).
- *
- * The voice worker (UnivAI-live) reads this to know which learner is speaking
- * and to address them by name during live interaction.
- * Everything here is bound to the authenticated learner and the lecture they
- * joined — the client contributes nothing. `spokenName` is the ONLY personal
- * field; email, phone and unrelated profile data never cross into Live.
- *
- * Contract version: 1. The worker fails closed on any other version.
- */
-export const LIVE_METADATA_VERSION = 1;
-
-/** Spoken-name cap, in code points (not UTF-16 units), for safe TTS. */
-export const SPOKEN_NAME_MAX_LENGTH = 60;
-
-/** How long a minted room token stays valid. Short-lived on purpose. */
-export const TOKEN_TTL_SECONDS = 600;
-
-export type LiveSessionMetadataV1 = {
-  v: typeof LIVE_METADATA_VERSION;
-  lectureId: string;
-  week: number;
-  sid: string;
-  planVersion: number | null;
-  /** Fresh per issuance; lets the worker reject replays and dedupe. */
-  nonce: string;
-  /** Safe spoken name; `null` means "use the generic phrase" in Live. */
-  spokenName: string | null;
-};
-
-export type LiveRoomMetadataV2 = {
-  schema_name: "univai.live.lecture-session";
-  schema_version: "2";
-  artifact_id: string;
-  programme_id: string;
-  course_id: string;
-  plan_version: number;
-  week: number;
-  lecture_id: string;
-  learner_id: string;
-  nonce: string;
-  display_name: string | null;
-};
 
 function liveKitHttpUrl(url: string): string {
   if (url.startsWith("wss://")) return `https://${url.slice(6)}`;
@@ -81,47 +40,6 @@ async function configureRoom(
     if ((await service.listRooms([room])).length === 0) throw error;
     await service.updateRoomMetadata(room, serialized);
   }
-}
-
-/**
- * Turn a display name into a safe string for the voice worker to speak.
- *
- * Uses the same letter-only Unicode rule as account writes. Legacy invalid
- * database values fall back to the generic phrase instead of being spoken.
- * Valid names are normalized, whitespace-collapsed and capped in code points.
- */
-export function safeSpokenName(raw: unknown): string | null {
-  if (typeof raw !== "string") return null;
-  const normalized = normalizeName(raw);
-  if (!hasOnlyNameLetters(normalized)) return null;
-
-  const codePoints = Array.from(normalized);
-  if (codePoints.length > SPOKEN_NAME_MAX_LENGTH) {
-    return codePoints
-      .slice(0, SPOKEN_NAME_MAX_LENGTH)
-      .join("")
-      .replace(/\s+$/u, "")
-      .replace(/\p{M}+$/u, ""); // never end on dangling combining marks
-  }
-  return normalized;
-}
-
-export function buildLiveSessionMetadata(input: {
-  lectureId: string;
-  week: number;
-  sid: string;
-  planVersion: number | null;
-  spokenName: string | null;
-}): LiveSessionMetadataV1 {
-  return {
-    v: LIVE_METADATA_VERSION,
-    lectureId: input.lectureId,
-    week: input.week,
-    sid: input.sid,
-    planVersion: input.planVersion,
-    nonce: randomUUID(),
-    spokenName: input.spokenName,
-  };
 }
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {

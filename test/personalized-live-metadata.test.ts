@@ -51,13 +51,13 @@ vi.mock("@/lib/lecture-makeup", () => ({
 vi.mock("@/lib/env", () => ({ env: mockEnv }));
 
 import {
-  POST,
   safeSpokenName,
   buildLiveSessionMetadata,
   LIVE_METADATA_VERSION,
   SPOKEN_NAME_MAX_LENGTH,
   TOKEN_TTL_SECONDS,
-} from "@/app/api/lecture/[id]/token/route";
+} from "@/lib/live-session-metadata";
+import { POST } from "@/app/api/lecture/[id]/token/route";
 
 const VERIFIER = new TokenVerifier(mockEnv.LIVEKIT_API_KEY, mockEnv.LIVEKIT_API_SECRET);
 const listRoomsSpy = vi.spyOn(RoomServiceClient.prototype, "listRooms");
