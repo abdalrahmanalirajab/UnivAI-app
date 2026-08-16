@@ -16,9 +16,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
   const archiveRequested = new URL(request.url).searchParams.get("mode") === "archive";
   if (!access.available || (archiveRequested && access.mode !== "archive")) {
-    const message = archiveRequested || access.blockedReason === "not_started"
-      ? "The presentation unlocks after the lecture ends."
-      : "Your live lecture connection is still being confirmed. The presentation will open automatically.";
+    const message = access.blockedReason === "makeup_confirmation_required"
+      ? "Confirm the one-time make-up lecture before opening its presentation."
+      : access.blockedReason === "makeup_completed"
+        ? "This one-time make-up lecture is complete and cannot be replayed."
+        : access.blockedReason === "makeup_closed"
+          ? "This one-time make-up lecture closed before its first join."
+          : archiveRequested || access.blockedReason === "not_started"
+            ? "The presentation is not available yet."
+            : "Your live lecture connection is still being confirmed. The presentation will open automatically.";
     return Response.json(
       { error: message, code: "PRESENTATION_LOCKED", reason: access.blockedReason },
       { status: 403 },

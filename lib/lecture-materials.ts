@@ -12,7 +12,8 @@ type LectureMaterialRow = {
   joined_at: Date | null;
   completed_at: Date | null;
   script_payload: DurationBearingScript;
-  replay_access_granted?: boolean;
+  makeup_access_approved?: boolean;
+  makeup_started_at?: Date | null;
 };
 
 export type LectureMaterialAccess = {
@@ -25,25 +26,35 @@ export type LectureMaterialAccess = {
   endsAt: Date;
   available: boolean;
   mode: "live" | "archive" | null;
-  blockedReason: "not_started" | "not_joined" | null;
+  blockedReason:
+    | "not_started"
+    | "not_joined"
+    | "makeup_confirmation_required"
+    | "makeup_closed"
+    | "makeup_completed"
+    | null;
 };
 
 /**
  * Decide whether presentation bytes may be served without changing attendance.
  *
- * During the scheduled lecture, only a learner whose trusted token request has
- * already stamped a join may read them. At the scheduled end, the same slides
- * become a read-only archive even when the learner missed or skipped the live
- * lecture. A final administrator-approved replay remedy opens that same archive
- * immediately. Nothing in this path creates or updates an attendance row.
+ * During either the scheduled lecture or an approved make-up, only a learner
+ * whose real LiveKit presence has stamped a join may read the slides. A make-up
+ * uses its confirmation timestamp as the effective start and never becomes a
+ * replay archive. Nothing in this path creates or updates attendance.
  */
 export function lectureMaterialAccessAt(
   row: LectureMaterialRow,
   virtualNow: Date,
 ): LectureMaterialAccess {
-  const startsAt = new Date(row.starts_at);
+  const scheduledStartsAt = new Date(row.starts_at);
+  const makeupStartsAt = row.makeup_started_at
+    ? new Date(row.makeup_started_at)
+    : null;
+  const startsAt = makeupStartsAt ?? scheduledStartsAt;
+  const durationMinutes = scriptDurationMinutes(row.script_payload);
   const endsAt = new Date(
-    startsAt.getTime() + scriptDurationMinutes(row.script_payload) * MINUTE_MS,
+    startsAt.getTime() + durationMinutes * MINUTE_MS,
   );
 
   const base = {
@@ -58,11 +69,46 @@ export function lectureMaterialAccessAt(
     endsAt,
   };
 
-  if (row.replay_access_granted) {
+  if (row.makeup_access_approved) {
+    if (row.completed_at) {
+      return {
+        ...base,
+        available: false,
+        mode: null,
+        blockedReason: "makeup_completed",
+      };
+    }
+    if (!makeupStartsAt) {
+      return {
+        ...base,
+        available: false,
+        mode: null,
+        blockedReason: "makeup_confirmation_required",
+      };
+    }
+    const firstJoinCutoffAt = new Date(
+      makeupStartsAt.getTime() + (durationMinutes / 2) * MINUTE_MS,
+    );
+    if (!row.joined_at && virtualNow > firstJoinCutoffAt) {
+      return {
+        ...base,
+        available: false,
+        mode: null,
+        blockedReason: "makeup_closed",
+      };
+    }
+    if (!row.joined_at) {
+      return {
+        ...base,
+        available: false,
+        mode: null,
+        blockedReason: "not_joined",
+      };
+    }
     return {
       ...base,
       available: true,
-      mode: "archive",
+      mode: "live",
       blockedReason: null,
     };
   }
@@ -82,20 +128,12 @@ export function lectureMaterialAccessAt(
       blockedReason: null,
     };
   }
-  if (virtualNow < startsAt) {
+  if (virtualNow < scheduledStartsAt) {
     return {
       ...base,
       available: false,
       mode: null,
       blockedReason: "not_started",
-    };
-  }
-  if (virtualNow >= endsAt) {
-    return {
-      ...base,
-      available: true,
-      mode: "archive",
-      blockedReason: null,
     };
   }
   return {
@@ -119,21 +157,25 @@ export async function getLectureMaterialAccess(
             la.artifact_id::text AS artifact_id,
             la.updated_at AS artifact_updated_at,
             l.week, l.title, l.starts_at, a.joined_at, a.completed_at, la.script_payload,
-            EXISTS (
-              SELECT 1
-                FROM absence_case_items AS absence_item
-                JOIN absence_cases AS absence_case
-                  ON absence_case.id = absence_item.case_id
-                 AND absence_case.student_id = absence_item.student_id
-               WHERE absence_item.student_id = l.student_id
-                 AND absence_item.item_type = 'lecture'
-                 AND absence_item.lecture_public_id = l.public_id
-                 AND absence_item.remedy = 'replay'
-                 AND absence_case.status = 'approved'
-            ) AS replay_access_granted
+            COALESCE(makeup.approved, FALSE) AS makeup_access_approved,
+            makeup.makeup_started_at
        FROM lectures l
        LEFT JOIN lecture_artifacts la ON la.artifact_id = l.lecture_artifact_id
        LEFT JOIN attendance a ON a.lecture_id = l.id AND a.student_id = l.student_id
+       LEFT JOIN LATERAL (
+         SELECT TRUE AS approved, item.makeup_started_at
+           FROM absence_case_items AS item
+           JOIN absence_cases AS absence_case
+             ON absence_case.id = item.case_id
+            AND absence_case.student_id = item.student_id
+          WHERE item.student_id = l.student_id
+            AND item.item_type = 'lecture'
+            AND item.lecture_public_id = l.public_id
+            AND item.remedy = 'makeup_live'
+            AND absence_case.status = 'approved'
+          ORDER BY absence_case.decided_at DESC NULLS LAST, item.created_at DESC
+          LIMIT 1
+       ) AS makeup ON TRUE
       WHERE l.public_id = $1::uuid AND l.student_id = $2
       LIMIT 1`,
     [publicLectureId, registrationNumber],
@@ -150,21 +192,25 @@ export async function getPresentationMaterialAccess(
             la.artifact_id::text AS artifact_id,
             la.updated_at AS artifact_updated_at,
             l.week, l.title, l.starts_at, a.joined_at, a.completed_at, la.script_payload,
-            EXISTS (
-              SELECT 1
-                FROM absence_case_items AS absence_item
-                JOIN absence_cases AS absence_case
-                  ON absence_case.id = absence_item.case_id
-                 AND absence_case.student_id = absence_item.student_id
-               WHERE absence_item.student_id = l.student_id
-                 AND absence_item.item_type = 'lecture'
-                 AND absence_item.lecture_public_id = l.public_id
-                 AND absence_item.remedy = 'replay'
-                 AND absence_case.status = 'approved'
-            ) AS replay_access_granted
+            COALESCE(makeup.approved, FALSE) AS makeup_access_approved,
+            makeup.makeup_started_at
        FROM lecture_artifacts la
        JOIN lectures l ON l.lecture_artifact_id = la.artifact_id
        LEFT JOIN attendance a ON a.lecture_id = l.id AND a.student_id = l.student_id
+       LEFT JOIN LATERAL (
+         SELECT TRUE AS approved, item.makeup_started_at
+           FROM absence_case_items AS item
+           JOIN absence_cases AS absence_case
+             ON absence_case.id = item.case_id
+            AND absence_case.student_id = item.student_id
+          WHERE item.student_id = l.student_id
+            AND item.item_type = 'lecture'
+            AND item.lecture_public_id = l.public_id
+            AND item.remedy = 'makeup_live'
+            AND absence_case.status = 'approved'
+          ORDER BY absence_case.decided_at DESC NULLS LAST, item.created_at DESC
+          LIMIT 1
+       ) AS makeup ON TRUE
       WHERE la.artifact_id = $1::uuid AND l.student_id = $2
       LIMIT 1`,
     [artifactId, registrationNumber],

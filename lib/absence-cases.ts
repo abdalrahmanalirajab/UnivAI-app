@@ -826,7 +826,11 @@ export async function decideAbsenceCase(
     throw new AbsenceCaseError("Choose a valid decision.");
   }
   const decisionReason = cleanReason(reasonValue, 10);
-  const remedy = outcome === "excused" ? "exclude_from_denominator" : outcome === "access_only" ? "replay" : "none";
+  const remedy = outcome === "excused"
+    ? "exclude_from_denominator"
+    : outcome === "access_only"
+      ? "makeup_live"
+      : "none";
   const status = outcome === "unexcused" ? "rejected" : "approved";
   const client = await pool.connect();
   let targetStudentId: string | null = null;
@@ -853,7 +857,13 @@ export async function decideAbsenceCase(
       [status, outcome, decisionReason, adminUserId, caseId],
     );
     await client.query(
-      `UPDATE absence_case_items SET remedy = $1 WHERE case_id = $2::uuid`,
+      `UPDATE absence_case_items
+          SET remedy = CASE
+            WHEN $1 = 'makeup_live' AND item_type <> 'lecture' THEN 'none'
+            ELSE $1
+          END,
+          makeup_started_at = NULL
+        WHERE case_id = $2::uuid`,
       [remedy, caseId],
     );
     await client.query(

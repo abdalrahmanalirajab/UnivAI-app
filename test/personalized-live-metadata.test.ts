@@ -15,6 +15,7 @@ const {
   mockGate,
   mockQueryOne,
   mockGetLectures,
+  mockGetLectureMakeup,
   mockReadScript,
   mockEnv,
   mockBlockedMessage,
@@ -22,6 +23,7 @@ const {
   mockGate: vi.fn(),
   mockQueryOne: vi.fn(),
   mockGetLectures: vi.fn(),
+  mockGetLectureMakeup: vi.fn(),
   mockReadScript: vi.fn(),
   mockEnv: {
     LIVEKIT_API_KEY: "test-api-key",
@@ -42,6 +44,9 @@ vi.mock("@/lib/lectures", () => ({
   getLectures: mockGetLectures,
   readScript: mockReadScript,
   BLOCKED_MESSAGE: mockBlockedMessage,
+}));
+vi.mock("@/lib/lecture-makeup", () => ({
+  getLectureMakeupAccess: mockGetLectureMakeup,
 }));
 vi.mock("@/lib/env", () => ({ env: mockEnv }));
 
@@ -185,6 +190,7 @@ describe("POST /api/lecture/[id]/token — personalized signed metadata", () => 
       sql.includes("FROM programmes") ? { id: 7, plan_version: 3 } : LECTURE,
     );
     mockGetLectures.mockResolvedValue([{ id: PUBLIC_LECTURE_ID, joinable: true, blockedReason: null }]);
+    mockGetLectureMakeup.mockResolvedValue(null);
     mockReadScript.mockResolvedValue({
       lectureId: "course-ai-101",
       title: "Week 3",
@@ -342,6 +348,29 @@ describe("POST /api/lecture/[id]/token — personalized signed metadata", () => 
     const response = await post();
     expect(response.status).toBe(403);
     expect(await response.json()).toMatchObject({ reason: "completed" });
+  });
+
+  it("admits an active make-up even though the original lecture window is closed", async () => {
+    mockGetLectures.mockResolvedValue([
+      { id: PUBLIC_LECTURE_ID, joinable: false, blockedReason: "missed" },
+    ]);
+    mockGetLectureMakeup.mockResolvedValue({ state: "active" });
+
+    const response = await post();
+    expect(response.status).toBe(200);
+  });
+
+  it("requires the explicit make-up confirmation before minting a token", async () => {
+    mockGetLectures.mockResolvedValue([
+      { id: PUBLIC_LECTURE_ID, joinable: false, blockedReason: "missed" },
+    ]);
+    mockGetLectureMakeup.mockResolvedValue({ state: "ready" });
+
+    const response = await post();
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      reason: "makeup_confirmation_required",
+    });
   });
 
   it("fails closed with 503 when LiveKit is not configured", async () => {

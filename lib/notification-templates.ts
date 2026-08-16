@@ -179,7 +179,7 @@ export function renderNotification(event: NotificationEvent): RenderedNotificati
     case "absence.decision": {
       const labels = {
         excused: "Absent with no grade lost for an approved cause",
-        access_only: "Replay access approved; the absence remains graded normally",
+        access_only: "A one-time interactive make-up lecture was approved; attendance will be graded from the content watched",
         unexcused: "Absence not accepted",
       } as const;
       const reason = paragraph(event.decisionReason, "Open UnivAI to review the decision.");

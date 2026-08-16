@@ -25,7 +25,7 @@ type AppealTarget = Pick<EligibleAbsenceItem, "itemType" | "week">;
 
 const OUTCOME_LABEL = {
   excused: "Absent with no grades lost for an approved good cause",
-  access_only: "Replay access approved; normal grade rules still apply",
+  access_only: "One-time make-up lecture approved; attendance is graded from what you actually watch",
   unexcused: "Absence not accepted",
 } as const;
 
@@ -398,19 +398,19 @@ function AbsenceCases() {
                 ) : null}
 
                 {absenceCase.items.some(
-                  (item) => item.remedy === "replay" && item.lecturePublicId,
+                  (item) => item.remedy === "makeup_live" && item.lecturePublicId,
                 ) ? (
                   <Stack direction="row" spacing={1}>
                     {absenceCase.items
-                      .filter((item) => item.remedy === "replay" && item.lecturePublicId)
+                      .filter((item) => item.remedy === "makeup_live" && item.lecturePublicId)
                       .map((item) => (
                         <Button
                           key={`${item.itemType}:${item.week}`}
                           component={Link}
-                          href={`/lecture/${item.lecturePublicId}/archive`}
+                          href={`/lecture/${item.lecturePublicId}`}
                           variant="outlined"
                         >
-                          Watch week {item.week} any time
+                          Start week {item.week} make-up lecture
                         </Button>
                       ))}
                   </Stack>

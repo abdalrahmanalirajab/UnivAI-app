@@ -48,26 +48,64 @@ describe("lecture presentation access", () => {
     });
   });
 
-  it("unlocks the read-only archive at the scheduled end even if the lecture was missed", () => {
+  it("keeps a missed lecture locked after its scheduled end", () => {
     const access = lectureMaterialAccessAt(row(), new Date("2026-08-10T11:00:00.000Z"));
     expect(access).toMatchObject({
-      available: true,
-      mode: "archive",
-      blockedReason: null,
+      available: false,
+      mode: null,
+      blockedReason: "not_joined",
     });
     expect(access.endsAt.toISOString()).toBe("2026-08-10T11:00:00.000Z");
   });
 
-  it("unlocks archive mode immediately after an administrator grants replay access", () => {
+  it("requires explicit confirmation and a trusted join for a make-up lecture", () => {
+    const approved = { ...row(), makeup_access_approved: true };
+    const confirmed = {
+      ...approved,
+      makeup_started_at: new Date("2026-08-12T14:00:00.000Z"),
+    };
+    const joined = {
+      ...confirmed,
+      joined_at: new Date("2026-08-12T14:01:00.000Z"),
+    };
+
+    expect(
+      lectureMaterialAccessAt(approved, new Date("2026-08-12T13:00:00.000Z")),
+    ).toMatchObject({
+      available: false,
+      mode: null,
+      blockedReason: "makeup_confirmation_required",
+    });
+    expect(
+      lectureMaterialAccessAt(confirmed, new Date("2026-08-12T14:01:00.000Z")),
+    ).toMatchObject({
+      available: false,
+      mode: null,
+      blockedReason: "not_joined",
+    });
+    expect(
+      lectureMaterialAccessAt(joined, new Date("2026-08-12T14:01:00.000Z")),
+    ).toMatchObject({
+      available: true,
+      mode: "live",
+      blockedReason: null,
+    });
+  });
+
+  it("closes a confirmed make-up that never joined before its halfway cutoff", () => {
     const access = lectureMaterialAccessAt(
-      { ...row(), replay_access_granted: true },
-      new Date("2026-08-10T10:35:00.000Z"),
+      {
+        ...row(),
+        makeup_access_approved: true,
+        makeup_started_at: new Date("2026-08-12T14:00:00.000Z"),
+      },
+      new Date("2026-08-12T14:30:01.000Z"),
     );
 
     expect(access).toMatchObject({
-      available: true,
-      mode: "archive",
-      blockedReason: null,
+      available: false,
+      mode: null,
+      blockedReason: "makeup_closed",
     });
   });
 
@@ -92,5 +130,23 @@ describe("lecture presentation access", () => {
       new Date("2026-08-10T10:55:00.000Z"),
     );
     expect(access.mode).toBe("archive");
+  });
+
+  it("never turns a completed make-up lecture into a replay archive", () => {
+    const access = lectureMaterialAccessAt(
+      {
+        ...row(new Date("2026-08-12T14:01:00.000Z")),
+        completed_at: new Date("2026-08-12T14:55:00.000Z"),
+        makeup_access_approved: true,
+        makeup_started_at: new Date("2026-08-12T14:00:00.000Z"),
+      },
+      new Date("2026-08-12T14:55:00.000Z"),
+    );
+
+    expect(access).toMatchObject({
+      available: false,
+      mode: null,
+      blockedReason: "makeup_completed",
+    });
   });
 });

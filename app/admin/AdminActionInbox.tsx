@@ -55,7 +55,7 @@ type CaseDetail = {
 
 const DECISIONS: Array<{ value: AbsenceOutcome; label: string; effect: string }> = [
   { value: "excused", label: "Absent — no grade lost", effect: "Exclude approved items from their grade denominators." },
-  { value: "access_only", label: "Replay access only", effect: "Keep normal grade rules and grant an explicit anytime replay remedy." },
+  { value: "access_only", label: "One-time make-up lecture", effect: "Keep normal grade rules and let the learner start one full interactive lecture at a confirmed time." },
   { value: "unexcused", label: "Absence not accepted", effect: "Keep normal grade rules with no special remedy." },
 ];
 

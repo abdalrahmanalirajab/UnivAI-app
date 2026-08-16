@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { AccessToken, RoomServiceClient } from "livekit-server-sdk";
 import { queryOne } from "@/lib/db";
 import { getLectures, readScript, BLOCKED_MESSAGE } from "@/lib/lectures";
+import { getLectureMakeupAccess } from "@/lib/lecture-makeup";
 import { requireLearningActionApi } from "@/lib/session";
 import { env } from "@/lib/env";
 import { enforceUserRateLimit } from "@/lib/rate-limits";
@@ -156,9 +157,32 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
 
   // The halfway cutoff applies only to first admission. A learner already seen
   // in this lecture may reconnect to the waiting worker; completion stays final.
-  const schedule = await getLectures(sid);
+  const [schedule, makeup] = await Promise.all([
+    getLectures(sid),
+    getLectureMakeupAccess(sid, lectureId),
+  ]);
   const entry = schedule.find((item) => item.id === lectureId);
-  if (entry && !entry.joinable) {
+  if (makeup?.state === "ready") {
+    return Response.json(
+      {
+        error: "Confirm the one-time make-up start before joining this lecture.",
+        reason: "makeup_confirmation_required",
+      },
+      { status: 409 },
+    );
+  }
+  if (makeup?.state === "completed" || makeup?.state === "expired") {
+    return Response.json(
+      {
+        error: makeup.state === "completed"
+          ? "This one-time make-up lecture is already complete."
+          : "This one-time make-up lecture closed before its first join.",
+        reason: makeup.state === "completed" ? "makeup_completed" : "makeup_closed",
+      },
+      { status: 403 },
+    );
+  }
+  if (entry && !entry.joinable && makeup?.state !== "active") {
     return Response.json(
       { error: BLOCKED_MESSAGE[entry.blockedReason!], reason: entry.blockedReason },
       { status: 403 }

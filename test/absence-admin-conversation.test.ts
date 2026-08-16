@@ -33,6 +33,7 @@ vi.mock("@/lib/absence-triage", () => ({
 import {
   AbsenceCaseError,
   attachAbsenceEvidence,
+  decideAbsenceCase,
   requestAbsenceInformation,
   respondToAbsenceClarification,
   submitAbsenceCase,
@@ -244,5 +245,29 @@ describe("admin-led absence conversation", () => {
         String(sql).includes("INSERT INTO absence_evidence"),
       ),
     ).toBe(false);
+  });
+
+  it("grants lecture access as a fresh one-time make-up, not a replay", async () => {
+    mocks.clientQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("FOR UPDATE OF absence_case")) {
+        return result([{ student_id: STUDENT_ID, user_id: USER_ID }]);
+      }
+      return result([], 1);
+    });
+    mocks.queryOne.mockResolvedValue(null);
+
+    await decideAbsenceCase(
+      ADMIN_ID,
+      CASE_ID,
+      "access_only",
+      "Approved for one interactive make-up lecture.",
+    );
+
+    const remedyUpdate = mocks.clientQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("UPDATE absence_case_items"),
+    );
+    expect(remedyUpdate?.[1]).toEqual(["makeup_live", CASE_ID]);
+    expect(String(remedyUpdate?.[0])).toContain("makeup_started_at = NULL");
+    expect(String(remedyUpdate?.[0])).not.toContain("'replay'");
   });
 });

@@ -55,7 +55,11 @@ type Lecture = {
   joinable: boolean;
   completed: boolean;
   archiveAvailable: boolean;
-  replayAccessGranted: boolean;
+  makeup: {
+    state: "ready" | "active" | "completed" | "expired";
+    startedAt: string | null;
+    firstJoinCutoffAt: string | null;
+  } | null;
   blockedMessage: string | null;
   slides: number;
   attendance: {
@@ -107,7 +111,25 @@ function urgency(lecture: Lecture, now: Date | null): string {
   if (!now) return "";
   const ms = (iso: string) => new Date(iso).getTime() - now.getTime();
 
-  if (lecture.replayAccessGranted) return "Replay approved — open anytime.";
+  if (lecture.makeup?.state === "ready") {
+    return "One-time make-up approved — start whenever you are ready.";
+  }
+  if (lecture.makeup?.state === "expired") {
+    return "The one-time make-up closed before its first join.";
+  }
+  if (lecture.makeup?.state === "completed") {
+    return "You finished your one-time make-up lecture.";
+  }
+  if (lecture.makeup?.state === "active") {
+    if (lecture.attendance?.inProgress && !lecture.attendance.isConnected) {
+      return "The lecturer is waiting for you to resume.";
+    }
+    if (!lecture.attendance?.joinedAt && lecture.makeup.firstJoinCutoffAt) {
+      const toCutoff = ms(lecture.makeup.firstJoinCutoffAt);
+      if (toCutoff > 0) return `Confirming your start — doors close in ${formatCountdown(toCutoff)}`;
+    }
+    return "Your make-up lecture is in progress.";
+  }
   if (lecture.completed) return "You finished this lecture.";
   if (lecture.state === "upcoming") return `Starts ${formatRelative(lecture.startsAt, now)}`;
 
@@ -389,34 +411,44 @@ export default function SchedulePage() {
                       <Chip size="small" color="success" variant="outlined" label="finished" />
                     </Grid>
                   ) : null}
-                  {lecture.replayAccessGranted ? (
+                  {lecture.makeup ? (
                     <Grid>
-                      <Chip size="small" color="success" label="replay approved" />
+                      <Chip
+                        size="small"
+                        color={lecture.makeup.state === "expired" ? "warning" : "success"}
+                        label={`make-up ${lecture.makeup.state}`}
+                      />
                     </Grid>
                   ) : lecture.archiveAvailable && lecture.slides > 0 ? (
                     <Grid>
                       <Chip size="small" color="primary" variant="outlined" label="slides open" />
                     </Grid>
                   ) : null}
-                  {lecture.attendance && !lecture.replayAccessGranted ? (
+                  {lecture.attendance && (!lecture.makeup || lecture.attendance.joinedAt) ? (
                     <Grid>
                       <Chip
                         size="small"
-                        color={ATTENDANCE_COLOR[lecture.attendance.attendanceStatus] ?? "default"}
+                        color={lecture.makeup?.state === "active"
+                          ? "primary"
+                          : ATTENDANCE_COLOR[lecture.attendance.attendanceStatus] ?? "default"}
                         label={
-                          `${lecture.attendance.attendanceStatus.replaceAll("_", " ")} · ${lecture.attendance.attendancePercentage}%`
+                          `${lecture.makeup?.state === "active"
+                            ? "in progress"
+                            : lecture.attendance.attendanceStatus.replaceAll("_", " ")} · ${lecture.attendance.attendancePercentage}%`
                         }
                       />
                     </Grid>
                   ) : null}
-                  <Grid>
-                    <Chip
-                      size="small"
-                      color={STATE_COLOR[lecture.state]}
-                      variant={lecture.state === "live" ? "filled" : "outlined"}
-                      label={lecture.state}
-                    />
-                  </Grid>
+                  {!lecture.makeup ? (
+                    <Grid>
+                      <Chip
+                        size="small"
+                        color={STATE_COLOR[lecture.state]}
+                        variant={lecture.state === "live" ? "filled" : "outlined"}
+                        label={lecture.state}
+                      />
+                    </Grid>
+                  ) : null}
                 </Grid>
               </ListItemButton>
               {records
@@ -463,9 +495,13 @@ export default function SchedulePage() {
             <Stack spacing={2}>
               <Stack spacing={1}>
                 <Typography variant="overline" color="text.secondary">
-                  When
+                  {selected.makeup ? "Make-up timing" : "When"}
                 </Typography>
-                <Typography variant="body1">{formatDateTime(selected.startsAt)}</Typography>
+                <Typography variant="body1">
+                  {selected.makeup?.state === "ready"
+                    ? "Starts when you confirm"
+                    : formatDateTime(selected.startsAt)}
+                </Typography>
                 <Typography variant="body2" color="text.secondary">
                   {urgency(selected, now)}
                 </Typography>
@@ -476,20 +512,22 @@ export default function SchedulePage() {
               <Grid container spacing={1}>
                 <Grid>
                   <Chip
-                    color={STATE_COLOR[selected.state]}
+                    color={selected.makeup
+                      ? selected.makeup.state === "expired" ? "warning" : "success"
+                      : STATE_COLOR[selected.state]}
                     variant={selected.state === "live" ? "filled" : "outlined"}
-                    label={selected.state}
+                    label={selected.makeup ? `make-up ${selected.makeup.state}` : selected.state}
                   />
                 </Grid>
                 <Grid>
                   <Chip variant="outlined" label={`${selected.slides} slides`} />
                 </Grid>
-                <Grid>
+                {!selected.makeup || selected.makeup.state === "active" ? <Grid>
                   <Chip
                     variant="outlined"
-                    label={`doors close ${formatDateTime(selected.joinCutoffAt)}`}
+                    label={`${selected.makeup ? "first join closes" : "doors close"} ${formatDateTime(selected.joinCutoffAt)}`}
                   />
-                </Grid>
+                </Grid> : null}
               </Grid>
 
               {selected.blockedMessage ? (
@@ -502,13 +540,25 @@ export default function SchedulePage() {
 
               <Stack spacing={1}>
                 <Typography variant="overline" color="text.secondary">
-                  {selected.replayAccessGranted ? "Your access" : "Your attendance"}
+                  {selected.makeup ? "Your make-up lecture" : "Your attendance"}
                 </Typography>
-                {selected.replayAccessGranted ? (
+                {selected.makeup?.state === "ready" ? (
                   <Alert severity="success">
-                    <AlertTitle>Anytime replay approved</AlertTitle>
-                    An administrator opened this lecture for you. You can review it whenever you
-                    need it; this access does not change the recorded grade rules.
+                    <AlertTitle>One-time make-up approved</AlertTitle>
+                    Start this as a normal interactive lecture whenever you are ready. It begins
+                    when you confirm and will not be available as a replay after completion.
+                  </Alert>
+                ) : selected.makeup?.state === "active" && !selected.attendance?.joinedAt ? (
+                  <Alert severity="info">
+                    <AlertTitle>Your make-up has started</AlertTitle>
+                    Join now. The normal first-entry window is counting from your confirmation
+                    time, and the lecture will continue automatically after you connect.
+                  </Alert>
+                ) : selected.makeup?.state === "expired" ? (
+                  <Alert severity="warning">
+                    <AlertTitle>Make-up closed</AlertTitle>
+                    The first-entry window ended after you confirmed without joining. This
+                    one-time access cannot be restarted.
                   </Alert>
                 ) : selected.attendance?.joinedAt ? (
                   <Stack spacing={0.5}>
@@ -521,6 +571,10 @@ export default function SchedulePage() {
                       {selected.attendance.attendancePercentage}% of lecture content · {selected.attendance.attendedLectureMinutes} attended minutes · {selected.attendance.disconnectCount} disconnect(s)
                     </Typography>
                   </Stack>
+                ) : selected.makeup?.state === "completed" ? (
+                  <Typography variant="body1">
+                    This make-up lecture is finished and cannot be replayed.
+                  </Typography>
                 ) : selected.state === "done" ? (
                   <Typography variant="body1">You never joined this lecture.</Typography>
                 ) : (
@@ -535,7 +589,7 @@ export default function SchedulePage() {
         <DialogActions>
           <Button onClick={() => setSelected(null)}>Close</Button>
           {selected?.attendance?.attendanceStatus === "absent" &&
-          !selected.replayAccessGranted ? (
+          !selected.makeup ? (
             <Button
               color="warning"
               variant="outlined"
@@ -545,13 +599,25 @@ export default function SchedulePage() {
               Appeal absence
             </Button>
           ) : null}
-          {selected?.archiveAvailable && selected.slides > 0 ? (
+          {selected?.makeup?.state === "ready" ? (
+            <Button variant="contained" component={Link} href={`/lecture/${selected.id}`}>
+              Start approved lecture
+            </Button>
+          ) : selected?.makeup?.state === "active" ? (
+            <Button variant="contained" component={Link} href={`/lecture/${selected.id}`}>
+              {selected.attendance?.joinedAt ? "Resume make-up lecture" : "Join make-up lecture"}
+            </Button>
+          ) : selected?.makeup ? (
+            <Button variant="contained" disabled>
+              {selected.makeup.state === "completed" ? "Finished" : "Make-up closed"}
+            </Button>
+          ) : selected?.archiveAvailable && selected.slides > 0 ? (
             <Button
               variant="contained"
               component={Link}
               href={`/lecture/${selected.id}/archive`}
             >
-              {selected.replayAccessGranted ? "Open approved lecture" : "Review presentation"}
+              Review presentation
             </Button>
           ) : selected ? (
             <Button

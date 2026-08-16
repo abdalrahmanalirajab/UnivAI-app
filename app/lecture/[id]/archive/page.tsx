@@ -26,12 +26,18 @@ export default async function LectureArchivePage({
   if (!access) notFound();
 
   if (access.mode !== "archive") {
+    const makeupClosed = access.blockedReason === "makeup_completed"
+      || access.blockedReason === "makeup_closed";
     return (
       <Stack spacing={3}>
         <Typography variant="h4">Week {access.week} presentation</Typography>
-        <Alert severity="info">
-          <AlertTitle>Available after the lecture</AlertTitle>
-          The read-only presentation unlocks when this lecture&apos;s scheduled time ends.
+        <Alert severity={makeupClosed ? "warning" : "info"}>
+          <AlertTitle>
+            {makeupClosed ? "No replay for this make-up" : "Presentation unavailable"}
+          </AlertTitle>
+          {makeupClosed
+            ? "This administrator-approved make-up was a one-time interactive lecture. It cannot be replayed after closing or completion."
+            : "Join the lecture through your schedule when access is available."}
         </Alert>
         <ArchiveBackButton />
       </Stack>

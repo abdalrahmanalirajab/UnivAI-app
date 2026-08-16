@@ -8,7 +8,7 @@ import {
   ScheduleIntegrityError,
 } from "@/lib/lectures";
 import { getAttendance } from "@/lib/attendance";
-import { getApprovedLectureReplayIds } from "@/lib/absence-remedies";
+import { getApprovedLectureMakeups } from "@/lib/lecture-makeup";
 import { query } from "@/lib/db";
 import { requirePreparedSourceApi } from "@/lib/session";
 
@@ -22,10 +22,10 @@ export async function GET() {
 
   try {
     const lectures = await getLectures(sid);
-    const [sections, attendance, replayLectureIds, planVersion, schedule, book] = await Promise.all([
+    const [sections, attendance, makeups, planVersion, schedule, book] = await Promise.all([
       getSections(sid),
       getAttendance(sid),
-      getApprovedLectureReplayIds(sid),
+      getApprovedLectureMakeups(sid),
       approvedPlanVersion(sid),
       approvedCourseSchedule(sid),
       query<{ status: string; error: string | null }>(
@@ -38,23 +38,37 @@ export async function GET() {
       lectures.map(async (lecture) => {
         const script = await readScript(sid, lecture.week);
         const record = attendance.find((a) => a.lectureId === lecture.id);
-        const replayAccessGranted = replayLectureIds.has(lecture.id);
+        const makeup = makeups.get(lecture.id) ?? null;
+        const effectiveStartsAt = makeup?.startedAt ?? lecture.startsAt;
+        const effectiveCutoffAt = makeup?.firstJoinCutoffAt ?? lecture.joinCutoffAt;
+        const effectiveEndsAt = makeup?.endsAt ?? lecture.endsAt;
+        const state = makeup?.state === "active" ? "live" : lecture.state;
+        const joinable = lecture.joinable || makeup?.state === "active";
+        const makeupBlockedMessage = makeup?.state === "expired"
+          ? "Your one-time make-up start window closed before you joined."
+          : makeup?.state === "completed"
+            ? "Your one-time make-up lecture is complete and cannot be replayed."
+            : null;
         return {
           id: lecture.id,
           session_type: "lecture" as const,
           week: lecture.week,
           title: lecture.title,
-          startsAt: lecture.startsAt.toISOString(),
-          joinCutoffAt: lecture.joinCutoffAt.toISOString(),
-          endsAt: lecture.endsAt.toISOString(),
-          state: lecture.state,
-          joinable: lecture.joinable,
+          startsAt: effectiveStartsAt.toISOString(),
+          joinCutoffAt: effectiveCutoffAt.toISOString(),
+          endsAt: effectiveEndsAt.toISOString(),
+          state,
+          joinable,
           completed: lecture.completed,
-          archiveAvailable: lecture.state === "done" || replayAccessGranted,
-          replayAccessGranted,
-          blockedMessage: !replayAccessGranted && lecture.blockedReason
-            ? BLOCKED_MESSAGE[lecture.blockedReason]
-            : null,
+          archiveAvailable: lecture.completed && !makeup,
+          makeup: makeup ? {
+            state: makeup.state,
+            startedAt: makeup.startedAt?.toISOString() ?? null,
+            firstJoinCutoffAt: makeup.firstJoinCutoffAt?.toISOString() ?? null,
+          } : null,
+          blockedMessage: makeupBlockedMessage ?? (
+            !makeup && lecture.blockedReason ? BLOCKED_MESSAGE[lecture.blockedReason] : null
+          ),
           slides: script?.segments.length ?? 0,
           attendance: record
             ? {

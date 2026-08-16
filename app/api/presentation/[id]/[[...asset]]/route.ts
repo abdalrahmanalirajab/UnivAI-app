@@ -34,10 +34,17 @@ export async function GET(
   const access = await getPresentationMaterialAccess(gate.registrationNumber, id);
   if (!access) return new Response("Not found", { status: 404 });
   if (!access.available) {
+    const message = access.blockedReason === "makeup_confirmation_required"
+      ? "Confirm the one-time make-up lecture before opening its presentation."
+      : access.blockedReason === "makeup_completed"
+        ? "This one-time make-up lecture is complete and cannot be replayed."
+        : access.blockedReason === "makeup_closed"
+          ? "This one-time make-up lecture closed before its first join."
+          : access.blockedReason === "not_started"
+            ? "The presentation is not available yet."
+            : "Your lecture access is still being confirmed. Return to the lecture and wait a moment.";
     return new Response(
-      access.blockedReason === "not_started"
-        ? "The presentation unlocks after the lecture ends."
-        : "Your lecture access is still being confirmed. Return to the lecture and wait a moment.",
+      message,
       { status: 403 },
     );
   }
