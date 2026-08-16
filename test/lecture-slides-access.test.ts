@@ -52,7 +52,10 @@ describe("GET /api/lecture/[id]/slides", () => {
     });
     const response = await get();
     expect(response.status).toBe(403);
-    expect(await response.json()).toMatchObject({ code: "PRESENTATION_LOCKED" });
+    expect(await response.json()).toMatchObject({
+      code: "PRESENTATION_LOCKED",
+      reason: "not_joined",
+    });
     expect(mockReadSlides).not.toHaveBeenCalled();
   });
 

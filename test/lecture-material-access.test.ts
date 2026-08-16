@@ -58,6 +58,19 @@ describe("lecture presentation access", () => {
     expect(access.endsAt.toISOString()).toBe("2026-08-10T11:00:00.000Z");
   });
 
+  it("unlocks archive mode immediately after an administrator grants replay access", () => {
+    const access = lectureMaterialAccessAt(
+      { ...row(), replay_access_granted: true },
+      new Date("2026-08-10T10:35:00.000Z"),
+    );
+
+    expect(access).toMatchObject({
+      available: true,
+      mode: "archive",
+      blockedReason: null,
+    });
+  });
+
   it("keeps an admitted unfinished lecture live after the first-join window", () => {
     const access = lectureMaterialAccessAt(
       row(new Date("2026-08-10T10:01:00.000Z")),

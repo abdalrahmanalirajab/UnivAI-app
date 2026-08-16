@@ -8,6 +8,7 @@ import {
   ScheduleIntegrityError,
 } from "@/lib/lectures";
 import { getAttendance } from "@/lib/attendance";
+import { getApprovedLectureReplayIds } from "@/lib/absence-remedies";
 import { query } from "@/lib/db";
 import { requirePreparedSourceApi } from "@/lib/session";
 
@@ -21,9 +22,10 @@ export async function GET() {
 
   try {
     const lectures = await getLectures(sid);
-    const [sections, attendance, planVersion, schedule, book] = await Promise.all([
+    const [sections, attendance, replayLectureIds, planVersion, schedule, book] = await Promise.all([
       getSections(sid),
       getAttendance(sid),
+      getApprovedLectureReplayIds(sid),
       approvedPlanVersion(sid),
       approvedCourseSchedule(sid),
       query<{ status: string; error: string | null }>(
@@ -36,6 +38,7 @@ export async function GET() {
       lectures.map(async (lecture) => {
         const script = await readScript(sid, lecture.week);
         const record = attendance.find((a) => a.lectureId === lecture.id);
+        const replayAccessGranted = replayLectureIds.has(lecture.id);
         return {
           id: lecture.id,
           session_type: "lecture" as const,
@@ -47,8 +50,9 @@ export async function GET() {
           state: lecture.state,
           joinable: lecture.joinable,
           completed: lecture.completed,
-          archiveAvailable: lecture.state === "done",
-          blockedMessage: lecture.blockedReason
+          archiveAvailable: lecture.state === "done" || replayAccessGranted,
+          replayAccessGranted,
+          blockedMessage: !replayAccessGranted && lecture.blockedReason
             ? BLOCKED_MESSAGE[lecture.blockedReason]
             : null,
           slides: script?.segments.length ?? 0,

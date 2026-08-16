@@ -37,7 +37,7 @@ export async function GET(
     return new Response(
       access.blockedReason === "not_started"
         ? "The presentation unlocks after the lecture ends."
-        : "Join the live lecture to view its presentation.",
+        : "Your lecture access is still being confirmed. Return to the lecture and wait a moment.",
       { status: 403 },
     );
   }

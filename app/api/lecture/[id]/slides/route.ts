@@ -18,9 +18,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!access.available || (archiveRequested && access.mode !== "archive")) {
     const message = archiveRequested || access.blockedReason === "not_started"
       ? "The presentation unlocks after the lecture ends."
-      : "Join the live lecture to view its presentation.";
+      : "Your live lecture connection is still being confirmed. The presentation will open automatically.";
     return Response.json(
-      { error: message, code: "PRESENTATION_LOCKED" },
+      { error: message, code: "PRESENTATION_LOCKED", reason: access.blockedReason },
       { status: 403 },
     );
   }

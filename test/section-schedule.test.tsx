@@ -359,6 +359,57 @@ describe("schedule page — section placement and typing", () => {
     const appeal = await screen.findByRole("link", { name: "Appeal absence" });
     expect(appeal.getAttribute("href")).toBe("/absences?itemType=lecture&week=1");
   });
+
+  it("shows an administrator-approved replay as open instead of absent", async () => {
+    const payload = pagePayload();
+    const lecture = payload.records.find(
+      (record) => !("session_type" in record) && record.week === 1,
+    );
+    if (!lecture || "session_type" in lecture) throw new Error("Week 1 lecture fixture missing");
+    Object.assign(lecture, {
+      state: "done",
+      joinable: false,
+      completed: false,
+      archiveAvailable: true,
+      replayAccessGranted: true,
+      slides: 1,
+      attendance: {
+        status: "absent",
+        joinedAt: null,
+        lateMinutes: 0,
+        attendanceStatus: "absent",
+        attendancePercentage: 0,
+        attendedLectureMinutes: 0,
+        connectedSeconds: 0,
+        isConnected: false,
+        inProgress: false,
+        disconnectCount: 0,
+      },
+    });
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        lectures: payload.records,
+        planVersion: 1,
+        generation: null,
+      }),
+    })) as unknown as typeof fetch;
+
+    render(<SchedulePage />);
+    fireEvent.click(await screen.findByRole("button", { name: /Full course timeline/i }));
+    const lectureButton = (await screen.findAllByRole("button")).find((button) =>
+      (button.textContent ?? "").startsWith("Week 1"),
+    );
+    if (!lectureButton) throw new Error("Week 1 lecture button missing");
+    fireEvent.click(lectureButton);
+
+    expect(await screen.findByText("Anytime replay approved")).not.toBeNull();
+    expect(screen.queryByText("You never joined this lecture.")).toBeNull();
+    expect(screen.queryByRole("link", { name: "Appeal absence" })).toBeNull();
+    const openLecture = screen.getByRole("link", { name: "Open approved lecture" });
+    expect(openLecture.getAttribute("href")).toBe("/lecture/1/archive");
+  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -389,6 +440,7 @@ const SESSION_ATTENDANCE_ROWS = WEEK_ROWS.map((row, index) => ({
   status: "upcoming",
   late_minutes: 0,
 }));
+let approvedReplayRows: Array<{ lecture_public_id: string }> = [];
 
 const STARTED_FIRST_START = new Date("2026-08-01T10:00:00.000Z");
 
@@ -413,6 +465,7 @@ function sessionUser(overrides: Partial<SessionUser> = {}): SessionUser {
 describe("api routes — real backend behavior", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    approvedReplayRows = [];
     mockGeneratedWeekCount.mockResolvedValue(null);
     mockGetSetting.mockResolvedValue(SCHEDULE_BINDING);
     mockQueryOne.mockImplementation(async (sql: string) => {
@@ -431,6 +484,7 @@ describe("api routes — real backend behavior", () => {
       if (sql.includes("SELECT la.script_payload")) return [];
       if (sql.includes("completed_at")) return SESSION_LECTURE_ROWS;
       if (sql.includes("a.status")) return SESSION_ATTENDANCE_ROWS;
+      if (sql.includes("FROM absence_case_items AS item")) return approvedReplayRows;
       if (sql.includes("SELECT status, error FROM books")) return [];
       if (sql.includes("MIN(starts_at)")) return [{ starts_at: STARTED_FIRST_START }];
       // linkGeneratedArtifacts — attaches each week's generated files to its
@@ -473,6 +527,30 @@ describe("api routes — real backend behavior", () => {
         .filter((record: { session_type: string }) => record.session_type === "section")
         .map((section: { week: number }) => section.week),
     ).toEqual([1, 5]);
+  });
+
+  it("exposes only approved replay remedies as open schedule access", async () => {
+    approvedReplayRows = [{ lecture_public_id: SESSION_LECTURE_ROWS[0].public_id }];
+    await setSession(sessionUser());
+    const { GET } = await import("@/app/api/lectures/route");
+
+    const response = await GET();
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    const lecture = body.lectures.find(
+      (record: { session_type: string; id: string }) =>
+        record.session_type === "lecture" && record.id === SESSION_LECTURE_ROWS[0].public_id,
+    );
+
+    expect(lecture).toMatchObject({
+      replayAccessGranted: true,
+      archiveAvailable: true,
+      blockedMessage: null,
+    });
+    const replayQuery = mockQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("FROM absence_case_items AS item"),
+    );
+    expect(replayQuery?.[1]).toEqual(["S-2026-000001"]);
   });
 
   it("an approved plan with unusable data is rejected by the real corruption check", async () => {

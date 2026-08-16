@@ -55,6 +55,7 @@ type Lecture = {
   joinable: boolean;
   completed: boolean;
   archiveAvailable: boolean;
+  replayAccessGranted: boolean;
   blockedMessage: string | null;
   slides: number;
   attendance: {
@@ -106,6 +107,7 @@ function urgency(lecture: Lecture, now: Date | null): string {
   if (!now) return "";
   const ms = (iso: string) => new Date(iso).getTime() - now.getTime();
 
+  if (lecture.replayAccessGranted) return "Replay approved — open anytime.";
   if (lecture.completed) return "You finished this lecture.";
   if (lecture.state === "upcoming") return `Starts ${formatRelative(lecture.startsAt, now)}`;
 
@@ -387,12 +389,16 @@ export default function SchedulePage() {
                       <Chip size="small" color="success" variant="outlined" label="finished" />
                     </Grid>
                   ) : null}
-                  {lecture.archiveAvailable && lecture.slides > 0 ? (
+                  {lecture.replayAccessGranted ? (
+                    <Grid>
+                      <Chip size="small" color="success" label="replay approved" />
+                    </Grid>
+                  ) : lecture.archiveAvailable && lecture.slides > 0 ? (
                     <Grid>
                       <Chip size="small" color="primary" variant="outlined" label="slides open" />
                     </Grid>
                   ) : null}
-                  {lecture.attendance ? (
+                  {lecture.attendance && !lecture.replayAccessGranted ? (
                     <Grid>
                       <Chip
                         size="small"
@@ -496,9 +502,15 @@ export default function SchedulePage() {
 
               <Stack spacing={1}>
                 <Typography variant="overline" color="text.secondary">
-                  Your attendance
+                  {selected.replayAccessGranted ? "Your access" : "Your attendance"}
                 </Typography>
-                {selected.attendance?.joinedAt ? (
+                {selected.replayAccessGranted ? (
+                  <Alert severity="success">
+                    <AlertTitle>Anytime replay approved</AlertTitle>
+                    An administrator opened this lecture for you. You can review it whenever you
+                    need it; this access does not change the recorded grade rules.
+                  </Alert>
+                ) : selected.attendance?.joinedAt ? (
                   <Stack spacing={0.5}>
                     <Typography variant="body1">
                       {selected.attendance.status === "late"
@@ -522,7 +534,8 @@ export default function SchedulePage() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setSelected(null)}>Close</Button>
-          {selected?.attendance?.attendanceStatus === "absent" ? (
+          {selected?.attendance?.attendanceStatus === "absent" &&
+          !selected.replayAccessGranted ? (
             <Button
               color="warning"
               variant="outlined"
@@ -538,7 +551,7 @@ export default function SchedulePage() {
               component={Link}
               href={`/lecture/${selected.id}/archive`}
             >
-              Review presentation
+              {selected.replayAccessGranted ? "Open approved lecture" : "Review presentation"}
             </Button>
           ) : selected ? (
             <Button

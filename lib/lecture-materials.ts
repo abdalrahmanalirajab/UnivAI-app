@@ -12,6 +12,7 @@ type LectureMaterialRow = {
   joined_at: Date | null;
   completed_at: Date | null;
   script_payload: DurationBearingScript;
+  replay_access_granted?: boolean;
 };
 
 export type LectureMaterialAccess = {
@@ -33,7 +34,8 @@ export type LectureMaterialAccess = {
  * During the scheduled lecture, only a learner whose trusted token request has
  * already stamped a join may read them. At the scheduled end, the same slides
  * become a read-only archive even when the learner missed or skipped the live
- * lecture. Nothing in this path creates or updates an attendance row.
+ * lecture. A final administrator-approved replay remedy opens that same archive
+ * immediately. Nothing in this path creates or updates an attendance row.
  */
 export function lectureMaterialAccessAt(
   row: LectureMaterialRow,
@@ -56,6 +58,14 @@ export function lectureMaterialAccessAt(
     endsAt,
   };
 
+  if (row.replay_access_granted) {
+    return {
+      ...base,
+      available: true,
+      mode: "archive",
+      blockedReason: null,
+    };
+  }
   if (row.completed_at) {
     return {
       ...base,
@@ -108,7 +118,19 @@ export async function getLectureMaterialAccess(
     `SELECT l.public_id::text AS lecture_id,
             la.artifact_id::text AS artifact_id,
             la.updated_at AS artifact_updated_at,
-            l.week, l.title, l.starts_at, a.joined_at, a.completed_at, la.script_payload
+            l.week, l.title, l.starts_at, a.joined_at, a.completed_at, la.script_payload,
+            EXISTS (
+              SELECT 1
+                FROM absence_case_items AS absence_item
+                JOIN absence_cases AS absence_case
+                  ON absence_case.id = absence_item.case_id
+                 AND absence_case.student_id = absence_item.student_id
+               WHERE absence_item.student_id = l.student_id
+                 AND absence_item.item_type = 'lecture'
+                 AND absence_item.lecture_public_id = l.public_id
+                 AND absence_item.remedy = 'replay'
+                 AND absence_case.status = 'approved'
+            ) AS replay_access_granted
        FROM lectures l
        LEFT JOIN lecture_artifacts la ON la.artifact_id = l.lecture_artifact_id
        LEFT JOIN attendance a ON a.lecture_id = l.id AND a.student_id = l.student_id
@@ -127,7 +149,19 @@ export async function getPresentationMaterialAccess(
     `SELECT l.public_id::text AS lecture_id,
             la.artifact_id::text AS artifact_id,
             la.updated_at AS artifact_updated_at,
-            l.week, l.title, l.starts_at, a.joined_at, a.completed_at, la.script_payload
+            l.week, l.title, l.starts_at, a.joined_at, a.completed_at, la.script_payload,
+            EXISTS (
+              SELECT 1
+                FROM absence_case_items AS absence_item
+                JOIN absence_cases AS absence_case
+                  ON absence_case.id = absence_item.case_id
+                 AND absence_case.student_id = absence_item.student_id
+               WHERE absence_item.student_id = l.student_id
+                 AND absence_item.item_type = 'lecture'
+                 AND absence_item.lecture_public_id = l.public_id
+                 AND absence_item.remedy = 'replay'
+                 AND absence_case.status = 'approved'
+            ) AS replay_access_granted
        FROM lecture_artifacts la
        JOIN lectures l ON l.lecture_artifact_id = la.artifact_id
        LEFT JOIN attendance a ON a.lecture_id = l.id AND a.student_id = l.student_id
