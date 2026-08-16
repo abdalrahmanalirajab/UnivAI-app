@@ -25,7 +25,6 @@ describe("onboarding flow", () => {
     expect(getStudentNavItems(ready).map((item) => item.label)).toEqual([
       "Today",
       "Course",
-      "Absences",
       "Books",
     ]);
   });
@@ -35,7 +34,6 @@ describe("onboarding flow", () => {
     expect(getStudentNavItems(unverified).map((item) => item.label)).toEqual([
       "Today",
       "Course",
-      "Absences",
       "Books",
     ]);
   });

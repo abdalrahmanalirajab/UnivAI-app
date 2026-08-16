@@ -1,12 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { authClient, useSession } from "@/lib/auth-client";
 import { useHydratedSession } from "@/lib/use-hydrated-session";
 import Typography from "@mui/material/Typography";
 import TextField from "@mui/material/TextField";
 import Divider from "@mui/material/Divider";
 import Button from "@mui/material/Button";
+import FactCheckOutlined from "@mui/icons-material/FactCheckOutlined";
 import { FormError, FormSuccess } from "@/app/components/FormAlerts";
 import {
   INVALID_USER_NAME_MESSAGE,
@@ -102,6 +104,16 @@ function ProfileForm({ user }: { user: SessionUser }) {
       <Typography>Email: {user.email}</Typography>
       <Typography>Role: {user.role}</Typography>
       <Typography>Registration number: {user.registrationNumber}</Typography>
+      {user.role === "student" ? (
+        <Button
+          component={Link}
+          href="/absences"
+          variant="outlined"
+          startIcon={<FactCheckOutlined />}
+        >
+          Attendance &amp; appeal history
+        </Button>
+      ) : null}
       <Divider />
       <TextField
         label="Name"

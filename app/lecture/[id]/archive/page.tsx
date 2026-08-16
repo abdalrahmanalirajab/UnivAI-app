@@ -1,15 +1,14 @@
 import Alert from "@mui/material/Alert";
 import AlertTitle from "@mui/material/AlertTitle";
-import Button from "@mui/material/Button";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLectureMaterialAccess } from "@/lib/lecture-materials";
 import { readScript, readSlides } from "@/lib/lectures";
 import { requireLearningAction } from "@/lib/session";
 import OutputFeedback from "@/app/components/OutputFeedback";
 import { lectureFeedbackTarget } from "@/lib/ai-output-feedback-types";
+import ArchiveBackButton from "./ArchiveBackButton";
 import LectureArchive from "./LectureArchive";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -34,9 +33,7 @@ export default async function LectureArchivePage({
           <AlertTitle>Available after the lecture</AlertTitle>
           The read-only presentation unlocks when this lecture&apos;s scheduled time ends.
         </Alert>
-        <Button component={Link} href="/schedule">
-          Back to schedule
-        </Button>
+        <ArchiveBackButton />
       </Stack>
     );
   }
@@ -78,9 +75,7 @@ export default async function LectureArchivePage({
         </Alert>
       )}
 
-      <Button component={Link} href="/schedule">
-        Back to schedule
-      </Button>
+      <ArchiveBackButton />
     </Stack>
   );
 }

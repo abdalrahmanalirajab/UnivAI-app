@@ -366,14 +366,26 @@ export default function ExamsPage() {
                     />
                   </Grid>
                   <Grid>
-                    <Button
-                      variant="contained"
-                      size="small"
-                      disabled={exam.state !== "open" || starting}
-                      onClick={() => start(exam)}
-                    >
-                      {exam.kind === "mid" ? "Take midterm" : "Take quiz"}
-                    </Button>
+                    {exam.kind === "quiz" && exam.state === "missed" && exam.week ? (
+                      <Button
+                        component={Link}
+                        href={`/absences?itemType=quiz&week=${exam.week}`}
+                        variant="outlined"
+                        color="warning"
+                        size="small"
+                      >
+                        Appeal absence
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="contained"
+                        size="small"
+                        disabled={exam.state !== "open" || starting}
+                        onClick={() => start(exam)}
+                      >
+                        {exam.kind === "mid" ? "Take midterm" : "Take quiz"}
+                      </Button>
+                    )}
                   </Grid>
                 </Grid>
               }

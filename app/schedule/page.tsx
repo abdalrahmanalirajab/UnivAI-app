@@ -522,6 +522,16 @@ export default function SchedulePage() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setSelected(null)}>Close</Button>
+          {selected?.attendance?.attendanceStatus === "absent" ? (
+            <Button
+              color="warning"
+              variant="outlined"
+              component={Link}
+              href={`/absences?itemType=lecture&week=${selected.week}`}
+            >
+              Appeal absence
+            </Button>
+          ) : null}
           {selected?.archiveAvailable && selected.slides > 0 ? (
             <Button
               variant="contained"

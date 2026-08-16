@@ -316,6 +316,49 @@ describe("schedule page — section placement and typing", () => {
     expect(lectureButtons).toHaveLength(7);
     expect(screen.getAllByText("section")).toHaveLength(2);
   });
+
+  it("links an absent lecture to an appeal scoped to that exact week", async () => {
+    const payload = pagePayload();
+    const lecture = payload.records.find(
+      (record) => !("session_type" in record) && record.week === 1,
+    );
+    if (!lecture || "session_type" in lecture) throw new Error("Week 1 lecture fixture missing");
+    Object.assign(lecture, {
+      state: "done",
+      joinable: false,
+      completed: true,
+      archiveAvailable: true,
+      slides: 1,
+      attendance: {
+        status: "absent",
+        joinedAt: null,
+        lateMinutes: 0,
+        attendanceStatus: "absent",
+        attendancePercentage: 0,
+        attendedLectureMinutes: 0,
+        connectedSeconds: 0,
+        isConnected: false,
+        inProgress: false,
+        disconnectCount: 0,
+      },
+    });
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        lectures: payload.records,
+        planVersion: 1,
+        generation: null,
+      }),
+    })) as unknown as typeof fetch;
+
+    render(<SchedulePage />);
+    const week = await screen.findByText(/^Week 1 — /);
+    fireEvent.click(week);
+
+    const appeal = await screen.findByRole("link", { name: "Appeal absence" });
+    expect(appeal.getAttribute("href")).toBe("/absences?itemType=lecture&week=1");
+  });
 });
 
 /* ------------------------------------------------------------------ */

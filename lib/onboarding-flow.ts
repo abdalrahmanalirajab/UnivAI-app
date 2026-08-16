@@ -6,7 +6,7 @@ export type OnboardingState = {
 export type StudentNavItem = {
   href: string;
   label: string;
-  icon: "upload" | "schedule" | "library" | "dashboard" | "absences";
+  icon: "upload" | "schedule" | "library" | "dashboard";
 };
 
 export function getStartDestination(state: OnboardingState): "/upload" | "/dashboard" {
@@ -21,7 +21,6 @@ export function getStudentNavItems(state: OnboardingState): StudentNavItem[] {
   return [
     { href: "/dashboard", label: "Today", icon: "dashboard" },
     { href: "/schedule", label: "Course", icon: "schedule" },
-    { href: "/absences", label: "Absences", icon: "absences" },
     { href: "/library", label: "Books", icon: "library" },
   ];
 }
