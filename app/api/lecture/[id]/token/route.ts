@@ -25,12 +25,22 @@ async function configureRoom(
   service: RoomServiceClient,
   room: string,
   metadata: LiveRoomMetadataV2,
+  restart: boolean,
 ): Promise<void> {
   const serialized = JSON.stringify(metadata);
   const existing = await service.listRooms([room]);
   if (existing.length > 0) {
-    await service.updateRoomMetadata(room, serialized);
-    return;
+    // Automatic agent dispatch happens when a room is created. If the first
+    // dispatch found a draining/unavailable worker, reconnecting to that same
+    // room can never summon the lecturer: every browser retry just waits for
+    // another 45 seconds. A user-initiated retry therefore replaces this
+    // learner-scoped room, which creates a fresh LiveKit job.
+    if (restart) {
+      await service.deleteRoom(room);
+    } else {
+      await service.updateRoomMetadata(room, serialized);
+      return;
+    }
   }
   try {
     await service.createRoom({ name: room, metadata: serialized, emptyTimeout: TOKEN_TTL_SECONDS });
@@ -169,6 +179,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       new RoomServiceClient(liveKitHttpUrl(url), apiKey, apiSecret),
       room,
       roomMetadata,
+      request.nextUrl.searchParams.get("restart") === "1",
     );
   } catch (error) {
     console.error("[live] room metadata setup failed", {

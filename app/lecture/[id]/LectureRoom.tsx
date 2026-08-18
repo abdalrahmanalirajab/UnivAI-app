@@ -136,6 +136,7 @@ export default function LectureRoom({ lectureId }: Props) {
   const handAckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const firstAudioReported = useRef(false);
   const startupComplete = useRef(false);
+  const connectionAttempt = useRef(0);
   const legacyAnswerSequence = useRef(0);
   const micRef = useRef<LocalAudioTrack | null>(null);
   const [mic, setMic] = useState<LocalAudioTrack | null>(null);
@@ -183,6 +184,8 @@ export default function LectureRoom({ lectureId }: Props) {
   }, [reply]);
 
   const connect = useCallback(async () => {
+    const isRetry = connectionAttempt.current > 0;
+    connectionAttempt.current += 1;
     setError(null);
     startupStartedAt.current = performance.now();
     firstAudioReported.current = false;
@@ -192,7 +195,20 @@ export default function LectureRoom({ lectureId }: Props) {
       setError("The lecturer did not start audio within 45 seconds. Please try again.");
     }, 45_000);
     try {
-      const res = await fetch(`/api/lecture/${lectureId}/token`, { method: "POST" });
+      if (isRetry) {
+        // The old room may have been created while the worker was draining. A
+        // LiveKit room gets its automatic lecturer dispatch only once, so a
+        // retry must leave it before the server replaces it with a fresh room.
+        await room.disconnect().catch(() => undefined);
+        micRef.current?.stop();
+        micRef.current = null;
+        setMic(null);
+        setConnected(false);
+      }
+      // Avoid stacking another copy of every event callback after a retry.
+      room.removeAllListeners();
+      const tokenUrl = `/api/lecture/${lectureId}/token${isRetry ? "?restart=1" : ""}`;
+      const res = await fetch(tokenUrl, { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Could not join the lecture.");
 
