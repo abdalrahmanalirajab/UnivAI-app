@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requireUserApi } from "@/lib/session";
+import { requireStudentApi } from "@/lib/session";
 import { enforceUserRateLimit } from "@/lib/rate-limits";
 import {
   getOrCreateCollection,
@@ -10,7 +10,7 @@ import {
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const gate = await requireUserApi();
+  const gate = await requireStudentApi();
   if (gate instanceof Response) return gate;
 
   const collections = await listCollections(gate.registrationNumber);
@@ -18,7 +18,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const gate = await requireUserApi();
+  const gate = await requireStudentApi();
   if (gate instanceof Response) return gate;
   const limited = await enforceUserRateLimit(gate.id, "upload");
   if (limited) return limited;

@@ -110,15 +110,16 @@ describe("absence appeal entry flow", () => {
     render(<AbsencesPage />);
     const reason = await screen.findByRole("textbox", { name: /why were you absent/i });
     await user.type(reason, "I was admitted to hospital during the lecture window.");
-    await user.click(screen.getByRole("button", { name: /submit for strict review/i }));
+    await user.click(screen.getByRole("button", { name: /submit appeal.*100 Credits/i }));
 
     await waitFor(() => expect(navigation.replace).toHaveBeenCalledWith("/absences"));
     const postCall = fetchMock.mock.calls.find(([, init]) => init?.method === "POST");
     expect(postCall).toBeDefined();
-    expect(JSON.parse(String(postCall?.[1]?.body))).toEqual({
+    expect(JSON.parse(String(postCall?.[1]?.body))).toMatchObject({
       reason: "I was admitted to hospital during the lecture window.",
       items: [{ itemType: "lecture", week: 2 }],
     });
+    expect(JSON.parse(String(postCall?.[1]?.body)).idempotencyKey).toEqual(expect.any(String));
   });
 
   it("does not expose the reason field for an ineligible deep link", async () => {

@@ -38,15 +38,20 @@ export default function LanguageSettings({ initialLocale }: { initialLocale: UiL
 
   return (
     <Stack spacing={1.5} component="section" aria-labelledby="language-settings-title">
-      <Typography variant="h5" component="h2" id="language-settings-title">
-        Application language
-      </Typography>
+      <Stack spacing={0.5}>
+        <Typography variant="h6" component="h3" id="language-settings-title">
+          Language
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          Choose the language used for menus and account pages.
+        </Typography>
+      </Stack>
       <TextField
         select
         label="Website interface language"
         value={locale}
         onChange={(event) => setLocale(event.target.value as UiLocale)}
-        helperText="This preference lives in settings, not the navigation bar. Generated learning and exam content always remains English."
+        helperText="Generated lessons and exams remain in their authored language."
       >
         <MenuItem value="en">English</MenuItem>
         <MenuItem value="ar">العربية</MenuItem>

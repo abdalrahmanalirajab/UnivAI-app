@@ -1,10 +1,10 @@
 const content = {
   hero: {
-    eyebrow: "A clearer way to move learning forward",
-    headlineLead: "Help every learner build",
-    headlineAccent: "confidence that lasts.",
+    eyebrow: "Built for ambitious fresh graduates",
+    headlineLead: "Build career-ready skills",
+    headlineAccent: "fast and in order.",
     subhead:
-      "UnivAI brings focus, momentum, and calm to study time—so learners keep moving and families stay confident.",
+      "Turn trusted material into a focused learning path that keeps you moving, measuring progress, and staying competitive.",
     ctaPrimary: "Start free",
     ctaSecondary: "See the experience",
     proofPoints: [
@@ -32,8 +32,8 @@ const content = {
         body: "Guidance that knows its limits.",
       },
       {
-        title: "Family confidence",
-        body: "Stay informed without hovering.",
+        title: "Career momentum",
+        body: "Build the skills that move you forward.",
       },
     ],
   },
@@ -112,8 +112,8 @@ const content = {
         status: "Included",
       },
       {
-        title: "Confidence for families",
-        body: "See the journey without taking it over.",
+        title: "Skills that stay current",
+        body: "Keep sharpening what your next role demands.",
         status: "Included",
       },
       {
@@ -134,29 +134,29 @@ const content = {
       { title: "Grow", body: "See every step forward." },
     ],
   },
-  families: {
-    eyebrow: "For families",
-    heading: "Confidence without hovering.",
-    body: "See whether learning is moving forward, with clear signals and fewer guesses.",
-    visibleHeading: "What families need most",
+  graduates: {
+    eyebrow: "For fresh graduates",
+    heading: "Get ahead without learning out of order.",
+    body: "Build job-relevant depth quickly through a clear sequence, focused practice, and visible proof of progress.",
+    visibleHeading: "What an early career needs most",
     visibleItems: [
       {
-        title: "Clear direction",
-        body: "Know what the learner is working toward.",
+        title: "An ordered roadmap",
+        body: "Know what to learn now and what comes next.",
       },
       {
-        title: "Meaningful progress",
-        body: "See effort turn into momentum.",
+        title: "Job-relevant depth",
+        body: "Turn trusted sources into skills you can actually use.",
       },
       {
-        title: "Room to grow",
-        body: "Support independence without taking over.",
+        title: "Visible momentum",
+        body: "Track your progress and keep closing skill gaps.",
       },
     ],
-    guardrailTitle: "Thoughtful by design",
+    guardrailTitle: "Focused by design",
     guardrailBody:
-      "Clear boundaries, responsible access, and family oversight stay part of the experience.",
-    guardrailStatus: "Our standard",
+      "Structured learning, source-backed guidance, and measurable progress keep every study session moving toward career readiness.",
+    guardrailStatus: "Built to advance",
   },
   finalCta: {
     eyebrow: "Start with one better study session",
@@ -171,7 +171,7 @@ const content = {
       {
         question: "Who is UnivAI for?",
         answer:
-          "Learners, families, and educators who want clearer direction and steadier progress.",
+          "Ambitious fresh graduates and early-career professionals who want to build relevant skills quickly, clearly, and in the right order.",
       },
       {
         question: "What makes it different?",
@@ -184,9 +184,9 @@ const content = {
           "Yes. Try the sample above, then create an account when you are ready for more.",
       },
       {
-        question: "Is it designed with families in mind?",
+        question: "How does UnivAI help me stay competitive?",
         answer:
-          "Yes. Clear progress and responsible access are part of the product direction.",
+          "It turns trusted material into an ordered course with live lectures, practice, assessment, and visible progress.",
       },
       {
         question: "How do you approach privacy?",
@@ -207,9 +207,9 @@ const content = {
       { label: "Preview", href: "/#live-preview" },
       { label: "Benefits", href: "/#features" },
     ],
-    familyLinks: [
-      { label: "For families", href: "/#for-families" },
-      { label: "Our approach", href: "/#for-families" },
+    audienceLinks: [
+      { label: "For fresh graduates", href: "/#for-graduates" },
+      { label: "Career growth", href: "/#for-graduates" },
       { label: "Questions", href: "/#faq" },
     ],
     accountLinks: [

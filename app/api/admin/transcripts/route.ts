@@ -4,7 +4,7 @@ import { now } from "@/lib/clock";
 import { enqueueReleasedTranscriptNotifications } from "@/lib/notification-outbox";
 import { requireAdminApi } from "@/lib/session";
 import {
-  getTranscripts,
+  getTranscriptPage,
   releaseDueTranscripts,
   reviewTranscript,
   type TranscriptReviewAction,
@@ -25,9 +25,14 @@ export async function GET(request: NextRequest) {
   if (!registrationNumber) {
     return Response.json({ error: "Choose a valid learner." }, { status: 400 });
   }
+  const page = Number(request.nextUrl.searchParams.get("page") ?? "1");
+  const pageSize = Number(request.nextUrl.searchParams.get("pageSize") ?? "10");
+  if (!Number.isInteger(page) || page < 1 || page > 100_000 || !Number.isInteger(pageSize) || pageSize < 1 || pageSize > 50) {
+    return Response.json({ error: "Invalid pagination." }, { status: 400 });
+  }
   await releaseDueTranscripts(await now(), registrationNumber);
   return Response.json(
-    { transcripts: await getTranscripts(registrationNumber) },
+    await getTranscriptPage(registrationNumber, page, pageSize),
     { headers: { "Cache-Control": "private, no-store" } },
   );
 }

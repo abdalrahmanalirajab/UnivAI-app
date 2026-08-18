@@ -420,6 +420,32 @@ export async function getTranscripts(registrationNumber: string): Promise<Course
   return rows.map(mapTranscript);
 }
 
+export async function getTranscriptPage(
+  registrationNumber: string,
+  page: number,
+  pageSize: number,
+): Promise<{
+  transcripts: CourseTranscript[];
+  pagination: { page: number; pageSize: number; total: number; pages: number };
+}> {
+  const count = await queryOne<{ total: string }>(
+    "SELECT COUNT(*)::text AS total FROM course_transcripts WHERE student_id = $1",
+    [registrationNumber],
+  );
+  const total = Number(count?.total ?? 0);
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  const normalizedPage = Math.min(Math.max(1, page), pages);
+  const rows = await query<TranscriptRow>(
+    `${TRANSCRIPT_SELECT} WHERE t.student_id = $1
+      ORDER BY t.completed_at DESC, t.id DESC LIMIT $2 OFFSET $3`,
+    [registrationNumber, pageSize, (normalizedPage - 1) * pageSize],
+  );
+  return {
+    transcripts: rows.map(mapTranscript),
+    pagination: { page: normalizedPage, pageSize, total, pages },
+  };
+}
+
 /** Release untouched review windows using the academic clock, not wall time. */
 export async function releaseDueTranscripts(
   referenceTime: Date,

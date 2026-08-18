@@ -53,7 +53,7 @@ describe("admin absence conversation UI", () => {
     let waitingOn: "admin" | "learner" = "admin";
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init: RequestInit = {}) => {
       const url = String(input);
-      if (url === "/api/admin/actions") {
+      if (url.startsWith("/api/admin/actions?")) {
         return Response.json({
           actions: [{
             id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
@@ -69,6 +69,7 @@ describe("admin absence conversation UI", () => {
             waitingOn,
             createdAt: "2026-08-16T10:00:00.000Z",
           }],
+          pagination: { page: 1, pageSize: 10, total: 1, pages: 1 },
         });
       }
       if (url === `/api/admin/absence-cases/${CASE_ID}` && init.method === "PATCH") {

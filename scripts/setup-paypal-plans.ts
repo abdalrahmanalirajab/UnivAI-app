@@ -24,12 +24,12 @@ async function createProduct(): Promise<string> {
   const product = await payPalRequest<ProductResponse>("/v1/catalogs/products", {
     method: "POST",
     headers: {
-      "PayPal-Request-Id": "univai-study-coins-product-v1",
+      "PayPal-Request-Id": "univai-study-credits-product-v2",
       Prefer: "return=representation",
     },
     body: JSON.stringify({
       name: "UnivAI Support Membership",
-      description: "Optional weekly personalization coins. Academic access is always free.",
+      description: "Optional weekly learning-action Credits. Academic access is always free.",
       type: "SERVICE",
       category: "EDUCATIONAL_AND_TEXTBOOKS",
     }),
@@ -53,7 +53,7 @@ async function createPlan(input: {
     body: JSON.stringify({
       product_id: input.productId,
       name: `UnivAI ${input.name}`,
-      description: `${input.name} membership with optional weekly personalization coins.`,
+      description: `${input.name} membership with optional weekly learning-action Credits.`,
       status: "ACTIVE",
       billing_cycles: [
         {

@@ -1,4 +1,4 @@
-import { requireUser } from "@/lib/session";
+import { requireVerifiedUser } from "@/lib/session";
 import PayPalReturn from "./PayPalReturn";
 
 export default async function PayPalReturnPage({
@@ -12,7 +12,7 @@ export default async function PayPalReturnPage({
     demo_order?: string;
   }>;
 }) {
-  await requireUser("/subscribe/paypal/return");
+  await requireVerifiedUser("/subscribe/paypal/return");
   const query = await searchParams;
   const demoOrder = query.demo_order === "1";
   const checkoutId = demoOrder

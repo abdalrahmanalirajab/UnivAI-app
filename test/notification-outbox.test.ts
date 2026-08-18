@@ -56,7 +56,12 @@ describe("notification outbox", () => {
   });
 
   it("uses a stable opaque event key and lets the database deduplicate it", async () => {
-    mocks.queryOne.mockResolvedValueOnce({ id: "outbox-1" }).mockResolvedValueOnce(null);
+    let outboxCalls = 0;
+    mocks.queryOne.mockImplementation(async (sql: string) => {
+      if (sql.includes('SELECT "uiLocale"')) return { ui_locale: "en" };
+      outboxCalls += 1;
+      return outboxCalls === 1 ? { id: "outbox-1", status: "pending" } : null;
+    });
     const input = {
       userId: "55cbe793-8a4b-4518-88ea-25b43f19e24a",
       eventId: "book:42:plan:3",
@@ -66,16 +71,23 @@ describe("notification outbox", () => {
     await expect(enqueueEmailNotification(input)).resolves.toEqual({ queued: true });
     await expect(enqueueEmailNotification(input)).resolves.toEqual({ queued: false });
 
-    const firstKey = mocks.queryOne.mock.calls[0][1][0] as string;
-    const secondKey = mocks.queryOne.mock.calls[1][1][0] as string;
+    const inserts = mocks.queryOne.mock.calls.filter(([sql]) =>
+      String(sql).includes("INSERT INTO notification_email_outbox"),
+    );
+    const firstKey = inserts[0][1][0] as string;
+    const secondKey = inserts[1][1][0] as string;
     expect(firstKey).toBe(secondKey);
     expect(firstKey).toMatch(/^notification:[a-f0-9]{64}$/);
     expect(firstKey).not.toContain("book:42");
-    expect(mocks.queryOne.mock.calls[0][0]).toContain("ON CONFLICT (event_key) DO NOTHING");
+    expect(inserts[0][0]).toContain("ON CONFLICT (event_key) DO NOTHING");
   });
 
   it("keeps an opted-out event as a visible skipped delivery", async () => {
-    mocks.queryOne.mockResolvedValue({ id: "outbox-skipped", status: "skipped" });
+    mocks.queryOne.mockImplementation(async (sql: string) =>
+      sql.includes('SELECT "uiLocale"')
+        ? { ui_locale: "en" }
+        : { id: "outbox-skipped", status: "skipped" },
+    );
     await expect(enqueueEmailNotification({
       userId: "55cbe793-8a4b-4518-88ea-25b43f19e24a",
       eventId: "lecture:42:reminder",
@@ -86,12 +98,19 @@ describe("notification outbox", () => {
       },
     })).resolves.toEqual({ queued: false });
 
-    expect(mocks.queryOne.mock.calls[0][0]).toContain("ELSE 'skipped'");
-    expect(mocks.queryOne.mock.calls[0][0]).toContain("RETURNING id, status");
+    const insert = mocks.queryOne.mock.calls.find(([sql]) =>
+      String(sql).includes("INSERT INTO notification_email_outbox"),
+    )!;
+    expect(insert[0]).toContain("ELSE 'skipped'");
+    expect(insert[0]).toContain("RETURNING id, status");
   });
 
   it("can queue a required retake decision inside its domain transaction", async () => {
-    const clientQuery = vi.fn().mockResolvedValue({ rows: [{ id: "decision-email" }] });
+    const clientQuery = vi.fn(async (sql: string) => ({
+      rows: sql.includes('SELECT "uiLocale"')
+        ? [{ ui_locale: "en" }]
+        : [{ id: "decision-email", status: "pending" }],
+    }));
     const client = { query: clientQuery } as unknown as PoolClient;
 
     await expect(
@@ -105,8 +124,11 @@ describe("notification outbox", () => {
       }),
     ).resolves.toEqual({ queued: true });
 
-    expect(clientQuery.mock.calls[0][0]).toContain("$4 = 'final.retake_declined'");
-    expect(clientQuery.mock.calls[0][1]).toMatchObject({
+    const insert = clientQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("INSERT INTO notification_email_outbox"),
+    )!;
+    expect(insert[0]).toContain("$4 = 'final.retake_declined'");
+    expect(insert[1]).toMatchObject({
       2: "assessment",
       3: "final.retake_declined",
     });
@@ -151,14 +173,21 @@ describe("notification outbox", () => {
         starts_at: new Date("2026-08-11T10:00:00.000Z"),
       },
     ]);
-    mocks.queryOne.mockResolvedValue({ id: "reminder-1" });
+    mocks.queryOne.mockImplementation(async (sql: string) =>
+      sql.includes('SELECT "uiLocale"')
+        ? { ui_locale: "en" }
+        : { id: "reminder-1", status: "pending" },
+    );
 
     await expect(
       enqueueDueLectureReminders(new Date("2026-08-10T10:00:00.000Z")),
     ).resolves.toBe(1);
     expect(mocks.query.mock.calls[0][0]).toContain("INTERVAL '24 hours'");
     expect(mocks.query.mock.calls[0][1]).toHaveLength(1);
-    expect(mocks.queryOne.mock.calls[0][1][3]).toBe("lecture.reminder");
+    const insert = mocks.queryOne.mock.calls.find(([sql]) =>
+      String(sql).includes("INSERT INTO notification_email_outbox"),
+    )!;
+    expect(insert[1][3]).toBe("lecture.reminder");
   });
 
   it("queues stable ready and retry-aware failed course updates", async () => {
@@ -182,12 +211,19 @@ describe("notification outbox", () => {
         failed_attempt: 2,
       },
     ]);
-    mocks.queryOne.mockResolvedValue({ id: "queued" });
+    mocks.queryOne.mockImplementation(async (sql: string) =>
+      sql.includes('SELECT "uiLocale"')
+        ? { ui_locale: "en" }
+        : { id: "queued", status: "pending" },
+    );
 
     await expect(enqueueCourseBuildNotifications()).resolves.toBe(2);
     expect(mocks.query.mock.calls[0][0]).toContain("generation_audio_ready_weeks");
-    expect(mocks.queryOne.mock.calls[0][1][3]).toBe("course.ready");
-    expect(mocks.queryOne.mock.calls[1][1][3]).toBe("course.failed");
+    const inserts = mocks.queryOne.mock.calls.filter(([sql]) =>
+      String(sql).includes("INSERT INTO notification_email_outbox"),
+    );
+    expect(inserts[0][1][3]).toBe("course.ready");
+    expect(inserts[1][1][3]).toBe("course.failed");
   });
 
   it("enqueues a terminal course event immediately from the generation producer", async () => {
@@ -201,11 +237,12 @@ describe("notification outbox", () => {
         failed_stage: null,
         failed_attempt: null,
       })
+      .mockResolvedValueOnce({ ui_locale: "en" })
       .mockResolvedValueOnce({ id: "course-ready-message", status: "pending" });
 
     await expect(enqueueCourseBuildNotificationForBook(44)).resolves.toBe(true);
     expect(mocks.queryOne.mock.calls[0][0]).toContain("book.id = $1");
-    expect(mocks.queryOne.mock.calls[1][1][3]).toBe("course.ready");
+    expect(mocks.queryOne.mock.calls[2][1][3]).toBe("course.ready");
   });
 
   it("queues the transcript email only after the review window releases", async () => {
@@ -219,14 +256,21 @@ describe("notification outbox", () => {
           letter_grade: "A",
         },
       ]);
-    mocks.queryOne.mockResolvedValue({ id: "transcript-message" });
+    mocks.queryOne.mockImplementation(async (sql: string) =>
+      sql.includes('SELECT "uiLocale"')
+        ? { ui_locale: "en" }
+        : { id: "transcript-message", status: "pending" },
+    );
     mocks.poolQuery.mockResolvedValue({ rowCount: 1 });
 
     await expect(
       enqueueReleasedTranscriptNotifications(new Date("2026-08-15T12:00:00.000Z")),
     ).resolves.toBe(1);
     expect(mocks.query.mock.calls[0][0]).toContain("review_status = 'pending'");
-    expect(mocks.queryOne.mock.calls[0][1][3]).toBe("transcript.ready");
+    const insert = mocks.queryOne.mock.calls.find(([sql]) =>
+      String(sql).includes("INSERT INTO notification_email_outbox"),
+    )!;
+    expect(insert[1][3]).toBe("transcript.ready");
     expect(mocks.poolQuery.mock.calls[0][0]).toContain("notification_queued_at");
   });
 

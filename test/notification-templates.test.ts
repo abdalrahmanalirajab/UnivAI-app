@@ -90,4 +90,18 @@ describe("notification templates", () => {
       renderNotification({ type: "billing.payment_failed", planName: "Supporter" }).category,
     ).toBe("billing");
   });
+
+  it("renders privacy outcomes as required account notifications", () => {
+    const result = renderNotification({
+      type: "privacy.request_resolved",
+      requestLabel: "personal-data access",
+      status: "completed",
+      outcome: "Your verified data export is ready.",
+    });
+
+    expect(result.category).toBe("security");
+    expect(result.subject).toContain("request is complete");
+    expect(result.text).toContain("Your verified data export is ready.");
+    expect(result.text).toContain("/settings#privacy");
+  });
 });

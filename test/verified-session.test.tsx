@@ -18,6 +18,8 @@ vi.mock("@/lib/onboarding", () => ({
 import UploadLayout from "@/app/upload/layout";
 import SubscribePage from "@/app/subscribe/page";
 import {
+  requireStudent,
+  requireStudentApi,
   requireVerifiedUser,
   requireVerifiedUserApi,
 } from "@/lib/session";
@@ -79,6 +81,22 @@ describe("verified session guards", () => {
     await expect(requireVerifiedUser("/upload")).rejects.toThrow(
       "NEXT_REDIRECT:/login?redirect=%2Fupload",
     );
+  });
+
+  it("redirects admin accounts away from learner pages and rejects learner APIs", async () => {
+    const admin = { ...user, emailVerified: true, role: "admin" };
+    mocks.getSession.mockResolvedValue({ user: admin });
+
+    await expect(requireStudent("/upload")).rejects.toThrow("NEXT_REDIRECT:/admin");
+    expect(mocks.redirect).toHaveBeenCalledWith("/admin");
+
+    const response = await requireStudentApi();
+    expect(response).toBeInstanceOf(Response);
+    expect((response as Response).status).toBe(403);
+    expect(await (response as Response).json()).toEqual({
+      error: "Students only.",
+      code: "STUDENT_ROLE_REQUIRED",
+    });
   });
 
   it("returns the required API status for anonymous, unverified, and verified users", async () => {

@@ -141,7 +141,7 @@ export default function SectionRoom({ sectionId }: { sectionId: string }) {
     <Stack spacing={3}>
       <Stack spacing={1}>
         <Typography variant="overline">Week {section.week} · {section.totalMinutes} min</Typography>
-        <Typography variant="h4" data-generated-content="true" lang="en" dir="ltr">
+        <Typography variant="h4" data-generated-content="true" dir="auto">
           {section.title}
         </Typography>
         <Stack direction="row" spacing={1}>
@@ -161,7 +161,7 @@ export default function SectionRoom({ sectionId }: { sectionId: string }) {
 
       <Card variant="outlined"><CardContent>
         <Typography variant="h6">Objectives</Typography>
-        <List data-generated-content="true" lang="en" dir="ltr">
+        <List data-generated-content="true" dir="auto">
           {section.objectives.map((objective) => <ListItem key={objective}><ListItemText primary={objective} /></ListItem>)}
         </List>
       </CardContent></Card>
@@ -177,11 +177,11 @@ export default function SectionRoom({ sectionId }: { sectionId: string }) {
           <Card key={step.key} variant="outlined" ref={isLatest ? latestStep : undefined}>
             <CardContent><Stack spacing={2}>
               <Typography variant="overline" color="text.secondary">Step {index + 1}</Typography>
-              <Typography variant="h6" data-generated-content="true" lang="en" dir="ltr">
+              <Typography variant="h6" data-generated-content="true" dir="auto">
                 {step.title}
               </Typography>
               {step.body ? (
-                <Typography data-generated-content="true" lang="en" dir="ltr">
+                <Typography data-generated-content="true" dir="auto">
                   {step.body}
                 </Typography>
               ) : null}
@@ -242,9 +242,7 @@ export default function SectionRoom({ sectionId }: { sectionId: string }) {
           return (
             <Button
               key={index}
-              data-generated-content="true"
-              lang="en"
-              dir="ltr"
+              data-generated-content="true" dir="auto"
               variant={done ? "contained" : "outlined"}
               color={done ? "success" : "primary"}
               disabled={completed || done}

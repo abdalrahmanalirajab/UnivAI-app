@@ -1,13 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  connect: vi.fn(),
-  clientQuery: vi.fn(),
-  release: vi.fn(),
+  getCreditActivity: vi.fn(),
+  query: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
-  pool: { connect: mocks.connect },
+  pool: { query: mocks.query },
+}));
+
+vi.mock("@/lib/credits", () => ({
+  getCreditActivity: mocks.getCreditActivity,
 }));
 
 import { getSubscriptionSnapshot } from "@/lib/subscriptions";
@@ -15,49 +18,42 @@ import { getSubscriptionSnapshot } from "@/lib/subscriptions";
 describe("subscription wallet snapshots", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.connect.mockResolvedValue({
-      query: mocks.clientQuery,
-      release: mocks.release,
+    mocks.getCreditActivity.mockResolvedValue({
+      wallet: {
+        balance: 1100,
+        reservedBalance: 0,
+        availableBalance: 1100,
+        weeklyGrantAmount: 1000,
+        nextGrantAt: "2026-08-18T12:00:00.000Z",
+      },
+      items: [{
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        amount: 1000,
+        balanceAfter: 1100,
+        reason: "subscription_payment",
+        referenceType: "subscription_plan",
+        referenceId: "patron",
+        metadata: { provider: "paypal" },
+        createdAt: "2026-08-11T12:00:00.000Z",
+      }],
+      pagination: { page: 2, pageSize: 10, total: 11, pages: 2 },
     });
-    mocks.clientQuery.mockImplementation(async (sql: string) => {
+    mocks.query.mockImplementation(async (sql: string) => {
       if (sql.includes("SELECT plan_code")) {
         return {
           rows: [
             {
-              plan_code: "free",
+              plan_code: "patron",
               pending_plan_code: null,
               status: "active",
               provider: "none",
               provider_subscription_id: null,
               provider_plan_id: null,
-              subscribed_at: null,
-              current_period_ends_at: null,
+              subscribed_at: "2026-08-11T12:00:00.000Z",
+              current_period_ends_at: "2026-09-11T12:00:00.000Z",
               cancelled_at: null,
               created_at: "2026-08-10T00:00:00.000Z",
               updated_at: "2026-08-10T00:00:00.000Z",
-            },
-          ],
-        };
-      }
-      if (sql.includes("SELECT balance")) {
-        return {
-          rows: [
-            {
-              balance: 100,
-              weekly_allowance: 100,
-              week_started_at: "2026-08-10",
-            },
-          ],
-        };
-      }
-      if (sql.includes("FROM coin_transactions")) {
-        return {
-          rows: [
-            {
-              amount: 100,
-              balance_after: 100,
-              reason: "signup",
-              created_at: "2026-08-10T00:00:00.000Z",
             },
           ],
         };
@@ -66,35 +62,22 @@ describe("subscription wallet snapshots", () => {
     });
   });
 
-  it("does not re-grant the current week in a positive UTC timezone", async () => {
+  it("returns the additive Credit balance and requested activity page", async () => {
     const snapshot = await getSubscriptionSnapshot(
       "fc69fd54-552a-49d3-a4c7-84bf174b6c95",
-      new Date("2026-08-11T12:00:00.000Z"),
+      { activityPage: 2, activityPageSize: 10, now: new Date("2026-08-11T12:00:00.000Z") },
     );
 
-    expect(snapshot.coins.balance).toBe(100);
-    expect(snapshot.coinTransactions).toEqual([
-      {
-        amount: 100,
-        balanceAfter: 100,
-        reason: "signup",
-        createdAt: "2026-08-10T00:00:00.000Z",
-      },
-    ]);
-    expect(
-      mocks.clientQuery.mock.calls.find(([sql]) =>
-        String(sql).includes("SELECT balance"),
-      )?.[0],
-    ).toContain("week_started_at::text AS week_started_at");
-    expect(
-      mocks.clientQuery.mock.calls.some(([sql]) =>
-        String(sql).includes("UPDATE coin_wallets"),
-      ),
-    ).toBe(false);
-    expect(
-      mocks.clientQuery.mock.calls.some(([sql]) =>
-        String(sql).includes("INSERT INTO coin_transactions"),
-      ),
-    ).toBe(false);
+    expect(snapshot.credits.balance).toBe(1100);
+    expect(snapshot.weeklyCredits).toBe(1000);
+    expect(snapshot.creditActivity[0]).toMatchObject({
+      amount: 1000,
+      reason: "subscription_payment",
+    });
+    expect(snapshot.creditActivityPagination).toEqual({ page: 2, pageSize: 10, total: 11, pages: 2 });
+    expect(mocks.getCreditActivity).toHaveBeenCalledWith(
+      "fc69fd54-552a-49d3-a4c7-84bf174b6c95",
+      expect.objectContaining({ page: 2, pageSize: 10 }),
+    );
   });
 });

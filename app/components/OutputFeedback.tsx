@@ -10,7 +10,6 @@ import DialogTitle from "@mui/material/DialogTitle";
 import FormControl from "@mui/material/FormControl";
 import InputLabel from "@mui/material/InputLabel";
 import MenuItem from "@mui/material/MenuItem";
-import Rating from "@mui/material/Rating";
 import Select from "@mui/material/Select";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
@@ -25,20 +24,19 @@ import {
   type AiOutputTarget,
 } from "@/lib/ai-output-feedback-types";
 import type { OutputVersion } from "@/lib/feedback";
+import type { LiveAnswerTurn } from "@/lib/live-conversation";
+import { CREDIT_COSTS } from "@/lib/credit-costs";
 
 type FeedbackAction =
-  | { action: "rating"; rating: number }
   | { action: "like"; liked: boolean }
   | { action: "report"; reason: AiOutputReportReason; detail: string | null };
 
 export default function OutputFeedback({
   target = null,
-  retryOutputId = null,
-  onRetried,
+  onRegenerated,
 }: {
   target?: AiOutputTarget | null;
-  retryOutputId?: number | null;
-  onRetried?: (output: OutputVersion) => void;
+  onRegenerated?: (turn: LiveAnswerTurn, output: OutputVersion) => void;
 }) {
   const reportLabelId = useId();
   const available = Boolean(
@@ -47,27 +45,20 @@ export default function OutputFeedback({
   const targetKey = target
     ? `${target.targetType}:${target.targetId}:${target.targetVersion}:${target.traceId}`
     : "unavailable";
-  const [rating, setRating] = useState<number | null>(null);
-  const [ratingSaved, setRatingSaved] = useState(false);
-  const [liked, setLiked] = useState(false);
+  const [feedbackSent, setFeedbackSent] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [reportReason, setReportReason] = useState<AiOutputReportReason | "">("");
   const [reportDetail, setReportDetail] = useState("");
-  const [reported, setReported] = useState(false);
-  const [submitting, setSubmitting] = useState<"rating" | "like" | "report" | null>(null);
-  const [retrying, setRetrying] = useState(false);
-  const [retried, setRetried] = useState(false);
+  const [submitting, setSubmitting] = useState<"like" | "report" | null>(null);
+  const [regenerating, setRegenerating] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setRating(null);
-    setRatingSaved(false);
-    setLiked(false);
+    setFeedbackSent(false);
     setReportOpen(false);
     setReportReason("");
     setReportDetail("");
-    setReported(false);
     setMessage(null);
     setError(null);
   }, [targetKey]);
@@ -89,30 +80,14 @@ export default function OutputFeedback({
     if (!response.ok) throw new Error(body.error ?? "Could not send feedback.");
   }
 
-  async function saveRating() {
-    if (!available || rating === null) return;
-    setSubmitting("rating");
-    setError(null);
-    try {
-      await post({ action: "rating", rating });
-      setRatingSaved(true);
-      setMessage("Thanks — your rating was saved.");
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not save rating.");
-    } finally {
-      setSubmitting(null);
-    }
-  }
-
-  async function toggleLike() {
+  async function submitLike() {
     if (!available) return;
-    const next = !liked;
     setSubmitting("like");
     setError(null);
     try {
-      await post({ action: "like", liked: next });
-      setLiked(next);
-      setMessage(next ? "Thanks — you liked this output." : "Like removed.");
+      await post({ action: "like", liked: true });
+      setFeedbackSent(true);
+      setMessage("Thanks — you liked this output.");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not save like.");
     } finally {
@@ -130,7 +105,7 @@ export default function OutputFeedback({
         reason: reportReason,
         detail: reportDetail.trim() || null,
       });
-      setReported(true);
+      setFeedbackSent(true);
       setReportOpen(false);
       setMessage("Report submitted for review.");
     } catch (reason) {
@@ -140,25 +115,36 @@ export default function OutputFeedback({
     }
   }
 
-  async function retry() {
-    if (!retryOutputId) return;
-    setRetrying(true);
+  const regenerationAnswerId =
+    target?.targetType === "raise_hand_answer" && /^\d+$/.test(target.targetId)
+      ? Number(target.targetId)
+      : null;
+
+  async function regenerate() {
+    if (!regenerationAnswerId) return;
+    setRegenerating(true);
     setError(null);
     try {
-      const response = await fetch(`/api/outputs/${retryOutputId}/retry`, { method: "POST" });
+      const response = await fetch(`/api/answers/${regenerationAnswerId}/regenerate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idempotencyKey: crypto.randomUUID() }),
+      });
       const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.error ?? "Could not retry generation.");
-      if (!body.output) throw new Error("Retry did not return a new output version.");
-      setRetried(true);
-      onRetried?.(body.output as OutputVersion);
+      if (!response.ok) throw new Error(body.error ?? "Could not regenerate this answer.");
+      if (!body.output || !body.turn) {
+        throw new Error("Regeneration did not return a grounded answer.");
+      }
+      onRegenerated?.(body.turn as LiveAnswerTurn, body.output as OutputVersion);
+      setMessage(`Answer regenerated for ${CREDIT_COSTS.answer_regeneration} Credits.`);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not retry generation.");
+      setError(reason instanceof Error ? reason.message : "Could not regenerate this answer.");
     } finally {
-      setRetrying(false);
+      setRegenerating(false);
     }
   }
 
-  if (!available && !retryOutputId) {
+  if (!available) {
     return (
       <Typography variant="body2" color="text.secondary">
         Feedback is unavailable because this output has no recorded identifiers yet.
@@ -168,75 +154,46 @@ export default function OutputFeedback({
 
   return (
     <Stack spacing={1.5} aria-label="AI output feedback">
-      {available ? (
-        <>
-          <Stack spacing={0.5}>
-            <Typography id={`${reportLabelId}-rating`} variant="overline" color="text.secondary">
-              Rate this AI output
-            </Typography>
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-              <Rating
-                name={`${reportLabelId}-stars`}
-                value={rating}
-                onChange={(_event, value) => {
-                  setRating(value);
-                  setRatingSaved(false);
-                }}
-                getLabelText={(value) => `${value} star${value === 1 ? "" : "s"}`}
-                aria-labelledby={`${reportLabelId}-rating`}
-                disabled={submitting !== null}
-              />
-              <Button
-                size="small"
-                variant="contained"
-                disabled={rating === null || submitting !== null || ratingSaved}
-                onClick={saveRating}
-              >
-                {ratingSaved ? "Rating saved" : "Save rating"}
-              </Button>
-            </Stack>
-          </Stack>
-
-          <Stack direction="row" spacing={1}>
-            <Button
-              variant={liked ? "contained" : "outlined"}
-              startIcon={<ThumbUpOutlined />}
-              aria-pressed={liked}
-              disabled={submitting !== null}
-              onClick={toggleLike}
-            >
-              {liked ? "Liked" : "Like"}
-            </Button>
-            <Button
-              variant="outlined"
-              color="warning"
-              startIcon={<ReportProblemOutlined />}
-              disabled={submitting !== null || reported}
-              onClick={() => setReportOpen(true)}
-            >
-              {reported ? "Reported" : "Report"}
-            </Button>
-          </Stack>
-        </>
-      ) : (
+      {available && !feedbackSent ? (
+        <Stack direction="row" spacing={1}>
+          <Button
+            variant="outlined"
+            startIcon={<ThumbUpOutlined />}
+            disabled={submitting !== null}
+            onClick={submitLike}
+          >
+            Like
+          </Button>
+          <Button
+            variant="outlined"
+            color="warning"
+            startIcon={<ReportProblemOutlined />}
+            disabled={submitting !== null}
+            onClick={() => setReportOpen(true)}
+          >
+            Report
+          </Button>
+        </Stack>
+      ) : !available ? (
         <Typography variant="body2" color="text.secondary">
           Feedback is unavailable because this output has no recorded identifiers yet.
         </Typography>
-      )}
+      ) : null}
 
-      {retryOutputId ? (
+      {regenerationAnswerId ? (
         <Button
           variant="outlined"
           startIcon={<ReplayOutlined />}
-          disabled={retrying || retried}
-          onClick={retry}
+          disabled={regenerating}
+          onClick={regenerate}
         >
-          {retried ? "Retry started" : "Retry generation"}
+          {regenerating
+            ? "Regenerating…"
+            : `Regenerate · ${CREDIT_COSTS.answer_regeneration} Credits`}
         </Button>
       ) : null}
 
       {message ? <Alert severity="success">{message}</Alert> : null}
-      {retried ? <Alert severity="info">Retry started — generation is running.</Alert> : null}
       {error ? <Alert severity="error">{error}</Alert> : null}
 
       <Dialog
@@ -250,7 +207,7 @@ export default function OutputFeedback({
         <DialogContent>
           <Stack spacing={2}>
             <Typography variant="body2" color="text.secondary">
-              Choose the main reason. A report can be submitted without a rating or like.
+              Choose the main reason. Reporting is separate from liking this output.
             </Typography>
             <FormControl required fullWidth>
               <InputLabel id={`${reportLabelId}-reason-label`}>Reason</InputLabel>

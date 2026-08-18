@@ -400,7 +400,7 @@ export function createAppTheme(direction: "ltr" | "rtl" = "ltr") {
         ".subscription-price-period": {
           paddingBottom: 6,
         },
-        ".subscription-coin-allowance": {
+        ".subscription-credit-allowance": {
           gap: 10,
           minHeight: 54,
           paddingBlock: 10,
@@ -483,16 +483,16 @@ export function createAppTheme(direction: "ltr" | "rtl" = "ltr") {
           marginTop: "12px !important",
           paddingInline: "0 !important",
         },
-        ".coin-activity-list": {
+        ".credit-activity-list": {
           maxHeight: 320,
           overflowY: "auto",
           scrollbarGutter: "stable",
         },
-        ".coin-activity-row": {
+        ".credit-activity-row": {
           minHeight: 58,
           padding: "8px 0 !important",
         },
-        ".coin-activity-amount": {
+        ".credit-activity-amount": {
           alignItems: "flex-end",
           flexShrink: 0,
         },
@@ -611,6 +611,18 @@ export function createAppTheme(direction: "ltr" | "rtl" = "ltr") {
           "50%": {
             transform: "scale(1)",
             opacity: 1,
+          },
+        },
+        "@keyframes raiseHandReadyPulse": {
+          "0%, 100%": {
+            transform: "scale(1)",
+            boxShadow:
+              "0 12px 34px color-mix(in srgb, var(--univai-palette-secondary-main) 26%, transparent), 0 0 0 0 color-mix(in srgb, var(--univai-palette-secondary-main) 30%, transparent)",
+          },
+          "50%": {
+            transform: "scale(1.05)",
+            boxShadow:
+              "0 16px 42px color-mix(in srgb, var(--univai-palette-secondary-main) 32%, transparent), 0 0 0 12px color-mix(in srgb, var(--univai-palette-secondary-main) 0%, transparent)",
           },
         },
         ".background-paths": {
@@ -967,6 +979,145 @@ export function createAppTheme(direction: "ltr" | "rtl" = "ltr") {
         ".voice-state-label": {
           width: "fit-content",
         },
+        ".raise-hand-dock": {
+          position: "fixed",
+          zIndex: currentTheme.zIndex.snackbar,
+          insetInlineEnd: 28,
+          bottom: "calc(24px + env(safe-area-inset-bottom))",
+          display: "flex",
+          justifyContent: "flex-end",
+          pointerEvents: "none",
+        },
+        ".raise-hand-control": {
+          width: 64,
+          minHeight: 64,
+          maxHeight: 64,
+          padding: 0,
+          overflow: "hidden",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          boxSizing: "border-box",
+          pointerEvents: "auto",
+          borderRadius: "999px !important",
+          color: "var(--univai-palette-primary-contrastText) !important",
+          border:
+            "1px solid color-mix(in srgb, var(--univai-palette-primary-contrastText) 20%, transparent)",
+          transition:
+            "width 320ms cubic-bezier(0.22, 1, 0.36, 1), max-height 320ms cubic-bezier(0.22, 1, 0.36, 1), min-height 320ms cubic-bezier(0.22, 1, 0.36, 1), padding 260ms ease, border-radius 320ms cubic-bezier(0.22, 1, 0.36, 1), background-color 220ms ease, box-shadow 220ms ease",
+          willChange: "width, max-height, min-height, border-radius",
+        },
+        ".raise-hand-control-idle": {
+          backgroundColor: "var(--univai-palette-primary-main) !important",
+          boxShadow:
+            "0 14px 36px color-mix(in srgb, var(--univai-palette-primary-main) 28%, transparent)",
+        },
+        ".raise-hand-control-waiting": {
+          color: "var(--univai-palette-secondary-main) !important",
+          backgroundColor: "var(--univai-palette-background-paper) !important",
+          borderColor:
+            "color-mix(in srgb, var(--univai-palette-secondary-main) 36%, var(--univai-palette-divider))",
+          boxShadow: "0 12px 32px rgba(7, 13, 32, 0.14)",
+        },
+        ".raise-hand-control-ready": {
+          backgroundColor: "var(--univai-palette-secondary-main) !important",
+          animation: "raiseHandReadyPulse 1.45s ease-in-out infinite",
+        },
+        ".raise-hand-control-recording": {
+          width: "min(86vw, 350px)",
+          background:
+            "linear-gradient(120deg, var(--univai-palette-primary-main), var(--univai-palette-secondary-main)) !important",
+          boxShadow:
+            "0 16px 42px color-mix(in srgb, var(--univai-palette-primary-main) 28%, transparent)",
+        },
+        ".raise-hand-control-processing, .raise-hand-control-answering": {
+          width: "min(82vw, 290px)",
+          background:
+            "linear-gradient(120deg, var(--univai-palette-primary-main), var(--univai-palette-secondary-main)) !important",
+          boxShadow:
+            "0 16px 42px color-mix(in srgb, var(--univai-palette-primary-main) 24%, transparent)",
+        },
+        ".raise-hand-control-review": {
+          width: "min(92vw, 480px)",
+          minHeight: 250,
+          maxHeight: 430,
+          padding: 18,
+          alignItems: "stretch",
+          justifyContent: "flex-start",
+          color: "var(--univai-palette-text-primary) !important",
+          borderRadius: "24px !important",
+          borderColor:
+            "color-mix(in srgb, var(--univai-palette-secondary-main) 28%, var(--univai-palette-divider))",
+          backgroundColor: "var(--univai-palette-background-paper) !important",
+          boxShadow: "0 22px 64px rgba(7, 13, 32, 0.2)",
+        },
+        ".raise-hand-round-content": {
+          width: 64,
+          height: 64,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        },
+        ".raise-hand-round-button": {
+          width: "64px !important",
+          height: "64px !important",
+          borderRadius: "50% !important",
+          color: "inherit !important",
+        },
+        ".raise-hand-recording-content, .raise-hand-busy-content": {
+          width: "100%",
+          minWidth: 0,
+          paddingInline: 10,
+          whiteSpace: "nowrap",
+        },
+        ".raise-hand-waveform": {
+          width: "100%",
+          minWidth: 88,
+          height: 32,
+          flex: 1,
+          color: "currentColor",
+        },
+        ".raise-hand-waveform rect": {
+          transition: "height 70ms linear, y 70ms linear",
+        },
+        ".raise-hand-recording-label": {
+          color: "inherit !important",
+        },
+        ".raise-hand-review-content": {
+          width: "100%",
+        },
+        ".raise-hand-answer-popper": {
+          zIndex: currentTheme.zIndex.snackbar + 1,
+        },
+        ".raise-hand-answer-card": {
+          width: "min(88vw, 430px)",
+          padding: 18,
+          border:
+            "1px solid color-mix(in srgb, var(--univai-palette-secondary-main) 28%, var(--univai-palette-divider))",
+          borderRadius: "22px !important",
+          background:
+            "linear-gradient(145deg, color-mix(in srgb, var(--univai-palette-secondary-main) 6%, var(--univai-palette-background-paper)), var(--univai-palette-background-paper)) !important",
+          boxShadow: "0 22px 64px rgba(7, 13, 32, 0.2)",
+        },
+        ".raise-hand-conversation-drawer": {
+          width: "min(92vw, 440px)",
+          padding: 20,
+          overflow: "hidden",
+          backgroundImage: "none",
+        },
+        ".raise-hand-conversation-content": {
+          height: "100%",
+          minHeight: 0,
+        },
+        ".raise-hand-history-list": {
+          minHeight: 0,
+          overflowY: "auto",
+          paddingInlineEnd: 4,
+        },
+        ".raise-hand-history-turn": {
+          padding: 16,
+          borderRadius: "18px !important",
+        },
         ".container-preview-section": {
           paddingBottom: 48,
         },
@@ -1226,7 +1377,7 @@ export function createAppTheme(direction: "ltr" | "rtl" = "ltr") {
           color: "var(--univai-palette-text-secondary)",
           fontVariantNumeric: "tabular-nums",
         },
-        ".family-guardrail": {
+        ".audience-guardrail": {
           height: "100%",
           borderColor:
             "color-mix(in srgb, var(--univai-palette-warning-main) 50%, var(--univai-palette-divider))",
@@ -1390,6 +1541,27 @@ export function createAppTheme(direction: "ltr" | "rtl" = "ltr") {
           },
           ".admin-clock-summary": {
             alignItems: "flex-start",
+          },
+          ".raise-hand-dock": {
+            insetInlineEnd: 12,
+            bottom: "calc(12px + env(safe-area-inset-bottom))",
+          },
+          ".raise-hand-control-recording": {
+            width: "min(94vw, 350px)",
+          },
+          ".raise-hand-control-review": {
+            width: "calc(100vw - 24px)",
+            maxHeight: "min(430px, 70vh)",
+          },
+          ".raise-hand-recording-label": {
+            display: "none",
+          },
+          ".raise-hand-answer-card": {
+            width: "calc(100vw - 24px)",
+          },
+          ".raise-hand-conversation-drawer": {
+            width: "min(100vw, 440px)",
+            padding: 16,
           },
         },
         "@media (prefers-reduced-motion: reduce)": {

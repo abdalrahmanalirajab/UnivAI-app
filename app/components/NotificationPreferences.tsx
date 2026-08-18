@@ -99,7 +99,7 @@ export default function NotificationPreferences() {
             </FormGroup>
           )}
           <Typography variant="caption" color="text.secondary">
-            Password, session, payment, and membership changes are always emailed for your safety.
+            Security, payment, membership, and privacy-request outcomes are always emailed.
           </Typography>
         </Stack>
       </CardContent>

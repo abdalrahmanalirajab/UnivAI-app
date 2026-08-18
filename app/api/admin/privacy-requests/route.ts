@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { query, queryOne } from "@/lib/db";
+import { enqueueEmailNotification } from "@/lib/notification-outbox";
 import { requireAdminApi } from "@/lib/session";
-import type { PrivacyRequestStatus } from "@/lib/privacy";
+import type { PrivacyRequestStatus, PrivacyRequestType } from "@/lib/privacy";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,26 @@ const STATUSES: PrivacyRequestStatus[] = [
   "declined",
   "cancelled",
 ];
+
+const REQUEST_LABELS: Record<PrivacyRequestType, string> = {
+  access: "personal-data access",
+  deletion: "account deletion",
+  correction: "data correction",
+  portability: "data portability",
+  restriction: "data restriction",
+  objection: "data objection",
+  sale_share_opt_out: "sale or sharing opt-out",
+  limit_sensitive_use: "sensitive-data use",
+};
+
+type UpdatedPrivacyRequest = {
+  id: string;
+  user_id: string;
+  request_type: PrivacyRequestType;
+  status: PrivacyRequestStatus;
+  admin_note: string | null;
+  updated_at: string;
+};
 
 function positive(value: string | null, fallback: number, maximum: number): number {
   const parsed = Number(value);
@@ -106,7 +127,7 @@ export async function PATCH(request: Request) {
       { status: 400 },
     );
   }
-  const updated = await queryOne(
+  const updated = await queryOne<UpdatedPrivacyRequest>(
     `WITH changed AS (
        UPDATE privacy_requests SET
          status = $2,
@@ -131,12 +152,27 @@ export async function PATCH(request: Request) {
               )
          FROM changed
      )
-     SELECT id::text, request_type, status, detail, submitted_at, due_at,
+     SELECT id::text, user_id::text, request_type, status, detail, submitted_at, due_at,
             identity_verified_at, completed_at, admin_note, updated_at
        FROM changed`,
     [id, status, adminNote.trim(), identityVerified === true, gate.id, gate.email],
   );
-  return updated
-    ? Response.json({ request: updated })
-    : Response.json({ error: "Privacy request not found." }, { status: 404 });
+  if (!updated) {
+    return Response.json({ error: "Privacy request not found." }, { status: 404 });
+  }
+
+  if (updated.status === "completed" || updated.status === "declined") {
+    await enqueueEmailNotification({
+      userId: updated.user_id,
+      eventId: `privacy-request:${updated.id}:${updated.status}`,
+      event: {
+        type: "privacy.request_resolved",
+        requestLabel: REQUEST_LABELS[updated.request_type],
+        status: updated.status,
+        outcome: updated.admin_note ?? adminNote.trim(),
+      },
+    });
+  }
+
+  return Response.json({ request: updated });
 }

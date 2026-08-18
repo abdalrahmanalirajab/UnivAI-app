@@ -11,9 +11,9 @@ import Grid from "@mui/material/Grid";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import EmojiEventsOutlined from "@mui/icons-material/EmojiEventsOutlined";
-import FamilyRestroomOutlined from "@mui/icons-material/FamilyRestroomOutlined";
 import FlagOutlined from "@mui/icons-material/FlagOutlined";
 import PolicyOutlined from "@mui/icons-material/PolicyOutlined";
+import RocketLaunchOutlined from "@mui/icons-material/RocketLaunchOutlined";
 import TrendingUpOutlined from "@mui/icons-material/TrendingUpOutlined";
 import content from "./content";
 
@@ -24,13 +24,13 @@ const ICONS = [
 ];
 
 export default function SecondAudience() {
-  const { families } = content;
+  const { graduates } = content;
 
   return (
     <Box
       component="section"
-      id="for-families"
-      aria-labelledby="families-heading"
+      id="for-graduates"
+      aria-labelledby="graduates-heading"
       className="landing-section"
     >
       <Container maxWidth="xl">
@@ -41,28 +41,28 @@ export default function SecondAudience() {
                 <Chip
                   color="primary"
                   variant="outlined"
-                  icon={<FamilyRestroomOutlined />}
-                  label={families.eyebrow}
+                  icon={<RocketLaunchOutlined />}
+                  label={graduates.eyebrow}
                   className="eyebrow-chip"
                 />
-                <Typography id="families-heading" variant="h2">
-                  {families.heading}
+                <Typography id="graduates-heading" variant="h2">
+                  {graduates.heading}
                 </Typography>
               </Stack>
             </Grid>
             <Grid size={{ xs: 12, md: 4 }}>
               <Typography variant="body1" color="text.secondary">
-                {families.body}
+                {graduates.body}
               </Typography>
             </Grid>
           </Grid>
 
           <Typography variant="overline" color="text.secondary">
-            {families.visibleHeading}
+            {graduates.visibleHeading}
           </Typography>
 
           <Grid container spacing={2.5}>
-            {families.visibleItems.map((item, index) => {
+            {graduates.visibleItems.map((item, index) => {
               const Icon = ICONS[index];
               return (
                 <Grid key={item.title} size={{ xs: 12, md: 4 }}>
@@ -91,21 +91,21 @@ export default function SecondAudience() {
           <Alert
             severity="info"
             icon={<PolicyOutlined />}
-            className="family-guardrail"
+            className="audience-guardrail"
           >
             <Stack spacing={0.75}>
               <Stack direction="row" spacing={1} className="align-center">
                 <Typography variant="subtitle1">
-                  {families.guardrailTitle}
+                  {graduates.guardrailTitle}
                 </Typography>
                 <Chip
                   size="small"
                   color="info"
                   variant="outlined"
-                  label={families.guardrailStatus}
+                  label={graduates.guardrailStatus}
                 />
               </Stack>
-              <Typography variant="body2">{families.guardrailBody}</Typography>
+              <Typography variant="body2">{graduates.guardrailBody}</Typography>
             </Stack>
           </Alert>
         </Stack>

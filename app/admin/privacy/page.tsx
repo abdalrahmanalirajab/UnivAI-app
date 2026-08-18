@@ -104,7 +104,7 @@ export default function AdminPrivacyRequestsPage() {
       <Typography variant="h3" component="h1">Privacy request queue</Typography>
       <Typography color="text.secondary">
         Verify identity, coordinate cross-service work, record a clear outcome, and complete
-        requests before their target date. This queue supports operations; it is not legal advice.
+        requests before their target date. Completed and declined outcomes are emailed to the learner.
       </Typography>
       <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
         <TextField label="Search learner" value={search} onChange={(event) => setSearch(event.target.value)} />
@@ -155,9 +155,14 @@ export default function AdminPrivacyRequestsPage() {
                     onChange={(event) => change(request.id, { admin_note: event.target.value })}
                     slotProps={{ htmlInput: { maxLength: 2000 } }}
                     aria-label={`Outcome note for ${request.name}`}
+                    helperText="Shown in the learner’s request history and emailed when closed."
                   />
                 </TableCell>
-                <TableCell><Button onClick={() => void updateRequest(request)}>Save</Button></TableCell>
+                <TableCell>
+                  <Button onClick={() => void updateRequest(request)}>
+                    {request.status === "completed" || request.status === "declined" ? "Save & notify" : "Save"}
+                  </Button>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>

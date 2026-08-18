@@ -12,13 +12,16 @@ import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
+import Pagination from "@mui/material/Pagination";
 import Typography from "@mui/material/Typography";
 import type { EligibleAbsenceItem, LearnerAbsenceCase } from "@/lib/absence-cases";
 import { formatDateTime } from "@/lib/time";
+import { CREDIT_COSTS } from "@/lib/credit-costs";
 
 type ResponseBody = {
   cases: LearnerAbsenceCase[];
   eligibleItems: EligibleAbsenceItem[];
+  pagination: { page: number; pageSize: number; total: number; pages: number };
 };
 
 type AppealTarget = Pick<EligibleAbsenceItem, "itemType" | "week">;
@@ -54,18 +57,30 @@ function AbsenceCases() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [casePage, setCasePage] = useState(1);
 
   const load = useCallback(async () => {
     try {
-      const response = await fetch("/api/absences", { cache: "no-store" });
+      const response = await fetch(`/api/absences?page=${casePage}&pageSize=10`, { cache: "no-store" });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? "Could not load absence cases.");
-      setData(body as ResponseBody);
+      const cases = Array.isArray(body.cases) ? body.cases : [];
+      setData({
+        ...body,
+        cases,
+        eligibleItems: Array.isArray(body.eligibleItems) ? body.eligibleItems : [],
+        pagination: body.pagination ?? {
+          page: casePage,
+          pageSize: 10,
+          total: cases.length,
+          pages: Math.max(1, Math.ceil(cases.length / 10)),
+        },
+      } as ResponseBody);
       setError(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not load absence cases.");
     }
-  }, []);
+  }, [casePage]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -100,6 +115,7 @@ function AbsenceCases() {
         body: JSON.stringify({
           reason,
           items: [{ itemType: targetItem.itemType, week: targetItem.week }],
+          idempotencyKey: crypto.randomUUID(),
         }),
       });
       const body = await response.json();
@@ -196,7 +212,7 @@ function AbsenceCases() {
               >
                 <Stack spacing={0.5}>
                   <Typography variant="h6">Appeal this missed {targetItem.itemType}</Typography>
-                  <Typography data-generated-content="true" lang="en" dir="ltr">
+                  <Typography data-generated-content="true" dir="auto">
                     {targetItem.title}
                   </Typography>
                 </Stack>
@@ -218,7 +234,9 @@ function AbsenceCases() {
                   onClick={() => void submit()}
                   disabled={busy !== null || reason.trim().length < 20}
                 >
-                  {busy === "new" ? "Submitting…" : "Submit for strict review"}
+                  {busy === "new"
+                    ? "Submitting…"
+                    : `Submit appeal · ${CREDIT_COSTS.appeal} Credits`}
                 </Button>
                 <Button
                   component={Link}
@@ -421,6 +439,15 @@ function AbsenceCases() {
         )) : (
           <Typography color="text.secondary">You have not submitted an absence case.</Typography>
         )}
+        {data && data.pagination.total > data.pagination.pageSize ? (
+          <Pagination
+            page={data.pagination.page}
+            count={data.pagination.pages}
+            onChange={(_event, value) => setCasePage(value)}
+            color="primary"
+            aria-label="Appeal case pages"
+          />
+        ) : null}
       </Stack>
     </Stack>
   );

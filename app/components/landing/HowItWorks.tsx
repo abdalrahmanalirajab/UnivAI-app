@@ -38,7 +38,7 @@ const ITEMS: BentoFeature[] = [
           Semester timeline
         </Typography>
         <LinearProgress variant="determinate" value={48} aria-label="Example semester progress" />
-        <Typography variant="caption" data-generated-content="true" lang="en" dir="ltr">
+        <Typography variant="caption" data-generated-content="true" dir="auto">
           Week 3 of 5 · midterm next
         </Typography>
       </Stack>
@@ -64,9 +64,9 @@ const ITEMS: BentoFeature[] = [
     wide: true,
     visual: (
       <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-        <Chip label="Coursework 60%" variant="outlined" data-generated-content="true" lang="en" dir="ltr" />
-        <Chip label="Final 40%" variant="outlined" data-generated-content="true" lang="en" dir="ltr" />
-        <Chip label="Grade A" color="success" data-generated-content="true" lang="en" dir="ltr" />
+        <Chip label="Coursework 60%" variant="outlined" data-generated-content="true" dir="auto" />
+        <Chip label="Final 40%" variant="outlined" data-generated-content="true" dir="auto" />
+        <Chip label="Grade A" color="success" data-generated-content="true" dir="auto" />
         <Chip label="Certificate valid" color="primary" />
       </Stack>
     ),

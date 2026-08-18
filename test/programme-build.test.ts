@@ -16,7 +16,10 @@ const mocks = vi.hoisted(() => ({
   readGeneratedSemesterPlan: vi.fn(),
 }));
 
-vi.mock("@/lib/session", () => ({ requireUserApi: mocks.requireUserApi }));
+vi.mock("@/lib/session", () => ({
+  requireUserApi: mocks.requireUserApi,
+  requireStudentApi: mocks.requireUserApi,
+}));
 vi.mock("@/lib/collections", () => ({
   getOwnedCollection: mocks.getOwnedCollection,
   listDocuments: mocks.listDocuments,

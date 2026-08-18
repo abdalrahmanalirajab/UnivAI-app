@@ -112,8 +112,8 @@ describe("personal data export", () => {
         String(sql).includes("FROM privacy_requests") ||
         String(sql).includes("FROM privacy_preferences") ||
         String(sql).includes("FROM user_subscriptions") ||
-        String(sql).includes("FROM coin_wallets") ||
-        String(sql).includes("FROM coin_transactions") ||
+        String(sql).includes("FROM credit_wallets") ||
+        String(sql).includes("FROM credit_transactions") ||
         String(sql).includes("FROM notification_preferences") ||
         String(sql).includes("FROM notification_email_outbox") ||
         String(sql).includes("FROM notification_email_delivery_log") ||

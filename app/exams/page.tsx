@@ -303,7 +303,7 @@ export default function ExamsPage() {
         >
           {openNow.length === 1 ? (
             <>
-              <b data-generated-content="true" lang="en" dir="ltr">
+              <b data-generated-content="true" dir="auto">
                 {openNow[0].title}
               </b>{" "}
               is open — {windowLine(openNow[0]).toLowerCase()}
@@ -315,7 +315,7 @@ export default function ExamsPage() {
       ) : nextLocked ? (
         <Alert severity="info">
           Next:{" "}
-          <span data-generated-content="true" lang="en" dir="ltr">
+          <span data-generated-content="true" dir="auto">
             {nextLocked.title}
           </span>
           . {windowLine(nextLocked)}
@@ -392,7 +392,7 @@ export default function ExamsPage() {
             >
               <ListItemText
                 primary={
-                  <span data-generated-content="true" lang="en" dir="ltr">
+                  <span data-generated-content="true" dir="auto">
                     {exam.title}
                   </span>
                 }
@@ -421,9 +421,7 @@ export default function ExamsPage() {
                       <Grid>
                         <Typography
                           variant="subtitle1"
-                          data-generated-content="true"
-                          lang="en"
-                          dir="ltr"
+                          data-generated-content="true" dir="auto"
                         >
                           {final.title}
                         </Typography>
@@ -434,7 +432,7 @@ export default function ExamsPage() {
 
                   {final?.state === "locked" ? (
                     <Alert severity="error">
-                      <span data-generated-content="true" lang="en" dir="ltr">
+                      <span data-generated-content="true" dir="auto">
                         {final.reason ?? "Locked."}
                       </span>
                     </Alert>
@@ -508,7 +506,7 @@ export default function ExamsPage() {
                   {finalCase.declineReason ? (
                     <Alert severity="error">
                       Your retake request was declined.{" "}
-                      <span data-generated-content="true" lang="en" dir="ltr">
+                      <span data-generated-content="true" dir="auto">
                         {finalCase.declineReason}
                       </span>
                     </Alert>
@@ -568,9 +566,7 @@ function ReportCard({ exam }: { exam: Exam }) {
             <Grid>
               <Typography
                 variant="subtitle1"
-                data-generated-content="true"
-                lang="en"
-                dir="ltr"
+                data-generated-content="true" dir="auto"
               >
                 {exam.title}
               </Typography>
@@ -589,9 +585,7 @@ function ReportCard({ exam }: { exam: Exam }) {
           {exam.feedback ? (
             <Typography
               variant="body2"
-              data-generated-content="true"
-              lang="en"
-              dir="ltr"
+              data-generated-content="true" dir="auto"
             >
               {exam.feedback}
             </Typography>

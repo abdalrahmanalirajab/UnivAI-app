@@ -4,7 +4,7 @@ import {
   PayPalRequestError,
   planCodeForPayPalPlan,
 } from "@/lib/paypal";
-import { requireUserApi } from "@/lib/session";
+import { requireStudentApi } from "@/lib/session";
 import {
   getSubscriptionSnapshot,
   reconcilePayPalSubscription,
@@ -13,7 +13,7 @@ import { enqueueEmailNotification } from "@/lib/notification-outbox";
 import { enforceUserRateLimit } from "@/lib/rate-limits";
 
 export async function POST(request: Request) {
-  const gate = await requireUserApi();
+  const gate = await requireStudentApi();
   if (gate instanceof Response) return gate;
   const limited = await enforceUserRateLimit(gate.id, "account");
   if (limited) return limited;

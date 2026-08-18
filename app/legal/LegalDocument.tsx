@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
@@ -60,7 +62,7 @@ export default function LegalDocument({
         <Button component={Link} href="/legal" variant="outlined">
           {locale === "ar" ? "مركز الخصوصية والشؤون القانونية" : "Privacy and Legal center"}
         </Button>
-        <Button component={Link} href="/profile" variant="contained">
+        <Button component={Link} href="/settings#privacy" variant="contained">
           {locale === "ar" ? "إعدادات الحساب" : "Account settings"}
         </Button>
       </Stack>

@@ -13,14 +13,13 @@ import {
   type AiOutputTargetType,
 } from "./ai-output-feedback-types";
 
-type RatingRequest = AiOutputTarget & { action: "rating"; rating: number };
 type LikeRequest = AiOutputTarget & { action: "like"; liked: boolean };
 type ReportRequest = AiOutputTarget & {
   action: "report";
   reason: AiOutputReportReason;
   detail: string | null;
 };
-export type AiOutputFeedbackRequest = RatingRequest | LikeRequest | ReportRequest;
+export type AiOutputFeedbackRequest = LikeRequest | ReportRequest;
 
 export type ParseFeedbackResult =
   | { ok: true; value: AiOutputFeedbackRequest }
@@ -127,12 +126,6 @@ export function parseAiOutputFeedbackRequest(body: unknown): ParseFeedbackResult
     traceId: (raw.trace_id as string).trim(),
   };
 
-  if (raw.action === "rating") {
-    if (!Number.isInteger(raw.rating) || Number(raw.rating) < 1 || Number(raw.rating) > 5) {
-      return { ok: false, error: "rating must be an integer from 1 to 5." };
-    }
-    return { ok: true, value: { ...target, action: "rating", rating: Number(raw.rating) } };
-  }
   if (raw.action === "like") {
     if (typeof raw.liked !== "boolean") {
       return { ok: false, error: "liked must be a boolean." };
@@ -155,7 +148,7 @@ export function parseAiOutputFeedbackRequest(body: unknown): ParseFeedbackResult
       value: { ...target, action: "report", reason: raw.reason, detail: detail || null },
     };
   }
-  return { ok: false, error: "action must be rating, like, or report." };
+  return { ok: false, error: "action must be like or report." };
 }
 
 async function resolveOwnedTarget(
@@ -230,20 +223,6 @@ export async function submitAiOutputFeedback(
     canonical.targetVersion,
     canonical.traceId,
   ];
-  if (input.action === "rating") {
-    const reaction = await queryOne<Record<string, unknown>>(
-      `INSERT INTO ai_output_reactions
-         (student_id, target_type, target_id, target_version, trace_id, rating)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT (student_id, target_type, target_id, target_version)
-       DO UPDATE SET trace_id = EXCLUDED.trace_id, rating = EXCLUDED.rating,
-                     updated_at = CURRENT_TIMESTAMP
-       RETURNING id, target_type, target_id, target_version, trace_id,
-                 rating, liked, updated_at`,
-      [...values, input.rating],
-    );
-    return { ok: true, value: { reaction } };
-  }
   if (input.action === "like") {
     const reaction = await queryOne<Record<string, unknown>>(
       `INSERT INTO ai_output_reactions
@@ -253,7 +232,7 @@ export async function submitAiOutputFeedback(
        DO UPDATE SET trace_id = EXCLUDED.trace_id, liked = EXCLUDED.liked,
                      updated_at = CURRENT_TIMESTAMP
        RETURNING id, target_type, target_id, target_version, trace_id,
-                 rating, liked, updated_at`,
+                 liked, updated_at`,
       [...values, input.liked],
     );
     return { ok: true, value: { reaction } };

@@ -8,7 +8,7 @@ afterEach(() => {
 });
 
 describe("Arabic UI localization boundary", () => {
-  it("translates UI text and accessible names while preserving generated English", () => {
+  it("translates UI text and accessible names while preserving authored content", () => {
     render(
       <UiLocalizationProvider locale="ar">
         <div>
@@ -59,6 +59,10 @@ describe("Arabic UI localization boundary", () => {
   });
 
   it("supports bounded dynamic shell phrases without translating payload values", () => {
+    expect(translateUiText("Ask · 2 Credits", "ar")).toBe("اسأل · 2 من الرصيد");
+    expect(translateUiText("Regenerate · 15 Credits", "ar")).toBe(
+      "أعد الإنشاء · 15 من الرصيد",
+    );
     expect(translateUiText("Page 2 of 8", "ar")).toBe("الصفحة 2 من 8");
     expect(translateUiText("Welcome back, Mariam.", "ar")).toBe(
       "مرحبًا بعودتك، Mariam.",

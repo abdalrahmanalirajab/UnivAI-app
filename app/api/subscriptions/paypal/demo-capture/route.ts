@@ -72,6 +72,7 @@ export async function POST(request: Request) {
   const subscription = await activateDevelopmentSubscription({
     userId: gate.id,
     planCode,
+    paymentId: body.orderId,
   });
   return Response.json({ active: true, captureBypassed, subscription });
 }

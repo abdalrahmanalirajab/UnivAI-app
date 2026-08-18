@@ -216,6 +216,38 @@ export async function getLatestLectureOutput(
   return latest ? selectOutput(registrationNumber, latest.id) : null;
 }
 
+/** Materialize feedback/source metadata for one exact learner-owned Q&A row. */
+export async function getRaisedHandOutput(
+  registrationNumber: string,
+  qaId: number,
+): Promise<OutputVersion | null> {
+  await Promise.all([ensureFeedbackSchema(), ensureAiOutputFeedbackSchema()]);
+  const source = await queryOne<QaSourceRow>(
+    `SELECT q.id AS source_qa_id, l.book_id, b.title AS book_title,
+            b.filename, q.citations
+       FROM qa_log q
+       JOIN lectures l ON l.id = q.lecture_id AND l.student_id = q.student_id
+       LEFT JOIN books b ON b.id = l.book_id AND b.student_id = q.student_id
+      WHERE q.student_id = $1 AND q.id = $2`,
+    [registrationNumber, qaId],
+  );
+  if (!source?.book_id) return null;
+  await query(
+    `INSERT INTO output_versions
+       (student_id, source_qa_id, book_id, version, trace_id, status)
+     VALUES ($1, $2, $3, 1, $4, 'ready')
+     ON CONFLICT (student_id, source_qa_id, version) DO NOTHING`,
+    [registrationNumber, source.source_qa_id, source.book_id, randomUUID()],
+  );
+  const output = await queryOne<{ id: number }>(
+    `SELECT id FROM output_versions
+      WHERE student_id = $1 AND source_qa_id = $2
+      ORDER BY version DESC LIMIT 1`,
+    [registrationNumber, source.source_qa_id],
+  );
+  return output ? selectOutput(registrationNumber, output.id) : null;
+}
+
 export async function submitFeedback(
   registrationNumber: string,
   input: FeedbackInput,

@@ -7,7 +7,13 @@ const mocks = vi.hoisted(() => {
   const router = { push: vi.fn(), replace: vi.fn() };
   const shared = { performSignOut: vi.fn(), signingOut: false, error: false };
   const auth = { signOut: vi.fn() };
-  return { router, shared, auth };
+  const sessionUser = {
+    id: "7",
+    name: "Amina",
+    registrationNumber: "S-1",
+    role: "student",
+  };
+  return { router, shared, auth, sessionUser };
 });
 
 vi.mock("next/navigation", () => ({
@@ -18,17 +24,22 @@ vi.mock("@/lib/use-sign-out", () => ({ useSignOut: () => mocks.shared }));
 vi.mock("@/lib/auth-client", () => ({ signOut: mocks.auth.signOut }));
 vi.mock("@/lib/use-hydrated-session", () => ({
   useHydratedSession: () => ({
-    data: { user: { id: "7", name: "Amina", registrationNumber: "S-1", role: "student" } },
+    data: { user: mocks.sessionUser },
     isPending: false,
   }),
 }));
 vi.mock("@/app/OnboardingProvider", () => ({
-  useOnboarding: () => ({ state: null, loading: false, refresh: vi.fn() }),
+  useOnboarding: () => ({
+    state: { emailVerified: true, hasPreparedSource: true },
+    loading: false,
+    refresh: vi.fn(),
+  }),
 }));
 vi.mock("@/app/ThemeModeMenu", () => ({ default: () => null }));
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.sessionUser.role = "student";
 });
 
 describe("NavBar sign-out wiring", () => {
@@ -64,5 +75,21 @@ describe("NavBar sign-out wiring", () => {
     expect(mocks.auth.signOut).not.toHaveBeenCalled();
     expect(mocks.router.push).not.toHaveBeenCalled();
     expect(mocks.router.replace).not.toHaveBeenCalled();
+  });
+
+  it("shows admins only admin navigation, without learner panels", async () => {
+    mocks.sessionUser.role = "admin";
+    const user = userEvent.setup();
+    render(<NavBar />);
+
+    await user.click(screen.getByRole("button", { name: "Open navigation" }));
+
+    expect(screen.getByRole("link", { name: "Admin" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Privacy requests" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Today" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Course" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Books" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Upload" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Plan and Credits" })).toBeNull();
   });
 });

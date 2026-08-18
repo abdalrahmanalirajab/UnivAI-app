@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/session", () => ({
   requireUserApi: mocks.gate,
+  requireStudentApi: mocks.gate,
   requireVerifiedUserApi: mocks.verifiedGate,
 }));
 vi.mock("@/lib/subscriptions", () => ({
@@ -78,7 +79,7 @@ const FREE = {
   planCode: "free",
   planName: "Free",
   monthlyPriceUsd: 0,
-  weeklyCoins: 100,
+  weeklyCredits: 100,
   pendingPlanCode: null,
   status: "active",
   provider: "none",
@@ -88,13 +89,15 @@ const FREE = {
   cancelledAt: null,
   createdAt: "2026-08-10T00:00:00.000Z",
   updatedAt: "2026-08-10T00:00:00.000Z",
-  coins: {
+  credits: {
     balance: 100,
-    weeklyAllowance: 100,
-    weekStartedAt: "2026-08-10",
+    reservedBalance: 0,
+    availableBalance: 100,
+    weeklyGrantAmount: 100,
     nextGrantAt: "2026-08-17T00:00:00.000Z",
   },
-  coinTransactions: [],
+  creditActivity: [],
+  creditActivityPagination: { page: 1, pageSize: 10, total: 0, pages: 1 },
 };
 
 describe("PayPal subscription routes", () => {
@@ -236,7 +239,7 @@ describe("PayPal subscription routes", () => {
       planCode: "patron",
       planName: "Patron",
       monthlyPriceUsd: 20,
-      weeklyCoins: 1_000,
+      weeklyCredits: 1_000,
       status: "active",
     });
 
@@ -258,7 +261,7 @@ describe("PayPal subscription routes", () => {
       planCode: "patron",
       planName: "Patron",
       monthlyPriceUsd: 20,
-      weeklyCoins: 1_000,
+      weeklyCredits: 1_000,
       status: "active",
     };
     mocks.snapshot.mockResolvedValue(patron);
@@ -282,7 +285,7 @@ describe("PayPal subscription routes", () => {
       planCode: "supporter",
       planName: "Supporter",
       monthlyPriceUsd: 5,
-      weeklyCoins: 300,
+      weeklyCredits: 300,
       provider: "none",
     };
     mocks.fakeSubscriptionEnabled.mockReturnValue(true);
@@ -320,6 +323,7 @@ describe("PayPal subscription routes", () => {
     expect(mocks.activateDevelopment).toHaveBeenCalledWith({
       userId: USER.id,
       planCode: "supporter",
+      paymentId: "ORDER-DEMO",
     });
   });
 
@@ -329,7 +333,7 @@ describe("PayPal subscription routes", () => {
       planCode: "patron",
       planName: "Patron",
       monthlyPriceUsd: 20,
-      weeklyCoins: 1_000,
+      weeklyCredits: 1_000,
       status: "active",
       provider: "none",
       subscribedAt: "2026-08-11T12:00:00.000Z",
@@ -416,7 +420,7 @@ describe("PayPal subscription routes", () => {
       planCode: "supporter",
       planName: "Supporter",
       monthlyPriceUsd: 5,
-      weeklyCoins: 300,
+      weeklyCredits: 300,
       status: "active",
       provider: "paypal",
       providerSubscriptionId: "I-SUPPORTER",

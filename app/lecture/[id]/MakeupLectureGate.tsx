@@ -70,7 +70,7 @@ export default function MakeupLectureGate({ lectureId, week, title, initialState
         <Typography variant="overline" color="text.secondary">
           Week {week} · administrator-approved make-up
         </Typography>
-        <Typography variant="h4" data-generated-content="true" lang="en" dir="ltr">
+        <Typography variant="h4" data-generated-content="true" dir="auto">
           {title}
         </Typography>
       </Stack>

@@ -16,25 +16,21 @@ import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
 import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
-import Drawer from "@mui/material/Drawer";
 import Grid from "@mui/material/Grid";
 import LinearProgress from "@mui/material/LinearProgress";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
-import MicIcon from "@mui/icons-material/Mic";
-import MicOffIcon from "@mui/icons-material/MicOff";
-import PanToolAltIcon from "@mui/icons-material/PanToolAlt";
-import MicMeter from "./MicMeter";
-import TranscriptReview from "./TranscriptReview";
-import OutputFeedback from "@/app/components/OutputFeedback";
-import CitationBubble from "@/app/components/CitationBubble";
-import GenerationStatus from "@/app/components/GenerationStatus";
-import SourcePanel from "@/app/components/SourcePanel";
 import type { OutputVersion } from "@/lib/feedback";
-import type { CitationV1 } from "@/test/fixtures/citation-v1";
+import { loadLiveAnswerMetadata } from "@/lib/live-answer-metadata";
 import { formatLateness } from "@/lib/time";
 import LectureSlides from "./LectureSlides";
-import VoiceStateCard from "@/components/ui/voice-state-card";
+import RaiseHandDock from "./RaiseHandDock";
+import PracticeQuizButtons from "./PracticeQuizButtons";
+import {
+  appendLiveAnswerTurn,
+  parseLiveAnswerTurn,
+  type LiveAnswerTurn,
+} from "@/lib/live-conversation";
 import {
   encodeReliableLiveMessage,
   shouldRecoverLivePresence,
@@ -113,10 +109,9 @@ export default function LectureRoom({ lectureId }: Props) {
   const [sid, setSid] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [attendance, setAttendance] = useState<{ status: string; lateMinutes: number } | null>(null);
-  const [lastAnswer, setLastAnswer] = useState<{ question: string; answer: string; pages: number[] } | null>(null);
+  const [answerHistory, setAnswerHistory] = useState<LiveAnswerTurn[]>([]);
   const [answerOutput, setAnswerOutput] = useState<OutputVersion | null>(null);
-  const [outputError, setOutputError] = useState<string | null>(null);
-  const [selectedCitation, setSelectedCitation] = useState<CitationV1 | null>(null);
+  const [metadataMessage, setMetadataMessage] = useState<string | null>(null);
   // What Whisper heard, waiting for the student to confirm or correct it.
   const [transcript, setTranscript] = useState<string | null>(null);
   const [voiceFallback, setVoiceFallback] = useState<string | null>(null);
@@ -140,8 +135,10 @@ export default function LectureRoom({ lectureId }: Props) {
   const turnTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const firstAudioReported = useRef(false);
   const startupComplete = useRef(false);
+  const legacyAnswerSequence = useRef(0);
   const micRef = useRef<LocalAudioTrack | null>(null);
   const [mic, setMic] = useState<LocalAudioTrack | null>(null);
+  const lastAnswer = answerHistory[answerHistory.length - 1] ?? null;
 
   const reply = useCallback(async (message: Record<string, unknown>) => {
     try {
@@ -235,7 +232,16 @@ export default function LectureRoom({ lectureId }: Props) {
                 fetch(`/api/lecture/${lectureId}/complete`, { method: "POST" });
               }
             }
-            if (message.type === "answer") setLastAnswer(message.payload);
+            if (message.type === "answer") {
+              legacyAnswerSequence.current += 1;
+              const turn = parseLiveAnswerTurn(
+                message.payload,
+                `legacy-${legacyAnswerSequence.current}`,
+              );
+              if (turn) {
+                setAnswerHistory((previous) => appendLiveAnswerTurn(previous, turn));
+              }
+            }
             if (message.type === "transcript") setTranscript(message.text ?? null);
             if (message.type === "speech" && isSpeechState(message.state)) {
               const detail = typeof message.detail === "string" ? message.detail : null;
@@ -381,31 +387,16 @@ export default function LectureRoom({ lectureId }: Props) {
   useEffect(() => {
     if (!lastAnswer) {
       setAnswerOutput(null);
-      setOutputError(null);
+      setMetadataMessage(null);
       return;
     }
+    setAnswerOutput(null);
+    setMetadataMessage(null);
     let cancelled = false;
-    const load = async () => {
-      for (let attempt = 0; attempt < 5 && !cancelled; attempt += 1) {
-        const response = await fetch(`/api/feedback?lectureId=${lectureId}`);
-        const body = await response.json().catch(() => ({}));
-        if (response.ok && body.output) {
-          setAnswerOutput(body.output as OutputVersion);
-          setOutputError(null);
-          return;
-        }
-        if (response.status !== 404 || attempt === 4) {
-          throw new Error(body.error ?? "Could not load source metadata.");
-        }
-        await new Promise((resolve) => setTimeout(resolve, 250));
-      }
-    };
-    load().catch((loadError) => {
-      if (!cancelled) {
-        setOutputError(
-          loadError instanceof Error ? loadError.message : "Could not load source metadata.",
-        );
-      }
+    loadLiveAnswerMetadata(lectureId).then((result) => {
+      if (cancelled) return;
+      setAnswerOutput(result.output);
+      setMetadataMessage(result.message);
     });
     return () => {
       cancelled = true;
@@ -450,6 +441,39 @@ export default function LectureRoom({ lectureId }: Props) {
     await reply({ type: "cancel" });
   }
 
+  async function sendQuestion(question: string) {
+    const idempotencyKey = crypto.randomUUID();
+    const response = await fetch("/api/credits/reservations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ purpose: "raise_hand", lectureId, idempotencyKey }),
+    });
+    const body = await response.json().catch(() => ({})) as {
+      reservation?: { id: string };
+      error?: string;
+    };
+    if (!response.ok || !body.reservation) {
+      throw new Error(body.error ?? "Could not reserve 2 Credits for this question.");
+    }
+    try {
+      await reply({
+        type: "question",
+        text: question,
+        credit_reservation_id: body.reservation.id,
+      });
+    } catch (error) {
+      await fetch("/api/credits/reservations", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reservationId: body.reservation.id }),
+      }).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  const progressProblem = [...steps].reverse().find((step) => step.stage === "problem");
+  const latestProgress = [...steps].reverse().find((step) => step.stage !== "problem");
+
   if (error) {
     return (
       <Stack spacing={2}>
@@ -467,7 +491,7 @@ export default function LectureRoom({ lectureId }: Props) {
   return (
     <Stack spacing={3}>
       <Stack spacing={1}>
-        <Typography variant="h4" data-generated-content="true" lang="en" dir="ltr">
+        <Typography variant="h4" data-generated-content="true" dir="auto">
           {week ? `Week ${week} — ${title}` : "Lecture"}
         </Typography>
         <Grid container spacing={1}>
@@ -493,6 +517,17 @@ export default function LectureRoom({ lectureId }: Props) {
               />
             </Grid>
           ) : null}
+          <Grid>
+            <Button
+              size="small"
+              variant="text"
+              color="secondary"
+              onClick={() => room.disconnect()}
+              disabled={!connected}
+            >
+              Leave
+            </Button>
+          </Grid>
         </Grid>
       </Stack>
 
@@ -558,7 +593,7 @@ export default function LectureRoom({ lectureId }: Props) {
       ) : null}
 
       <Card variant="outlined">
-        <CardContent data-generated-content="true" lang="en" dir="ltr">
+        <CardContent data-generated-content="true" dir="auto">
           {week && sid ? (
             <LectureSlides lectureId={lectureId} slide={slide} />
           ) : (
@@ -566,91 +601,6 @@ export default function LectureRoom({ lectureId }: Props) {
           )}
         </CardContent>
       </Card>
-
-      {(hand !== "idle" ||
-        transcript !== null ||
-        speechState !== null ||
-        agentState === "listening" ||
-        agentState === "processing" ||
-        agentState === "review" ||
-        agentState === "asking" ||
-        agentState === "answering") &&
-        (() => {
-          const problem = [...steps].reverse().find((step) => step.stage === "problem");
-          const latest = [...steps].reverse().find((step) => step.stage !== "problem");
-
-          if (agentState === "answering") {
-            return (
-              <VoiceStateCard
-                label="Answer in progress"
-                title={latest?.detail || "Preparing a grounded answer"}
-                detail="Keep this page open. The lecturer will speak the answer and then resume the lesson."
-                active={!problem}
-                problem={problem?.detail ?? voiceFallback}
-              />
-            );
-          }
-
-          if (agentState === "processing" || speechState === "processing") {
-            return (
-              <VoiceStateCard
-                label="Speech received"
-                title="Turning your speech into text"
-                detail={speechDetail || "Keep this page open. Your lecture remains paused while recognition finishes."}
-                active={!voiceFallback}
-                problem={voiceFallback}
-              />
-            );
-          }
-
-          if (agentState === "review" || transcript !== null) {
-            const recognitionProblem = speechState === "no_speech" || speechState === "error";
-            return (
-              <VoiceStateCard
-                label={speechState === "received" ? "Transcript received" : "Your question"}
-                title={
-                  speechState === "error"
-                    ? "Voice recognition needs help"
-                    : speechState === "no_speech"
-                      ? "No clear speech detected"
-                      : "Check what I heard"
-                }
-                detail={
-                  speechDetail ||
-                  (recognitionProblem
-                    ? "The lecture is still paused. Type below, retry the microphone, or discard the turn."
-                    : "Edit the transcript below if needed, then send it to the lecturer.")
-                }
-                problem={recognitionProblem ? voiceFallback : null}
-              />
-            );
-          }
-
-          if (hand === "acked" || agentState === "listening") {
-            const heardSpeech = speechState === "detected";
-            return (
-              <VoiceStateCard
-                label={heardSpeech ? "Speech detected" : "Listening"}
-                title={heardSpeech ? "I can hear you" : muted ? "Start your microphone" : "Speak now"}
-                detail={
-                  speechDetail ||
-                  "Ask one clear question. Pause or finish speaking, and the transcript will appear for review."
-                }
-                active={!voiceFallback}
-                problem={voiceFallback}
-              />
-            );
-          }
-
-          return (
-            <VoiceStateCard
-              label="Hand raised"
-              title="Waiting for the lecturer"
-              detail="The lecturer will finish the current sentence, pause, and call on you."
-              active
-            />
-          );
-        })()}
 
       {agentState === "ended" && (
         <Card variant="outlined">
@@ -661,6 +611,7 @@ export default function LectureRoom({ lectureId }: Props) {
                 Your attendance is recorded. The quiz for this lecture opens as soon as
                 the lecture slot ends — do not miss its 24-hour window.
               </Typography>
+              <PracticeQuizButtons lectureId={lectureId} />
               <Button variant="contained" href="/start">
                 Continue
               </Button>
@@ -669,175 +620,32 @@ export default function LectureRoom({ lectureId }: Props) {
         </Card>
       )}
 
-      <TranscriptReview
+      <RaiseHandDock
+        connected={connected}
+        micBlocked={micBlocked}
+        mic={mic}
+        muted={muted}
+        hand={hand}
+        agentState={agentState}
+        speechState={speechState}
+        speechDetail={speechDetail}
+        problem={voiceFallback ?? progressProblem?.detail ?? null}
+        progressDetail={latestProgress?.detail ?? null}
         transcript={transcript}
-        onSend={(question) => reply({ type: "question", text: question })}
+        answers={answerHistory}
+        answerOutput={answerOutput}
+        metadataMessage={metadataMessage}
+        onRaiseHand={raiseHand}
+        onToggleMute={toggleMute}
         onRetry={retrySpeech}
         onCancel={cancelQuestion}
+        onSend={sendQuestion}
+        onAnswerRegenerated={(turn, output) => {
+          setAnswerHistory((previous) => appendLiveAnswerTurn(previous, turn));
+          setAnswerOutput(output);
+          setMetadataMessage(null);
+        }}
       />
-
-      <Card variant="outlined">
-        <CardContent>
-          <Stack spacing={2}>
-            <MicMeter
-              track={mic}
-              muted={muted}
-              phase={
-                agentState === "processing"
-                  ? "processing"
-                  : agentState === "review"
-                    ? "review"
-                    : agentState === "listening"
-                      ? "listening"
-                      : "idle"
-              }
-            />
-
-            <Grid container spacing={2}>
-              <Grid>
-                <Button
-                  variant="contained"
-                  color="secondary"
-                  startIcon={<PanToolAltIcon />}
-                  onClick={raiseHand}
-                  disabled={!connected || micBlocked || hand !== "idle"}
-                >
-                  {hand === "raised"
-                    ? "Hand raised…"
-                    : hand === "acked"
-                      ? "Lecturer is waiting"
-                      : "Raise hand"}
-                </Button>
-              </Grid>
-              <Grid>
-                <Button
-                  variant="contained"
-                  color={muted ? "error" : "primary"}
-                  startIcon={muted ? <MicOffIcon /> : <MicIcon />}
-                  onClick={() => void toggleMute().catch(() => undefined)}
-                  disabled={
-                    !connected ||
-                    micBlocked ||
-                    (muted
-                      ? hand !== "acked"
-                      : agentState !== "listening")
-                  }
-                >
-                  {muted
-                    ? agentState === "listening"
-                      ? "Start microphone"
-                      : "Microphone paused"
-                    : "Finish speaking"}
-                </Button>
-              </Grid>
-              {hand !== "idle" && transcript === null && agentState !== "answering" ? (
-                <Grid>
-                  <Button
-                    variant="outlined"
-                    color="secondary"
-                    onClick={() => void cancelQuestion().catch(() => undefined)}
-                  >
-                    Cancel question
-                  </Button>
-                </Grid>
-              ) : null}
-              <Grid>
-                <Button
-                  variant="outlined"
-                  color="secondary"
-                  onClick={() => room.disconnect()}
-                  disabled={!connected}
-                >
-                  Leave lecture
-                </Button>
-              </Grid>
-            </Grid>
-            <Typography variant="body2" color="text.secondary">
-              {micBlocked
-                ? "Listening only — no microphone is available, so you can watch and hear the lecture but not ask aloud. Allow microphone access and rejoin to raise your hand."
-                : agentState === "processing"
-                  ? "Speech received. The microphone is paused while recognition finishes."
-                  : agentState === "review"
-                    ? "Check the transcript, retry the microphone, type the question, or discard it."
-                    : hand === "acked"
-                      ? "The lecturer asked for you — start the microphone and ask your question."
-                  : hand === "raised"
-                    ? "Hand raised. The lecturer will finish the sentence and ask you."
-                    : muted
-                      ? "Raise your hand to ask a question — the unmute button unlocks when the lecturer calls on you."
-                      : "Ask your question — when you stop talking you can review what we heard."}
-            </Typography>
-          </Stack>
-        </CardContent>
-      </Card>
-
-      {lastAnswer ? (
-        <Card variant="outlined">
-          <CardContent>
-            <Stack spacing={1}>
-              <Typography variant="overline" color="text.secondary">
-                You asked
-              </Typography>
-              <Typography variant="body1">{lastAnswer.question}</Typography>
-              <Typography variant="overline" color="text.secondary">
-                Answer
-              </Typography>
-              <Typography
-                variant="body1"
-                data-generated-content="true"
-                lang="en"
-                dir="ltr"
-              >
-                {lastAnswer.answer}
-              </Typography>
-              <GenerationStatus
-                status={answerOutput?.status ?? (outputError ? "failed" : "pending")}
-                progress={
-                  answerOutput?.status === "generating"
-                    ? "Creating a new version; the previous answer remains available."
-                    : outputError
-                      ? outputError
-                      : "Loading source and output identity…"
-                }
-              />
-              {(answerOutput?.citations.length || lastAnswer.pages?.length) ? (
-                <Grid container spacing={1} data-generated-content="true" lang="en" dir="ltr">
-                  {(answerOutput?.citations.length
-                    ? answerOutput.citations
-                    : lastAnswer.pages.map((page) => ({
-                        documentId: null,
-                        bookTitle: null,
-                        pages: [{ page }],
-                        excerpt: null,
-                      }))).map((citation, index) => (
-                    <Grid key={`${citation.documentId ?? "unknown"}-${index}`}>
-                      <CitationBubble
-                        citation={citation}
-                        expanded={selectedCitation === citation}
-                        onOpen={setSelectedCitation}
-                      />
-                    </Grid>
-                  ))}
-                </Grid>
-              ) : null}
-              <OutputFeedback
-                target={answerOutput?.feedbackTarget}
-              />
-            </Stack>
-          </CardContent>
-        </Card>
-      ) : null}
-
-      <Drawer
-        anchor="right"
-        open={selectedCitation !== null}
-        onClose={() => setSelectedCitation(null)}
-        slotProps={{ paper: { className: "drawer-paper", "aria-label": "Source" } }}
-      >
-        {selectedCitation ? (
-          <SourcePanel citation={selectedCitation} onClose={() => setSelectedCitation(null)} />
-        ) : null}
-      </Drawer>
 
       {/* The Lecturer's voice. autoPlay so the lecture starts by itself. */}
       <audio

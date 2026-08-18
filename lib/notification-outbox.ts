@@ -109,7 +109,12 @@ export async function enqueueEmailNotification(input: {
   eventId: string;
   event: NotificationEvent;
 }): Promise<{ queued: boolean }> {
-  const rendered = renderNotification(input.event);
+  const recipient = await queryOne<{ ui_locale: "en" | "ar" }>(
+    `SELECT "uiLocale" AS ui_locale FROM "user" WHERE "id" = $1::uuid`,
+    [input.userId],
+  );
+  if (!recipient) return { queued: false };
+  const rendered = renderNotification(input.event, recipient.ui_locale);
   const eventKey = durableEventKey(input.userId, rendered.eventType, input.eventId);
   const row = await queryOne<{ id: string; status: string }>(
     `INSERT INTO notification_email_outbox
@@ -151,7 +156,12 @@ export async function enqueueEmailNotificationWithClient(
   client: PoolClient,
   input: NotificationInput,
 ): Promise<{ queued: boolean }> {
-  const rendered = renderNotification(input.event);
+  const recipient = await client.query<{ ui_locale: "en" | "ar" }>(
+    `SELECT "uiLocale" AS ui_locale FROM "user" WHERE "id" = $1::uuid`,
+    [input.userId],
+  );
+  if (!recipient.rows[0]) return { queued: false };
+  const rendered = renderNotification(input.event, recipient.rows[0].ui_locale);
   const eventKey = durableEventKey(input.userId, rendered.eventType, input.eventId);
   const result = await client.query<{ id: string; status: string }>(
     `INSERT INTO notification_email_outbox

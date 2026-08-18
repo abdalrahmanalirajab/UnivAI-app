@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
   query: vi.fn(),
   queryOne: vi.fn(),
   release: vi.fn(),
+  reserveCredits: vi.fn(),
+  settleCredits: vi.fn(),
   triageAbsence: vi.fn(),
 }));
 
@@ -20,6 +22,10 @@ vi.mock("@/lib/db", () => ({
 
 vi.mock("@/lib/attendance", () => ({ getAttendance: mocks.getAttendance }));
 vi.mock("@/lib/exams", () => ({ getExamStatuses: mocks.getExamStatuses }));
+vi.mock("@/lib/credits", () => ({
+  reserveCreditsWithClient: mocks.reserveCredits,
+  settleCreditReservationWithClient: mocks.settleCredits,
+}));
 vi.mock("@/lib/notification-outbox", () => ({
   enqueueEmailNotificationWithClient: mocks.enqueue,
 }));
@@ -31,7 +37,6 @@ vi.mock("@/lib/absence-triage", () => ({
 }));
 
 import {
-  AbsenceCaseError,
   attachAbsenceEvidence,
   decideAbsenceCase,
   requestAbsenceInformation,
@@ -59,6 +64,13 @@ describe("admin-led absence conversation", () => {
     vi.clearAllMocks();
     mocks.connect.mockResolvedValue(client);
     mocks.enqueue.mockResolvedValue({ queued: true });
+    mocks.reserveCredits.mockResolvedValue({
+      id: "99999999-9999-4999-8999-999999999999",
+      amount: 100,
+      purpose: "appeal",
+      status: "reserved",
+    });
+    mocks.settleCredits.mockResolvedValue({ status: "settled" });
     mocks.getAttendance.mockResolvedValue([
       {
         status: "absent",
@@ -130,6 +142,7 @@ describe("admin-led absence conversation", () => {
       { id: USER_ID, registrationNumber: STUDENT_ID },
       "I had an official court appointment during the lecture.",
       [{ itemType: "lecture", week: 2 }],
+      REQUEST_ID,
     );
 
     expect(created).toMatchObject({ status: "pending_admin", waitingOn: "admin" });
@@ -210,7 +223,7 @@ describe("admin-led absence conversation", () => {
         CASE_ID,
         "The requested dates were August 10 through August 12.",
       ),
-    ).rejects.toMatchObject<Partial<AbsenceCaseError>>({
+    ).rejects.toMatchObject({
       code: "ATTACHMENT_REQUIRED",
       status: 409,
     });
@@ -236,7 +249,7 @@ describe("admin-led absence conversation", () => {
         bytes: Buffer.from("normalized-image"),
         sha256: "a".repeat(64),
       }),
-    ).rejects.toMatchObject<Partial<AbsenceCaseError>>({
+    ).rejects.toMatchObject({
       code: "ATTACHMENT_NOT_REQUESTED",
       status: 409,
     });

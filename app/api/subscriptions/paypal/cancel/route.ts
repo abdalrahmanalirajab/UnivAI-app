@@ -19,7 +19,10 @@ export async function POST() {
   if (limited) return limited;
 
   const current = await getSubscriptionSnapshot(gate.id);
-  if (current.planCode === "free" || current.status !== "active") {
+  if (
+    current.planCode === "free" ||
+    (current.status !== "active" && current.status !== "suspended")
+  ) {
     return Response.json({ error: "You do not have an active paid membership." }, { status: 409 });
   }
   const localDemo = current.provider === "none" && isPayPalFakeSubscriptionEnabled();

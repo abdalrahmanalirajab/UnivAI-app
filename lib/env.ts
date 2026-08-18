@@ -56,6 +56,7 @@ export const env = {
   // over the raw body, X-Exam-Signature header). Fail-closed: callbacks are
   // rejected while this is unset.
   EXAM_CALLBACK_SECRET: read("EXAM_CALLBACK_SECRET"),
+  UNIVAI_AGENT_SECRET: read("UNIVAI_AGENT_SECRET"),
   STUDENT_NAME: read("STUDENT_NAME", "Student"),
 
   LIVEKIT_URL: read("LIVEKIT_URL") || read("NEXT_PUBLIC_LIVEKIT_URL"),

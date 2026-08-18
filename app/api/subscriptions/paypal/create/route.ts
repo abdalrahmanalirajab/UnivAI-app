@@ -49,7 +49,11 @@ export async function POST(request: Request) {
   try {
     const current = await getSubscriptionSnapshot(gate.id);
     const sandboxDemo = isPayPalFakeSubscriptionEnabled();
-    if (current.planCode !== "free" && current.status === "active") {
+    if (
+      current.planCode !== "free" &&
+      current.status !== "cancelled" &&
+      current.status !== "expired"
+    ) {
       return Response.json(
         { error: "Cancel your current paid plan before choosing another one." },
         { status: 409 },

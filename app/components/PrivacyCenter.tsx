@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import Alert from "@mui/material/Alert";
+import AlertTitle from "@mui/material/AlertTitle";
 import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
@@ -19,18 +20,56 @@ import GavelOutlined from "@mui/icons-material/GavelOutlined";
 import type {
   PrivacyPreferences,
   PrivacyRequest,
+  PrivacyRequestStatus,
   PrivacyRequestType,
 } from "@/lib/privacy";
 
 const REQUEST_LABELS: Record<PrivacyRequestType, string> = {
-  access: "Access my personal data",
+  access: "Ask for a full search of my personal data",
   deletion: "Delete my account and personal data",
   correction: "Correct personal data",
-  portability: "Portable copy of my data",
-  restriction: "Restrict processing",
-  objection: "Object to processing",
-  sale_share_opt_out: "Opt out of sale or sharing (CCPA)",
-  limit_sensitive_use: "Limit sensitive-data use (CCPA)",
+  portability: "Ask for a portable copy of my data",
+  restriction: "Restrict how my data is used",
+  objection: "Object to a specific use of my data",
+  sale_share_opt_out: "Opt out of sale or sharing",
+  limit_sensitive_use: "Limit sensitive-data use",
+};
+
+const FORM_REQUEST_TYPES: PrivacyRequestType[] = [
+  "access",
+  "deletion",
+  "correction",
+  "portability",
+  "restriction",
+  "objection",
+];
+
+const REQUEST_HELP: Record<PrivacyRequestType, string> = {
+  access:
+    "Use the download above for an immediate account copy. Submit this only if you need a broader search across other UnivAI services.",
+  deletion:
+    "An administrator will verify your identity and check legal retention duties before deleting data across UnivAI services.",
+  correction:
+    "Tell us which information is wrong and what it should say. Basic name and phone details can be changed directly on your Profile.",
+  portability:
+    "Ask for data in a reusable format or for information held outside the self-service download.",
+  restriction:
+    "Tell us which use of your data you want paused or limited and why.",
+  objection:
+    "Tell us which specific use of your data you object to and why.",
+  sale_share_opt_out:
+    "Use the privacy choice above. It records your preference immediately, so a separate request is not needed.",
+  limit_sensitive_use:
+    "Use the privacy choice above. It records your preference immediately, so a separate request is not needed.",
+};
+
+const STATUS_LABELS: Record<PrivacyRequestStatus, string> = {
+  received: "Received",
+  identity_check: "Identity check",
+  in_progress: "In progress",
+  completed: "Completed",
+  declined: "Could not complete",
+  cancelled: "Cancelled",
 };
 
 const STATUS_COLORS = {
@@ -41,6 +80,10 @@ const STATUS_COLORS = {
   declined: "error",
   cancelled: "default",
 } as const;
+
+function isOpenRequest(status: PrivacyRequestStatus): boolean {
+  return status === "received" || status === "identity_check" || status === "in_progress";
+}
 
 export default function PrivacyCenter() {
   const [preferences, setPreferences] = useState<PrivacyPreferences | null>(null);
@@ -84,6 +127,7 @@ export default function PrivacyCenter() {
     const next = { ...preferences, ...change };
     setPreferences(next);
     setSaving(true);
+    setNotice(null);
     setError(null);
     try {
       const response = await fetch("/api/privacy/preferences", {
@@ -97,7 +141,7 @@ export default function PrivacyCenter() {
       const body = await response.json().catch(() => null);
       if (!response.ok) throw new Error(body?.error ?? "Could not save privacy preferences.");
       setPreferences(body.preferences);
-      setNotice("Privacy preferences saved.");
+      setNotice("Privacy choice saved.");
     } catch (reason) {
       setPreferences(previous);
       setError(reason instanceof Error ? reason.message : "Could not save privacy preferences.");
@@ -121,8 +165,8 @@ export default function PrivacyCenter() {
       setDetail("");
       setNotice(
         body.duplicate
-          ? "An open request of this type already exists; no duplicate was created."
-          : "Privacy request received. You can track it below.",
+          ? "You already have an open request of this type."
+          : "Request received. You can follow its status below.",
       );
       await load();
     } catch (reason) {
@@ -133,103 +177,141 @@ export default function PrivacyCenter() {
   }
 
   return (
-    <Stack spacing={2} component="section" aria-labelledby="privacy-center-title">
+    <Stack spacing={2.5} component="section" aria-labelledby="privacy-center-title">
       <Stack spacing={0.5}>
-        <Typography variant="h5" component="h2" id="privacy-center-title">
-          Privacy and Legal center
+        <Typography variant="h4" component="h2" id="privacy-center-title">
+          Privacy &amp; data
         </Typography>
         <Typography color="text.secondary">
-          Review the current documents, download your information, and exercise available
-          privacy rights. Requests may require identity verification and lawful exceptions may
-          apply.
+          Download your information, choose how it may be used, or ask the privacy team for help.
         </Typography>
       </Stack>
 
-      <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-        <Button component={Link} href="/legal/eula" variant="outlined" startIcon={<GavelOutlined />}>
-          Read EULA
-        </Button>
-        <Button component={Link} href="/legal/privacy" variant="outlined">
-          Read Privacy Notice
-        </Button>
-        <Button
-          component="a"
-          href="/api/privacy/export"
-          download
-          variant="contained"
-          startIcon={<DownloadOutlined />}
-        >
-          Download my data (JSON)
-        </Button>
-      </Stack>
-
-      <Alert severity="info">
-        UnivAI does not sell personal information or share it for cross-context behavioral
-        advertising in the current product. These controls record your preference for this and
-        future processing.
-      </Alert>
-
-      {!preferences ? (
-        <CircularProgress size={28} aria-label="Loading privacy preferences" />
-      ) : (
-        <Stack>
-          <FormControlLabel
-            control={
-              <Switch
-                checked={preferences.saleOrSharingOptOut}
-                disabled={saving}
-                onChange={(event) =>
-                  void updatePreferences({ saleOrSharingOptOut: event.target.checked })
-                }
-              />
-            }
-            label="Opt out of sale or sharing of personal information"
-          />
-          <FormControlLabel
-            control={
-              <Switch
-                checked={preferences.limitSensitiveDataUse}
-                disabled={saving}
-                onChange={(event) =>
-                  void updatePreferences({ limitSensitiveDataUse: event.target.checked })
-                }
-              />
-            }
-            label="Limit use and disclosure of sensitive personal information"
-          />
-        </Stack>
-      )}
+      {notice ? <Alert severity="success" onClose={() => setNotice(null)}>{notice}</Alert> : null}
+      {error ? <Alert severity="error" action={<Button onClick={() => void load()}>Retry</Button>}>{error}</Alert> : null}
 
       <Card variant="outlined">
         <CardContent>
           <Stack spacing={2}>
-            <Typography variant="h6" component="h3">Submit a privacy request</Typography>
+            <Stack spacing={0.5}>
+              <Typography variant="h6" component="h3">Your data and legal documents</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Download a current copy of the account data UnivAI can provide automatically. The file is JSON and may include your profile, learning activity, grades, and account history.
+              </Typography>
+            </Stack>
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+              <Button
+                component="a"
+                href="/api/privacy/export"
+                download
+                variant="contained"
+                startIcon={<DownloadOutlined />}
+              >
+                Download my data
+              </Button>
+              <Button component={Link} href="/legal/privacy" variant="outlined">
+                Read Privacy Notice
+              </Button>
+              <Button component={Link} href="/legal/eula" variant="outlined" startIcon={<GavelOutlined />}>
+                Read EULA
+              </Button>
+            </Stack>
+          </Stack>
+        </CardContent>
+      </Card>
+
+      <Card variant="outlined">
+        <CardContent>
+          <Stack spacing={2}>
+            <Stack spacing={0.5}>
+              <Typography variant="h6" component="h3">Privacy choices</Typography>
+              <Typography variant="body2" color="text.secondary">
+                These choices save immediately. You do not need to submit a separate request.
+              </Typography>
+            </Stack>
+            <Alert severity="info">
+              UnivAI currently does not sell personal information or share it for cross-site advertising.
+            </Alert>
+            {!preferences ? (
+              <CircularProgress size={28} aria-label="Loading privacy preferences" />
+            ) : (
+              <Stack spacing={1}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={preferences.saleOrSharingOptOut}
+                      disabled={saving}
+                      onChange={(event) =>
+                        void updatePreferences({ saleOrSharingOptOut: event.target.checked })
+                      }
+                    />
+                  }
+                  label={
+                    <Stack spacing={0.25}>
+                      <Typography>Do not sell or share my personal information</Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Records this choice now in case UnivAI’s processing changes later.
+                      </Typography>
+                    </Stack>
+                  }
+                />
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={preferences.limitSensitiveDataUse}
+                      disabled={saving}
+                      onChange={(event) =>
+                        void updatePreferences({ limitSensitiveDataUse: event.target.checked })
+                      }
+                    />
+                  }
+                  label={
+                    <Stack spacing={0.25}>
+                      <Typography>Use sensitive information only when needed</Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Limits optional use or disclosure of sensitive details where this right applies.
+                      </Typography>
+                    </Stack>
+                  }
+                />
+              </Stack>
+            )}
+          </Stack>
+        </CardContent>
+      </Card>
+
+      <Card variant="outlined">
+        <CardContent>
+          <Stack spacing={2}>
+            <Stack spacing={0.5}>
+              <Typography variant="h6" component="h3">Ask the privacy team</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Submit a request only when the self-service controls above do not solve what you need. An administrator will review it and post the outcome below.
+              </Typography>
+            </Stack>
             <TextField
               select
-              label="Request type"
+              label="What do you need?"
               value={requestType}
               onChange={(event) => setRequestType(event.target.value as PrivacyRequestType)}
             >
-              {Object.entries(REQUEST_LABELS).map(([value, label]) => (
-                <MenuItem value={value} key={value}>{label}</MenuItem>
+              {FORM_REQUEST_TYPES.map((type) => (
+                <MenuItem value={type} key={type}>{REQUEST_LABELS[type]}</MenuItem>
               ))}
             </TextField>
+            <Alert severity={requestType === "deletion" ? "warning" : "info"}>
+              {REQUEST_HELP[requestType]}
+            </Alert>
             <TextField
-              label="Details (optional for most requests)"
+              label="Details"
+              placeholder="Tell us exactly what you need."
               value={detail}
               onChange={(event) => setDetail(event.target.value)}
               multiline
               minRows={3}
               slotProps={{ htmlInput: { maxLength: 2000 } }}
-              helperText={`${detail.length}/2,000. Correction and objection requests need at least 10 characters.`}
+              helperText={`${detail.length}/2,000 · Correction and objection requests need at least 10 characters.`}
             />
-            {requestType === "deletion" ? (
-              <Alert severity="warning">
-                This submits a deletion request; it does not immediately erase or sign you out of
-                the account. An administrator must verify identity and check any legal retention
-                duties before completing cross-service erasure.
-              </Alert>
-            ) : null}
             <Button variant="contained" onClick={submitRequest} disabled={submitting}>
               {submitting ? "Submitting…" : "Submit request"}
             </Button>
@@ -237,41 +319,59 @@ export default function PrivacyCenter() {
         </CardContent>
       </Card>
 
-      {notice ? <Alert severity="success" onClose={() => setNotice(null)}>{notice}</Alert> : null}
-      {error ? <Alert severity="error" action={<Button onClick={() => void load()}>Retry</Button>}>{error}</Alert> : null}
-
-      <Stack spacing={1} aria-live="polite">
-        <Typography variant="h6" component="h3">Your requests</Typography>
+      <Stack spacing={1.5} aria-live="polite">
+        <Stack spacing={0.25}>
+          <Typography variant="h5" component="h3">Request history</Typography>
+          <Typography variant="body2" color="text.secondary">
+            Completed requests show the administrator’s outcome here.
+          </Typography>
+        </Stack>
         {requests === null ? (
           <CircularProgress size={28} aria-label="Loading privacy requests" />
         ) : requests.length === 0 ? (
-          <Typography color="text.secondary">No privacy requests submitted.</Typography>
+          <Card variant="outlined">
+            <CardContent>
+              <Typography color="text.secondary">You have not submitted a privacy request.</Typography>
+            </CardContent>
+          </Card>
         ) : (
           requests.map((request) => (
             <Card variant="outlined" key={request.id}>
               <CardContent>
-                <Stack spacing={0.75}>
-                  <Stack
-                    direction="row"
-                    spacing={1}
-                    className="privacy-request-heading"
-                  >
+                <Stack spacing={1.25}>
+                  <Stack direction="row" spacing={1} className="privacy-request-heading">
                     <Typography variant="subtitle1">{REQUEST_LABELS[request.requestType]}</Typography>
                     <Chip
                       size="small"
                       color={STATUS_COLORS[request.status]}
-                      label={request.status.replaceAll("_", " ")}
+                      label={STATUS_LABELS[request.status]}
                     />
                   </Stack>
                   <Typography variant="body2" color="text.secondary">
-                    Submitted {new Date(request.submittedAt).toLocaleString()} · response target{" "}
-                    {new Date(request.dueAt).toLocaleDateString()}
+                    Submitted {new Date(request.submittedAt).toLocaleString()}
+                    {isOpenRequest(request.status)
+                      ? ` · Response target ${new Date(request.dueAt).toLocaleDateString()}`
+                      : request.completedAt
+                        ? ` · Closed ${new Date(request.completedAt).toLocaleDateString()}`
+                        : ""}
                   </Typography>
                   {request.detail ? <Typography variant="body2">{request.detail}</Typography> : null}
                   {request.adminNote ? (
-                    <Alert severity={request.status === "declined" ? "warning" : "info"}>
+                    <Alert severity={request.status === "declined" ? "warning" : request.status === "completed" ? "success" : "info"}>
+                      <AlertTitle>{isOpenRequest(request.status) ? "Update from UnivAI" : "Outcome from UnivAI"}</AlertTitle>
                       {request.adminNote}
                     </Alert>
+                  ) : null}
+                  {request.status === "completed" && (request.requestType === "access" || request.requestType === "portability") ? (
+                    <Button
+                      component="a"
+                      href="/api/privacy/export"
+                      download
+                      variant="outlined"
+                      startIcon={<DownloadOutlined />}
+                    >
+                      Download current account data
+                    </Button>
                   ) : null}
                 </Stack>
               </CardContent>

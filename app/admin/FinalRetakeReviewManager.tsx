@@ -9,6 +9,7 @@ import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
+import TablePagination from "@mui/material/TablePagination";
 import Typography from "@mui/material/Typography";
 
 type RetakeRequest = {
@@ -29,22 +30,26 @@ export default function FinalRetakeReviewManager({ registrationNumber }: { regis
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(10);
+  const [total, setTotal] = useState(0);
 
   const load = useCallback(async () => {
     try {
       const response = await fetch(
-        `/api/admin/final-retakes?sid=${encodeURIComponent(registrationNumber)}`,
+        `/api/admin/final-retakes?sid=${encodeURIComponent(registrationNumber)}&page=${page + 1}&pageSize=${pageSize}`,
         { cache: "no-store" },
       );
       const body = await response.json().catch(() => null);
       if (!response.ok) throw new Error(body?.error ?? "Could not load retake requests.");
       setRequests(body.requests ?? []);
+      setTotal(Number(body.pagination?.total ?? 0));
       setError(null);
     } catch (cause) {
       setRequests([]);
       setError(cause instanceof Error ? cause.message : "Could not load retake requests.");
     }
-  }, [registrationNumber]);
+  }, [page, pageSize, registrationNumber]);
 
   useEffect(() => {
     void load();
@@ -130,6 +135,20 @@ export default function FinalRetakeReviewManager({ registrationNumber }: { regis
               </Button>
             </Stack>
           ))}
+          {requests !== null && total > 0 ? (
+            <TablePagination
+              component="div"
+              count={total}
+              page={page}
+              rowsPerPage={pageSize}
+              rowsPerPageOptions={[5, 10, 25]}
+              onPageChange={(_event, nextPage) => setPage(nextPage)}
+              onRowsPerPageChange={(event) => {
+                setPageSize(Number(event.target.value));
+                setPage(0);
+              }}
+            />
+          ) : null}
         </Stack>
       </CardContent>
     </Card>

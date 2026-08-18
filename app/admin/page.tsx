@@ -29,6 +29,7 @@ import TableCell from "@mui/material/TableCell";
 import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
+import TablePagination from "@mui/material/TablePagination";
 import Tabs from "@mui/material/Tabs";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
@@ -166,6 +167,9 @@ function detailText(detail: unknown): string {
 export default function AdminPage() {
   const [state, setState] = useState<AdminState | null>(null);
   const [audit, setAudit] = useState<AuditEntry[]>([]);
+  const [auditPage, setAuditPage] = useState(0);
+  const [auditPageSize, setAuditPageSize] = useState(25);
+  const [auditTotal, setAuditTotal] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -236,14 +240,18 @@ export default function AdminPage() {
 
   const loadAudit = useCallback(async () => {
     try {
-      const response = await fetch("/api/admin/audit", { cache: "no-store" });
+      const response = await fetch(
+        `/api/admin/audit?page=${auditPage + 1}&pageSize=${auditPageSize}`,
+        { cache: "no-store" },
+      );
       const body = await response.json().catch(() => null);
       if (!response.ok) throw new Error(body?.error ?? "Could not load the audit trail.");
       setAudit(body.audit ?? []);
+      setAuditTotal(Number(body.pagination?.total ?? 0));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not load the audit trail.");
     }
-  }, []);
+  }, [auditPage, auditPageSize]);
 
   useEffect(() => {
     void load();
@@ -1008,6 +1016,19 @@ export default function AdminPage() {
                     </TableBody>
                   </Table>
                 </TableContainer>
+                <TablePagination
+                  component="div"
+                  count={auditTotal}
+                  page={auditPage}
+                  rowsPerPage={auditPageSize}
+                  rowsPerPageOptions={[10, 25, 50, 100]}
+                  onPageChange={(_event, nextPage) => setAuditPage(nextPage)}
+                  onRowsPerPageChange={(event) => {
+                    setAuditPageSize(Number(event.target.value));
+                    setAuditPage(0);
+                  }}
+                  labelRowsPerPage="Audit entries per page"
+                />
               </Stack>
             </CardContent>
           </Card>

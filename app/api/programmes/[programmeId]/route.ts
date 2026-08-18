@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requireUserApi } from "@/lib/session";
+import { requireStudentApi } from "@/lib/session";
 import {
   getProgramme,
   updateProgrammePlan,
@@ -25,7 +25,7 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ programmeId: string }> },
 ) {
-  const gate = await requireUserApi();
+  const gate = await requireStudentApi();
   if (gate instanceof Response) return gate;
 
   const { programmeId: raw } = await params;
@@ -46,7 +46,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ programmeId: string }> },
 ) {
-  const gate = await requireUserApi();
+  const gate = await requireStudentApi();
   if (gate instanceof Response) return gate;
   const limited = await enforceUserRateLimit(gate.id, "generation");
   if (limited) return limited;

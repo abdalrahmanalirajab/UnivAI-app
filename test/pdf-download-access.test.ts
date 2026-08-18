@@ -11,7 +11,7 @@ const { fixtureRoot, mockGate, mockGetDocument } = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/python", () => ({ REPO_ROOT: fixtureRoot }));
-vi.mock("@/lib/session", () => ({ requireUserApi: mockGate }));
+vi.mock("@/lib/session", () => ({ requireUserApi: mockGate, requireStudentApi: mockGate }));
 vi.mock("@/lib/collections", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/collections")>();
   return { ...actual, getDocument: mockGetDocument };

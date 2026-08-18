@@ -13,6 +13,7 @@ type PayPalWebhookEvent = {
   resource?: {
     id?: unknown;
     billing_agreement_id?: unknown;
+    create_time?: unknown;
   };
 };
 
@@ -65,6 +66,15 @@ export async function POST(request: Request) {
     const result = await recordAndReconcilePayPalEvent({
       eventId: event.id,
       eventType: event.event_type,
+      paymentId:
+        event.event_type === "PAYMENT.SALE.COMPLETED" &&
+        typeof event.resource?.id === "string"
+          ? event.resource.id
+          : undefined,
+      paidAt:
+        typeof event.resource?.create_time === "string"
+          ? event.resource.create_time
+          : undefined,
       subscription: {
         id: providerSubscription.id,
         customId: providerSubscription.custom_id,

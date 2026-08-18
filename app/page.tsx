@@ -11,31 +11,22 @@ import Faq from "@/app/components/landing/Faq";
 import Footer from "@/app/components/landing/Footer";
 
 export const metadata: Metadata = {
-  title: "Turn your textbook into a live university course",
+  title: "Build job-ready skills—fast and in order",
   description:
-    "Build a scheduled source-backed course with live voice lectures, synced slides, assessments, transcripts, and verifiable certificates.",
+    "A structured AI learning platform for ambitious fresh graduates and early-career professionals who want to close skill gaps and stay competitive.",
   openGraph: {
-    title: "UnivAI — Your book becomes a complete course",
+    title: "UnivAI — Build job-ready skills, fast and in order",
     description:
-      "Live lectures, synced slides, assessments, transcripts, and certificates from the source you choose.",
+      "Turn trusted material into an ordered learning path with live lectures, practice, assessments, and visible progress.",
     siteName: "UnivAI",
     locale: "en_US",
     type: "website",
-    images: [
-      {
-        url: "/images/family-learning-hero.webp",
-        width: 1600,
-        height: 800,
-        alt: "A parent and student learning together with a book and laptop",
-      },
-    ],
   },
   twitter: {
-    card: "summary_large_image",
-    title: "UnivAI — Your book becomes a complete course",
+    card: "summary",
+    title: "UnivAI — Build job-ready skills, fast and in order",
     description:
-      "Live lectures, synced slides, assessments, transcripts, and certificates from the source you choose.",
-    images: ["/images/family-learning-hero.webp"],
+      "An ordered, source-backed learning path for ambitious fresh graduates and early-career professionals.",
   },
 };
 
@@ -46,10 +37,11 @@ const jsonLd = {
   applicationCategory: "EducationalApplication",
   operatingSystem: "Web",
   description:
-    "Build a scheduled source-backed course with live voice lectures, synced slides, assessments, transcripts, and verifiable certificates.",
+    "Build job-ready skills through an ordered, source-backed course with live voice lectures, practice, assessments, and verifiable progress.",
   audience: {
     "@type": "EducationalAudience",
-    educationalRole: ["student", "teacher", "parent"],
+    educationalRole: ["student", "professional"],
+    audienceType: "Fresh graduates and early-career professionals",
   },
 };
 

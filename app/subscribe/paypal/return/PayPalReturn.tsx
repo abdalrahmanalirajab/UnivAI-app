@@ -45,7 +45,7 @@ export default function PayPalReturn({
         if (!active) return;
         if (body.active) {
           setState("active");
-          setMessage("Payment completed. Your membership and weekly coin allowance are active.");
+          setMessage("Payment completed. Your membership and full Credit grant are active.");
         } else {
           setState("pending");
           setMessage("PayPal is still activating the membership. You can keep learning while it finishes.");
@@ -73,7 +73,7 @@ export default function PayPalReturn({
           Continue learning
         </Button>
         <Button component={Link} href="/subscribe" variant="outlined">
-          View plan and coins
+          View plan and Credits
         </Button>
       </Stack>
     </Stack>

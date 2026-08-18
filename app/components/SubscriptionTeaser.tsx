@@ -16,15 +16,15 @@ type Milestone = "course-progress" | "lecture-finished" | "course-finished";
 const COPY: Record<Milestone, { title: string; body: string }> = {
   "course-progress": {
     title: "Your learning journey is taking shape.",
-    body: "Support UnivAI and collect more weekly coins for upcoming themes, course covers, and profile styles.",
+    body: "Support UnivAI and receive more Credits for optional AI learning actions.",
   },
   "lecture-finished": {
     title: "One more milestone reached.",
-    body: "Supporter memberships add weekly coins for optional personalization—never for grades or access.",
+    body: "Supporter memberships add Credits every seven days—never for grades or core access.",
   },
   "course-finished": {
     title: "Make the celebration yours.",
-    body: "Back UnivAI and collect coins for upcoming certificate styles, profile frames, and course memories.",
+    body: "Back UnivAI and receive our largest Credit grant for optional AI learning actions.",
   },
 };
 

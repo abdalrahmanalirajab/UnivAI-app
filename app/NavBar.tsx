@@ -42,7 +42,7 @@ import { useHydratedSession } from "@/lib/use-hydrated-session";
 import { useSignOut } from "@/lib/use-sign-out";
 import { getStudentNavItems } from "@/lib/onboarding-flow";
 import { useOnboarding } from "./OnboardingProvider";
-import CoinBalance from "./components/CoinBalance";
+import CreditBalance from "./components/CreditBalance";
 
 type NavItem = {
   href: string;
@@ -53,7 +53,7 @@ type NavItem = {
 const PUBLIC_LINKS: NavItem[] = [
   { href: "/#how-it-works", label: "Why UnivAI" },
   { href: "/#live-preview", label: "Preview" },
-  { href: "/#for-families", label: "For families" },
+  { href: "/#for-graduates", label: "For fresh graduates" },
   { href: "/#faq", label: "Questions" },
 ];
 
@@ -100,13 +100,11 @@ export default function NavBar() {
     switch (user.role) {
       case "admin":
         return [
-          ...studentLinks,
           { href: "/admin", label: "Admin", icon: SettingsOutlined },
           { href: "/admin/privacy", label: "Privacy requests", icon: PrivacyTipOutlined },
         ];
       case "super_admin":
         return [
-          ...studentLinks,
           { href: "/admin", label: "Admin", icon: SettingsOutlined },
           { href: "/admin/privacy", label: "Privacy requests", icon: PrivacyTipOutlined },
           {
@@ -184,7 +182,7 @@ export default function NavBar() {
                   spacing={1}
                   className="desktop-nav align-center"
                 >
-                  <CoinBalance />
+                  {user.role === "student" ? <CreditBalance /> : null}
                   <Typography variant="body2" color="text.secondary">
                     {user.name}
                   </Typography>
@@ -229,19 +227,28 @@ export default function NavBar() {
                       </Typography>
                     </Stack>
                   </MenuItem>
-                  <MenuItem
-                    component={Link}
-                    href="/subscribe"
-                    onClick={() => setAnchorEl(null)}
-                  >
-                    Plan and coins
-                  </MenuItem>
+                  {user.role === "student" ? (
+                    <MenuItem
+                      component={Link}
+                      href="/subscribe"
+                      onClick={() => setAnchorEl(null)}
+                    >
+                      Plan and Credits
+                    </MenuItem>
+                  ) : null}
                   <MenuItem
                     component={Link}
                     href="/profile"
                     onClick={() => setAnchorEl(null)}
                   >
                     Profile
+                  </MenuItem>
+                  <MenuItem
+                    component={Link}
+                    href="/settings"
+                    onClick={() => setAnchorEl(null)}
+                  >
+                    Settings
                   </MenuItem>
                   <MenuItem onClick={handleLogout} disabled={signingOut}>
                     {signingOut ? "Signing out…" : "Sign out"}
@@ -309,16 +316,20 @@ export default function NavBar() {
               <Typography variant="body2" color="text.secondary">
                 {user.registrationNumber}
               </Typography>
-              <CoinBalance />
-              <Button
-                variant="outlined"
-                component={Link}
-                href="/subscribe"
-                startIcon={<TollOutlined />}
-                onClick={() => setDrawerOpen(false)}
-              >
-                Plan and coins
-              </Button>
+              {user.role === "student" ? (
+                <>
+                  <CreditBalance />
+                  <Button
+                    variant="outlined"
+                    component={Link}
+                    href="/subscribe"
+                    startIcon={<TollOutlined />}
+                    onClick={() => setDrawerOpen(false)}
+                  >
+                    Plan and Credits
+                  </Button>
+                </>
+              ) : null}
               <Button
                 variant="outlined"
                 component={Link}
@@ -327,6 +338,15 @@ export default function NavBar() {
                 onClick={() => setDrawerOpen(false)}
               >
                 Profile
+              </Button>
+              <Button
+                variant="outlined"
+                component={Link}
+                href="/settings"
+                startIcon={<SettingsOutlined />}
+                onClick={() => setDrawerOpen(false)}
+              >
+                Settings
               </Button>
               <Button
                 color="error"

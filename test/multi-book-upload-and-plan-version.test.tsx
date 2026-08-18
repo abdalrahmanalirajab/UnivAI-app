@@ -45,6 +45,7 @@ const {
 
 vi.mock("@/lib/session", () => ({
   requireUserApi: mockRequireUserApi,
+  requireStudentApi: mockRequireUserApi,
   requireVerifiedUserApi: mockRequireVerifiedUserApi,
 }));
 vi.mock("@/lib/python", () => ({

@@ -399,7 +399,7 @@ export default function SchedulePage() {
               <ListItemButton onClick={() => setSelected(lecture)}>
                 <ListItemText
                   primary={
-                    <span data-generated-content="true" lang="en" dir="ltr">
+                    <span data-generated-content="true" dir="auto">
                       Week {lecture.week} — {lecture.title}
                     </span>
                   }
@@ -460,7 +460,7 @@ export default function SchedulePage() {
                   <ListItemButton key={section.id} component={Link} href={`/section/${section.id}`}>
                     <ListItemText
                       primary={
-                        <span data-generated-content="true" lang="en" dir="ltr">
+                        <span data-generated-content="true" dir="auto">
                           Section — {section.title}
                         </span>
                       }
@@ -485,7 +485,7 @@ export default function SchedulePage() {
       <Dialog open={Boolean(selected)} onClose={() => setSelected(null)} fullWidth maxWidth="sm">
         <DialogTitle>
           {selected ? (
-            <span data-generated-content="true" lang="en" dir="ltr">
+            <span data-generated-content="true" dir="auto">
               Week {selected.week} — {selected.title}
             </span>
           ) : null}

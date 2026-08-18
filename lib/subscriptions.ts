@@ -1,10 +1,19 @@
+import "server-only";
+
+import type { PoolClient } from "pg";
 import { pool } from "./db";
 import {
+  catchUpCreditGrantsWithClient,
+  getCreditActivity,
+  grantSubscriptionPaymentWithClient,
+  type CreditTransaction,
+  type CreditWallet,
+  type Pagination,
+} from "./credits";
+import {
   DEFAULT_SUBSCRIPTION_PLAN,
-  calculateWeeklyCoinGrant,
   getSubscriptionPlan,
   isSubscriptionPlanCode,
-  startOfUtcWeek,
   type SubscriptionPlanCode,
 } from "./subscription-plans";
 
@@ -29,31 +38,11 @@ type SubscriptionRow = {
   updated_at: Date | string;
 };
 
-type WalletRow = {
-  balance: number;
-  weekly_allowance: number;
-  week_started_at: string;
-};
-
-type CoinTransactionRow = {
-  amount: number;
-  balance_after: number;
-  reason: "signup" | "weekly_refill" | "plan_change" | "spend" | "adjustment";
-  created_at: Date | string;
-};
-
-export type CoinTransaction = {
-  amount: number;
-  balanceAfter: number;
-  reason: CoinTransactionRow["reason"];
-  createdAt: string;
-};
-
 export type SubscriptionSnapshot = {
   planCode: SubscriptionPlanCode;
   planName: string;
   monthlyPriceUsd: number;
-  weeklyCoins: number;
+  weeklyCredits: number;
   pendingPlanCode: SubscriptionPlanCode | null;
   status: SubscriptionStatus;
   provider: "none" | "paypal";
@@ -63,25 +52,10 @@ export type SubscriptionSnapshot = {
   cancelledAt: string | null;
   createdAt: string;
   updatedAt: string;
-  coins: {
-    balance: number;
-    weeklyAllowance: number;
-    weekStartedAt: string;
-    nextGrantAt: string;
-  };
-  coinTransactions: CoinTransaction[];
+  credits: CreditWallet;
+  creditActivity: CreditTransaction[];
+  creditActivityPagination: Pagination;
 };
-
-function nextWeek(start: Date): Date {
-  const next = new Date(start);
-  next.setUTCDate(next.getUTCDate() + 7);
-  return next;
-}
-
-function isoDate(value: Date | string): string {
-  const date = value instanceof Date ? value : new Date(`${value}T00:00:00.000Z`);
-  return date.toISOString().slice(0, 10);
-}
 
 function isoTimestamp(value: Date | string | null): string | null {
   if (!value) return null;
@@ -92,133 +66,65 @@ function pendingPlan(value: string | null): SubscriptionPlanCode | null {
   return isSubscriptionPlanCode(value) && value !== "free" ? value : null;
 }
 
+async function ensureSubscription(client: PoolClient, userId: string): Promise<void> {
+  await client.query(
+    `INSERT INTO user_subscriptions (user_id)
+     VALUES ($1)
+     ON CONFLICT (user_id) DO NOTHING`,
+    [userId],
+  );
+}
+
 export async function getSubscriptionSnapshot(
   userId: string,
-  now: Date = new Date(),
+  options: { activityPage?: number; activityPageSize?: number; now?: Date } = {},
 ): Promise<SubscriptionSnapshot> {
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    await client.query(
-      `INSERT INTO user_subscriptions (user_id)
-       VALUES ($1)
-       ON CONFLICT (user_id) DO NOTHING`,
-      [userId],
-    );
-    await client.query(
-      `INSERT INTO coin_wallets (user_id, balance, weekly_allowance)
-       VALUES ($1, 100, 100)
-       ON CONFLICT (user_id) DO NOTHING`,
-      [userId],
-    );
-
-    const subscriptionResult = await client.query<SubscriptionRow>(
+  await pool.query(
+    `INSERT INTO user_subscriptions (user_id)
+     VALUES ($1)
+     ON CONFLICT (user_id) DO NOTHING`,
+    [userId],
+  );
+  const [subscriptionResult, activity] = await Promise.all([
+    pool.query<SubscriptionRow>(
       `SELECT plan_code, pending_plan_code, status, provider,
               provider_subscription_id, provider_plan_id,
               subscribed_at, current_period_ends_at, cancelled_at,
               created_at, updated_at
          FROM user_subscriptions
-        WHERE user_id = $1
-        FOR UPDATE`,
+        WHERE user_id = $1`,
       [userId],
-    );
-    const walletResult = await client.query<WalletRow>(
-      `SELECT balance, weekly_allowance, week_started_at::text AS week_started_at
-         FROM coin_wallets
-        WHERE user_id = $1
-        FOR UPDATE`,
-      [userId],
-    );
-    const subscription = subscriptionResult.rows[0];
-    const wallet = walletResult.rows[0];
-    if (!subscription || !wallet) {
-      throw new Error("Could not initialize subscription benefits.");
-    }
-
-    const planCode = isSubscriptionPlanCode(subscription.plan_code)
-      ? subscription.plan_code
-      : DEFAULT_SUBSCRIPTION_PLAN;
-    const plan = getSubscriptionPlan(planCode);
-    const weekStart = startOfUtcWeek(now);
-    const grant = calculateWeeklyCoinGrant({
-      balance: wallet.balance,
-      previousAllowance: wallet.weekly_allowance,
-      nextAllowance: plan.weeklyCoins,
-      storedWeekStartedAt: wallet.week_started_at,
-      currentWeekStartedAt: isoDate(weekStart),
-    });
-    const { amount, balance } = grant;
-
-    if (grant.shouldUpdateWallet) {
-      await client.query(
-        `UPDATE coin_wallets
-            SET balance = $2,
-                weekly_allowance = $3,
-                week_started_at = $4,
-                updated_at = CURRENT_TIMESTAMP
-          WHERE user_id = $1`,
-        [userId, balance, plan.weeklyCoins, isoDate(weekStart)],
-      );
-    }
-    if (amount > 0 && grant.reason) {
-      await client.query(
-        `INSERT INTO coin_transactions
-           (user_id, amount, balance_after, reason, idempotency_key)
-         VALUES ($1, $2, $3, $4, $5)
-         ON CONFLICT (idempotency_key) DO NOTHING`,
-        [
-          userId,
-          amount,
-          balance,
-          grant.reason,
-          `${grant.reason}:${userId}:${isoDate(weekStart)}:${plan.code}`,
-        ],
-      );
-    }
-
-    const transactionResult = await client.query<CoinTransactionRow>(
-      `SELECT amount, balance_after, reason, created_at
-         FROM coin_transactions
-        WHERE user_id = $1
-        ORDER BY created_at DESC
-        LIMIT 25`,
-      [userId],
-    );
-
-    await client.query("COMMIT");
-    return {
-      planCode,
-      planName: plan.name,
-      monthlyPriceUsd: plan.monthlyPriceUsd,
-      weeklyCoins: plan.weeklyCoins,
-      pendingPlanCode: pendingPlan(subscription.pending_plan_code),
-      status: subscription.status,
-      provider: subscription.provider,
-      providerSubscriptionId: subscription.provider_subscription_id,
-      subscribedAt: isoTimestamp(subscription.subscribed_at),
-      currentPeriodEndsAt: isoTimestamp(subscription.current_period_ends_at),
-      cancelledAt: isoTimestamp(subscription.cancelled_at),
-      createdAt: isoTimestamp(subscription.created_at)!,
-      updatedAt: isoTimestamp(subscription.updated_at)!,
-      coins: {
-        balance,
-        weeklyAllowance: plan.weeklyCoins,
-        weekStartedAt: isoDate(weekStart),
-        nextGrantAt: nextWeek(weekStart).toISOString(),
-      },
-      coinTransactions: transactionResult.rows.map((transaction) => ({
-        amount: transaction.amount,
-        balanceAfter: transaction.balance_after,
-        reason: transaction.reason,
-        createdAt: isoTimestamp(transaction.created_at)!,
-      })),
-    };
-  } catch (error) {
-    await client.query("ROLLBACK").catch(() => undefined);
-    throw error;
-  } finally {
-    client.release();
-  }
+    ),
+    getCreditActivity(userId, {
+      page: options.activityPage,
+      pageSize: options.activityPageSize,
+      now: options.now,
+    }),
+  ]);
+  const subscription = subscriptionResult.rows[0];
+  if (!subscription) throw new Error("Could not initialize subscription benefits.");
+  const planCode = isSubscriptionPlanCode(subscription.plan_code)
+    ? subscription.plan_code
+    : DEFAULT_SUBSCRIPTION_PLAN;
+  const plan = getSubscriptionPlan(planCode);
+  return {
+    planCode,
+    planName: plan.name,
+    monthlyPriceUsd: plan.monthlyPriceUsd,
+    weeklyCredits: plan.weeklyCredits,
+    pendingPlanCode: pendingPlan(subscription.pending_plan_code),
+    status: subscription.status,
+    provider: subscription.provider,
+    providerSubscriptionId: subscription.provider_subscription_id,
+    subscribedAt: isoTimestamp(subscription.subscribed_at),
+    currentPeriodEndsAt: isoTimestamp(subscription.current_period_ends_at),
+    cancelledAt: isoTimestamp(subscription.cancelled_at),
+    createdAt: isoTimestamp(subscription.created_at)!,
+    updatedAt: isoTimestamp(subscription.updated_at)!,
+    credits: activity.wallet,
+    creditActivity: activity.items,
+    creditActivityPagination: activity.pagination,
+  };
 }
 
 export async function markPayPalSubscriptionPending(input: {
@@ -246,41 +152,47 @@ export async function markPayPalSubscriptionPending(input: {
 export async function activateDevelopmentSubscription(input: {
   userId: string;
   planCode: Exclude<SubscriptionPlanCode, "free">;
+  paymentId: string;
 }): Promise<SubscriptionSnapshot> {
   if (process.env.NODE_ENV === "production") {
     throw new Error("Development subscriptions cannot be activated in production.");
   }
-  await pool.query(
-    `INSERT INTO user_subscriptions
-       (user_id, plan_code, pending_plan_code, status, provider,
-        provider_subscription_id, provider_plan_id, subscribed_at,
-        current_period_ends_at, cancelled_at)
-     VALUES ($1, $2, NULL, 'active', 'none', NULL, NULL,
-             CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '1 month', NULL)
-     ON CONFLICT (user_id) DO UPDATE SET
-       plan_code = EXCLUDED.plan_code,
-       pending_plan_code = NULL,
-       status = 'active',
-       provider = 'none',
-       provider_subscription_id = NULL,
-       provider_plan_id = NULL,
-       subscribed_at = CURRENT_TIMESTAMP,
-       current_period_ends_at = CURRENT_TIMESTAMP + INTERVAL '1 month',
-       cancelled_at = NULL,
-       updated_at = CURRENT_TIMESTAMP`,
-    [input.userId, input.planCode],
-  );
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await ensureSubscription(client, input.userId);
+    await client.query(
+      `UPDATE user_subscriptions
+          SET plan_code = $2, pending_plan_code = NULL, status = 'active',
+              provider = 'none', provider_subscription_id = NULL,
+              provider_plan_id = NULL, subscribed_at = CURRENT_TIMESTAMP,
+              current_period_ends_at = CURRENT_TIMESTAMP + INTERVAL '1 month',
+              cancelled_at = NULL, updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = $1`,
+      [input.userId, input.planCode],
+    );
+    await grantSubscriptionPaymentWithClient(client, {
+      userId: input.userId,
+      amount: getSubscriptionPlan(input.planCode).weeklyCredits,
+      planCode: input.planCode,
+      provider: "paypal-sandbox",
+      paymentId: input.paymentId,
+    });
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
   return getSubscriptionSnapshot(input.userId);
 }
 
 export async function abandonPendingSubscription(userId: string): Promise<void> {
   await pool.query(
     `UPDATE user_subscriptions
-        SET pending_plan_code = NULL,
-            status = 'active',
-            provider = 'none',
-            provider_subscription_id = NULL,
-            provider_plan_id = NULL,
+        SET pending_plan_code = NULL, status = 'active', provider = 'none',
+            provider_subscription_id = NULL, provider_plan_id = NULL,
             updated_at = CURRENT_TIMESTAMP
       WHERE user_id = $1 AND status = 'approval_pending'`,
     [userId],
@@ -303,18 +215,22 @@ function isPendingStatus(status: SubscriptionStatus): boolean {
   return status === "approval_pending";
 }
 
-export async function reconcilePayPalSubscription(input: {
-  userId: string;
-  planCode: Exclude<SubscriptionPlanCode, "free">;
-  subscriptionId: string;
-  providerPlanId: string;
-  providerStatus: string;
-  providerStartedAt?: string;
-  providerPeriodEndsAt?: string;
-}): Promise<void> {
+async function reconcileWithClient(
+  client: PoolClient,
+  input: {
+    userId: string;
+    planCode: Exclude<SubscriptionPlanCode, "free">;
+    subscriptionId: string;
+    providerPlanId: string;
+    providerStatus: string;
+    providerStartedAt?: string;
+    providerPeriodEndsAt?: string;
+  },
+): Promise<void> {
   const status = mappedStatus(input.providerStatus);
   const active = status === "active";
-  await pool.query(
+  const retainsPaidPlan = active || status === "suspended";
+  await client.query(
     `INSERT INTO user_subscriptions
        (user_id, plan_code, pending_plan_code, status, provider,
         provider_subscription_id, provider_plan_id)
@@ -329,7 +245,7 @@ export async function reconcilePayPalSubscription(input: {
        updated_at = CURRENT_TIMESTAMP`,
     [
       input.userId,
-      active ? input.planCode : DEFAULT_SUBSCRIPTION_PLAN,
+      retainsPaidPlan ? input.planCode : DEFAULT_SUBSCRIPTION_PLAN,
       isPendingStatus(status) ? input.planCode : null,
       status,
       input.subscriptionId,
@@ -337,49 +253,96 @@ export async function reconcilePayPalSubscription(input: {
     ],
   );
   if (active) {
-    await pool.query(
+    await client.query(
       `UPDATE user_subscriptions
           SET subscribed_at = COALESCE(subscribed_at, $2::timestamptz, CURRENT_TIMESTAMP),
-              current_period_ends_at = COALESCE(
-                $3::timestamptz,
-                CURRENT_TIMESTAMP + INTERVAL '1 month'
-              ),
+              current_period_ends_at = COALESCE($3::timestamptz, CURRENT_TIMESTAMP + INTERVAL '1 month'),
               cancelled_at = NULL
         WHERE user_id = $1`,
       [input.userId, input.providerStartedAt ?? null, input.providerPeriodEndsAt ?? null],
     );
   } else if (status === "cancelled" || status === "expired") {
-    await pool.query(
+    await client.query(
       `UPDATE user_subscriptions
           SET current_period_ends_at = COALESCE(current_period_ends_at, CURRENT_TIMESTAMP),
               cancelled_at = COALESCE(cancelled_at, CURRENT_TIMESTAMP)
         WHERE user_id = $1`,
       [input.userId],
     );
+    await catchUpCreditGrantsWithClient(client, input.userId);
+    await client.query(
+      `UPDATE credit_wallets
+          SET weekly_grant_amount = $2,
+              next_grant_at = CURRENT_TIMESTAMP + INTERVAL '7 days',
+              updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = $1`,
+      [input.userId, getSubscriptionPlan(DEFAULT_SUBSCRIPTION_PLAN).weeklyCredits],
+    );
   }
-  await getSubscriptionSnapshot(input.userId);
+}
+
+export async function reconcilePayPalSubscription(input: {
+  userId: string;
+  planCode: Exclude<SubscriptionPlanCode, "free">;
+  subscriptionId: string;
+  providerPlanId: string;
+  providerStatus: string;
+  providerStartedAt?: string;
+  providerPeriodEndsAt?: string;
+}): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await reconcileWithClient(client, input);
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function cancelLocalSubscription(input: {
   userId: string;
   subscriptionId: string | null;
 }): Promise<void> {
-  await pool.query(
-    `UPDATE user_subscriptions
-        SET plan_code = 'free', pending_plan_code = NULL, status = 'cancelled',
-            current_period_ends_at = CURRENT_TIMESTAMP,
-            cancelled_at = CURRENT_TIMESTAMP,
-            updated_at = CURRENT_TIMESTAMP
-      WHERE user_id = $1
-        AND ($2::text IS NULL OR provider_subscription_id = $2)`,
-    [input.userId, input.subscriptionId],
-  );
-  await getSubscriptionSnapshot(input.userId);
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await catchUpCreditGrantsWithClient(client, input.userId);
+    const updated = await client.query(
+      `UPDATE user_subscriptions
+          SET plan_code = 'free', pending_plan_code = NULL, status = 'cancelled',
+              current_period_ends_at = CURRENT_TIMESTAMP,
+              cancelled_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = $1
+          AND ($2::text IS NULL OR provider_subscription_id = $2)`,
+      [input.userId, input.subscriptionId],
+    );
+    if (updated.rowCount !== 1) throw new Error("Subscription could not be cancelled.");
+    await client.query(
+      `UPDATE credit_wallets
+          SET weekly_grant_amount = $2,
+              next_grant_at = CURRENT_TIMESTAMP + INTERVAL '7 days',
+              updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = $1`,
+      [input.userId, getSubscriptionPlan(DEFAULT_SUBSCRIPTION_PLAN).weeklyCredits],
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function recordAndReconcilePayPalEvent(input: {
   eventId: string;
   eventType: string;
+  paymentId?: string;
+  paidAt?: string;
   subscription: {
     id: string;
     customId: string;
@@ -406,57 +369,26 @@ export async function recordAndReconcilePayPalEvent(input: {
       return "duplicate";
     }
 
-    const status = mappedStatus(input.subscription.status);
-    const active = status === "active";
-    await client.query(
-      `INSERT INTO user_subscriptions
-         (user_id, plan_code, pending_plan_code, status, provider,
-          provider_subscription_id, provider_plan_id)
-       VALUES ($1, $2, $3, $4, 'paypal', $5, $6)
-       ON CONFLICT (user_id) DO UPDATE SET
-         plan_code = EXCLUDED.plan_code,
-         pending_plan_code = EXCLUDED.pending_plan_code,
-         status = EXCLUDED.status,
-         provider = 'paypal',
-         provider_subscription_id = EXCLUDED.provider_subscription_id,
-         provider_plan_id = EXCLUDED.provider_plan_id,
-         updated_at = CURRENT_TIMESTAMP`,
-      [
-        input.subscription.customId,
-        active ? input.subscription.planCode : DEFAULT_SUBSCRIPTION_PLAN,
-        isPendingStatus(status) ? input.subscription.planCode : null,
-        status,
-        input.subscription.id,
-        input.subscription.providerPlanId,
-      ],
-    );
-    if (active) {
-      await client.query(
-        `UPDATE user_subscriptions
-            SET subscribed_at = COALESCE(subscribed_at, $2::timestamptz, CURRENT_TIMESTAMP),
-                current_period_ends_at = COALESCE(
-                  $3::timestamptz,
-                  CURRENT_TIMESTAMP + INTERVAL '1 month'
-                ),
-                cancelled_at = NULL
-          WHERE user_id = $1`,
-        [
-          input.subscription.customId,
-          input.subscription.providerStartedAt ?? null,
-          input.subscription.providerPeriodEndsAt ?? null,
-        ],
-      );
-    } else if (status === "cancelled" || status === "expired") {
-      await client.query(
-        `UPDATE user_subscriptions
-            SET current_period_ends_at = COALESCE(current_period_ends_at, CURRENT_TIMESTAMP),
-                cancelled_at = COALESCE(cancelled_at, CURRENT_TIMESTAMP)
-          WHERE user_id = $1`,
-        [input.subscription.customId],
-      );
+    await reconcileWithClient(client, {
+      userId: input.subscription.customId,
+      planCode: input.subscription.planCode,
+      subscriptionId: input.subscription.id,
+      providerPlanId: input.subscription.providerPlanId,
+      providerStatus: input.subscription.status,
+      providerStartedAt: input.subscription.providerStartedAt,
+      providerPeriodEndsAt: input.subscription.providerPeriodEndsAt,
+    });
+    if (input.eventType === "PAYMENT.SALE.COMPLETED" && input.paymentId) {
+      await grantSubscriptionPaymentWithClient(client, {
+        userId: input.subscription.customId,
+        amount: getSubscriptionPlan(input.subscription.planCode).weeklyCredits,
+        planCode: input.subscription.planCode,
+        provider: "paypal",
+        paymentId: input.paymentId,
+        paidAt: input.paidAt ? new Date(input.paidAt) : undefined,
+      });
     }
     await client.query("COMMIT");
-    await getSubscriptionSnapshot(input.subscription.customId);
     return "processed";
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);

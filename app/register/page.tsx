@@ -181,7 +181,7 @@ export default function RegisterPage() {
         value={uiLocale}
         disabled={localeSaving || submitting}
         onChange={(event) => void handleLocaleChange(event.target.value as UiLocale)}
-        helperText="This changes website controls and labels. Generated lectures and exams remain in English."
+        helperText="This changes website controls and labels. Generated content remains in its authored language."
       >
         <MenuItem value="en">English</MenuItem>
         <MenuItem value="ar">العربية</MenuItem>

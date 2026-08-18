@@ -51,7 +51,7 @@ function translateTree(root: ParentNode, locale: "en" | "ar") {
 
 /**
  * Localizes legacy hard-coded UI shell copy while the app moves toward keyed
- * catalogs route by route. Exact catalog matches ensure generated English
+ * catalogs route by route. Exact catalog matches ensure authored learning
  * content is never machine-translated or changed.
  */
 export default function UiLocalizationProvider({

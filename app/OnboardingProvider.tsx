@@ -23,12 +23,13 @@ const OnboardingContext = createContext<OnboardingContextValue | null>(null);
 export default function OnboardingProvider({ children }: { children: ReactNode }) {
   const { data: session, isPending } = useHydratedSession();
   const userId = session?.user.id;
+  const role = session?.user.role;
   const emailVerified = session?.user.emailVerified ?? false;
   const [state, setState] = useState<OnboardingState | null>(null);
   const [loading, setLoading] = useState(false);
 
   const refresh = useCallback(async () => {
-    if (!userId) {
+    if (!userId || role !== "student") {
       setState(null);
       return;
     }
@@ -49,7 +50,7 @@ export default function OnboardingProvider({ children }: { children: ReactNode }
     } finally {
       setLoading(false);
     }
-  }, [emailVerified, userId]);
+  }, [emailVerified, role, userId]);
 
   useEffect(() => {
     void refresh();

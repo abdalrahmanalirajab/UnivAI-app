@@ -18,6 +18,7 @@ import ListItemText from "@mui/material/ListItemText";
 import Stack from "@mui/material/Stack";
 import Tab from "@mui/material/Tab";
 import Tabs from "@mui/material/Tabs";
+import TablePagination from "@mui/material/TablePagination";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import CloseRounded from "@mui/icons-material/CloseRounded";
@@ -29,14 +30,14 @@ import { formatDateTime } from "@/lib/time";
 
 const NUMBER_FORMATTER = new Intl.NumberFormat("en-US");
 
-const COIN_REASON_LABELS: Record<
-  SubscriptionSnapshot["coinTransactions"][number]["reason"],
+const CREDIT_REASON_LABELS: Record<
+  SubscriptionSnapshot["creditActivity"][number]["reason"],
   string
 > = {
   signup: "Welcome grant",
-  weekly_refill: "Weekly grant",
-  plan_change: "Membership upgrade",
-  spend: "Personalization purchase",
+  weekly_grant: "Seven-day grant",
+  subscription_payment: "Membership payment",
+  spend: "Learning action",
   adjustment: "Account adjustment",
 };
 
@@ -53,6 +54,7 @@ type MembershipDetailsDialogProps = {
   subscription: SubscriptionSnapshot;
   onClose: () => void;
   onSubscriptionChange: (subscription: SubscriptionSnapshot) => void;
+  onActivityPageChange: (page: number, pageSize: number) => Promise<void>;
 };
 
 export default function MembershipDetailsDialog({
@@ -60,15 +62,20 @@ export default function MembershipDetailsDialog({
   subscription,
   onClose,
   onSubscriptionChange,
+  onActivityPageChange,
 }: MembershipDetailsDialogProps) {
   const [tab, setTab] = useState(0);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [revoking, setRevoking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activityLoading, setActivityLoading] = useState(false);
   const reduceMotion = useReducedMotion();
 
   const paidMembershipActive =
     subscription.planCode !== "free" && subscription.status === "active";
+  const paidMembershipRevocable =
+    subscription.planCode !== "free" &&
+    (subscription.status === "active" || subscription.status === "suspended");
   const provider =
     subscription.provider === "paypal"
       ? "PayPal"
@@ -124,7 +131,7 @@ export default function MembershipDetailsDialog({
                 Membership
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                Plan details and coin activity
+                Plan details and Credit activity
               </Typography>
             </Stack>
             <IconButton size="small" aria-label="Close membership details" onClick={onClose}>
@@ -151,10 +158,10 @@ export default function MembershipDetailsDialog({
               </Stack>
               <Stack spacing={0.2} className="membership-overview-balance">
                 <Typography variant="caption" color="text.secondary">
-                  Coin balance
+                  Available Credits
                 </Typography>
                 <Typography variant="h5">
-                  {NUMBER_FORMATTER.format(subscription.coins.balance)}
+                  {NUMBER_FORMATTER.format(subscription.credits.availableBalance)}
                 </Typography>
               </Stack>
             </Stack>
@@ -166,7 +173,7 @@ export default function MembershipDetailsDialog({
               className="membership-dialog-tabs"
             >
               <Tab label="Overview" />
-              <Tab label="Coin activity" />
+              <Tab label="Credit activity" />
             </Tabs>
 
             {error ? <Alert severity="error">{error}</Alert> : null}
@@ -220,9 +227,9 @@ export default function MembershipDetailsDialog({
                     ) : null}
 
                     <Stack direction="row" className="membership-section-heading spread-row">
-                      <Typography variant="subtitle2">Coins</Typography>
-                      <Tooltip title="Coins never expire and never affect learning access or grades.">
-                        <IconButton size="small" aria-label="About UnivAI coins">
+                      <Typography variant="subtitle2">Credits</Typography>
+                      <Tooltip title="Credits never expire and never affect core learning access or grades.">
+                        <IconButton size="small" aria-label="About UnivAI Credits">
                           <InfoOutlined fontSize="small" />
                         </IconButton>
                       </Tooltip>
@@ -231,18 +238,18 @@ export default function MembershipDetailsDialog({
                     <Stack direction="row" className="membership-detail-row spread-row">
                       <Typography variant="body2">Weekly allowance</Typography>
                       <Typography variant="body2" color="text.secondary">
-                        {NUMBER_FORMATTER.format(subscription.coins.weeklyAllowance)} coins
+                        {NUMBER_FORMATTER.format(subscription.credits.weeklyGrantAmount)} Credits
                       </Typography>
                     </Stack>
                     <Divider />
                     <Stack direction="row" className="membership-detail-row spread-row">
                       <Typography variant="body2">Next grant</Typography>
                       <Typography variant="body2" color="text.secondary">
-                        {formatDateTime(subscription.coins.nextGrantAt)}
+                        {formatDateTime(subscription.credits.nextGrantAt)}
                       </Typography>
                     </Stack>
 
-                    {paidMembershipActive ? (
+                    {paidMembershipRevocable ? (
                       <Button
                         color="error"
                         className="membership-revoke-button"
@@ -255,26 +262,26 @@ export default function MembershipDetailsDialog({
                 ) : (
                   <Stack className="membership-tab-panel">
                     <Stack spacing={0.25} className="membership-section-heading">
-                      <Typography variant="subtitle2">Coin activity</Typography>
+                      <Typography variant="subtitle2">Credit activity</Typography>
                       <Typography variant="caption" color="text.secondary">
-                        Latest {subscription.coinTransactions.length} entries
+                        {subscription.creditActivityPagination.total} total entries
                       </Typography>
                     </Stack>
                     <Divider />
-                    <List disablePadding className="coin-activity-list">
-                      {subscription.coinTransactions.length ? (
-                        subscription.coinTransactions.map((transaction, index) => (
+                    <List disablePadding className="credit-activity-list" aria-busy={activityLoading}>
+                      {subscription.creditActivity.length ? (
+                        subscription.creditActivity.map((transaction, index) => (
                           <ListItem
-                            key={`${transaction.createdAt}-${transaction.reason}-${index}`}
+                            key={transaction.id}
                             disableGutters
-                            className="coin-activity-row"
-                            divider={index < subscription.coinTransactions.length - 1}
+                            className="credit-activity-row"
+                            divider={index < subscription.creditActivity.length - 1}
                           >
                             <ListItemText
-                              primary={COIN_REASON_LABELS[transaction.reason]}
+                              primary={CREDIT_REASON_LABELS[transaction.reason]}
                               secondary={formatDateTime(transaction.createdAt)}
                             />
-                            <Stack className="coin-activity-amount">
+                            <Stack className="credit-activity-amount">
                               <Typography
                                 variant="body2"
                                 color={transaction.amount >= 0 ? "success.main" : "error.main"}
@@ -291,12 +298,32 @@ export default function MembershipDetailsDialog({
                       ) : (
                         <ListItem disableGutters>
                           <ListItemText
-                            primary="No coin activity yet"
+                            primary="No Credit activity yet"
                             secondary="Your first wallet entry will appear here."
                           />
                         </ListItem>
                       )}
                     </List>
+                    <TablePagination
+                      component="div"
+                      count={subscription.creditActivityPagination.total}
+                      page={subscription.creditActivityPagination.page - 1}
+                      rowsPerPage={subscription.creditActivityPagination.pageSize}
+                      rowsPerPageOptions={[10, 25, 50]}
+                      onPageChange={(_, nextPage) => {
+                        setActivityLoading(true);
+                        void onActivityPageChange(
+                          nextPage + 1,
+                          subscription.creditActivityPagination.pageSize,
+                        ).finally(() => setActivityLoading(false));
+                      }}
+                      onRowsPerPageChange={(event) => {
+                        const nextSize = Number(event.target.value);
+                        setActivityLoading(true);
+                        void onActivityPageChange(1, nextSize)
+                          .finally(() => setActivityLoading(false));
+                      }}
+                    />
                   </Stack>
                 )}
               </motion.div>
@@ -324,7 +351,7 @@ export default function MembershipDetailsDialog({
         <DialogContent>
           <Stack spacing={2}>
             <Typography color="text.secondary">
-              Paid benefits stop immediately. Your coins and complete Free learning access remain.
+              Paid benefits stop immediately. Your Credits and complete Free learning access remain.
             </Typography>
             <Alert severity="warning">
               <AlertTitle>No refunds</AlertTitle>

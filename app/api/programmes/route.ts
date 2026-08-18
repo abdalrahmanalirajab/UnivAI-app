@@ -13,7 +13,7 @@ import {
   getProgrammeForCollection,
   updateProgrammePlan,
 } from "@/lib/programmes";
-import { requireUserApi } from "@/lib/session";
+import { requireStudentApi } from "@/lib/session";
 import {
   MAX_SEMESTER_WEEKS,
   readGeneratedSemesterPlan,
@@ -265,7 +265,7 @@ function appPlan(
  * Scoped by the session's registrationNumber, never by anything the client sends.
  */
 export async function GET(request: NextRequest) {
-  const gate = await requireUserApi();
+  const gate = await requireStudentApi();
   if (gate instanceof Response) return gate;
 
   const collectionId = Number(request.nextUrl.searchParams.get("collectionId"));
@@ -286,7 +286,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const gate = await requireUserApi();
+  const gate = await requireStudentApi();
   if (gate instanceof Response) return gate;
   const limited = await enforceUserRateLimit(gate.id, "generation");
   if (limited) return limited;

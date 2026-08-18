@@ -1,45 +1,36 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { authClient, useSession } from "@/lib/auth-client";
-import { useHydratedSession } from "@/lib/use-hydrated-session";
-import Typography from "@mui/material/Typography";
-import TextField from "@mui/material/TextField";
-import Divider from "@mui/material/Divider";
+import Avatar from "@mui/material/Avatar";
 import Button from "@mui/material/Button";
+import Card from "@mui/material/Card";
+import CardContent from "@mui/material/CardContent";
+import Chip from "@mui/material/Chip";
+import Divider from "@mui/material/Divider";
+import Grid from "@mui/material/Grid";
+import Stack from "@mui/material/Stack";
+import TextField from "@mui/material/TextField";
+import Typography from "@mui/material/Typography";
 import FactCheckOutlined from "@mui/icons-material/FactCheckOutlined";
+import SettingsOutlined from "@mui/icons-material/SettingsOutlined";
+import { useSession } from "@/lib/auth-client";
+import { authClient } from "@/lib/auth-client";
+import { useHydratedSession } from "@/lib/use-hydrated-session";
 import { FormError, FormSuccess } from "@/app/components/FormAlerts";
 import {
   INVALID_USER_NAME_MESSAGE,
   normalizeName,
   normalizePhone,
   validateName,
-  validatePassword,
   validatePhone,
 } from "@/lib/validators";
-import PasswordField from "@/app/components/PasswordField";
-import FormControlLabel from "@mui/material/FormControlLabel";
-import Checkbox from "@mui/material/Checkbox";
-import { copyFor } from "@/lib/errorMap";
-import List from "@mui/material/List";
-import ListItem from "@mui/material/ListItem";
-import ListItemText from "@mui/material/ListItemText";
-import Chip from "@mui/material/Chip";
-import NotificationPreferences from "@/app/components/NotificationPreferences";
-import PrivacyCenter from "@/app/components/PrivacyCenter";
-import LanguageSettings from "@/app/components/LanguageSettings";
 
 type SessionUser = NonNullable<ReturnType<typeof useSession>["data"]>["user"];
 
 export default function ProfilePage() {
   const { data: session } = useHydratedSession();
 
-  // useSession returns null while loading and momentarily during refetches
-  // (e.g. right after updateUser). Bail out here — BEFORE any other hook — so
-  // the hooks below live in ProfileForm and always run in the same order.
-  // ProfileForm mounts only once a session exists, so its useState initializers
-  // seed from the real user values.
   if (!session) return null;
 
   return <ProfileForm user={session.user} />;
@@ -52,29 +43,6 @@ function ProfileForm({ user }: { user: SessionUser }) {
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [newEmail, setNewEmail] = useState("");
-  const [changeEmailError, setChangeEmailError] = useState<string | null>(null);
-  const [changeEmailSuccess, setChangeEmailSuccess] = useState<string | null>(null);
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [currentPasswordError, setCurrentPasswordError] = useState<string | null>(null);
-  const [newPassword, setNewPassword] = useState("");
-  const [newPasswordError, setNewPasswordError] = useState<string | null>(null);
-  const [confirmNewPassword, setConfirmNewPassword] = useState("");
-  const [confirmNewPasswordError, setConfirmNewPasswordError] = useState<string | null>(null);
-  const [revokeOtherSessions, setRevokeOtherSessions] = useState(false);
-  const [changePasswordSuccess, setChangePasswordSuccess] = useState(false);
-  const [changePasswordError, setChangePasswordError] = useState<string | null>(null);
-  const [sessions, setSessions] = useState<unknown[]>([]);
-
-  useEffect(() => {
-    authClient.listSessions().then((res) => setSessions(res.data ?? []));
-  }, []);
-
-  const handleRevokeOthers = async () => {
-    await authClient.revokeOtherSessions();
-    const res = await authClient.listSessions();
-    setSessions(res.data ?? []);
-  };
 
   const canSave = validateName(name) === null && validatePhone(phone) === null;
 
@@ -87,217 +55,119 @@ function ProfileForm({ user }: { user: SessionUser }) {
       setNameError(invalidName);
       return;
     }
+
     const { error } = await authClient.updateUser({
       name: normalizedName,
       phone: normalizePhone(phone),
     });
     if (error) {
       setSaveError(error.message ?? "Could not save changes.");
-    } else {
-      setName(normalizedName);
-      setSaveSuccess(true);
+      return;
     }
+
+    setName(normalizedName);
+    setSaveSuccess(true);
   };
 
   return (
-    <>
-      <Typography>Email: {user.email}</Typography>
-      <Typography>Role: {user.role}</Typography>
-      <Typography>Registration number: {user.registrationNumber}</Typography>
-      {user.role === "student" ? (
-        <Button
-          component={Link}
-          href="/absences"
-          variant="outlined"
-          startIcon={<FactCheckOutlined />}
-        >
-          Attendance &amp; appeal history
-        </Button>
-      ) : null}
-      <Divider />
-      <TextField
-        label="Name"
-        name="name"
-        fullWidth
-        margin="normal"
-        value={name}
-        onChange={(e) => {
-          setName(e.target.value);
-          setNameError(validateName(e.target.value));
-        }}
-        error={nameError !== null}
-        helperText={nameError ?? INVALID_USER_NAME_MESSAGE}
-      />
-      <TextField
-        label="Phone (optional)"
-        name="phone"
-        fullWidth
-        margin="normal"
-        value={phone}
-        onChange={(e) => {
-          setPhone(e.target.value);
-          setPhoneError(validatePhone(e.target.value));
-        }}
-        error={phoneError !== null}
-        helperText={phoneError}
-      />
-      <Button variant="contained" disabled={!canSave} onClick={handleSave}>
-        Save
-      </Button>
-      {saveSuccess && <FormSuccess message="Saved" />}
-      {saveError && <FormError message={saveError} />}
-      <Divider />
-      <LanguageSettings initialLocale={user.uiLocale === "ar" ? "ar" : "en"} />
-      <Divider />
-      <Typography>Change email</Typography>
-      <TextField
-        label="New email"
-        name="newEmail"
-        fullWidth
-        margin="normal"
-        value={newEmail}
-        onChange={(e) => setNewEmail(e.target.value)}
-      />
-      <Button
-        variant="contained"
-        onClick={async () => {
-          setChangeEmailError(null);
-          setChangeEmailSuccess(null);
-          const { error } = await authClient.changeEmail({
-            newEmail,
-            callbackURL: "/profile?email_changed=1",
-          });
-          if (error) {
-            // Known codes (e.g. USER_ALREADY_EXISTS) get the friendly mapped
-            // copy; anything else keeps Better Auth's own message.
-            setChangeEmailError(
-              error.code
-                ? copyFor(error).message
-                : error.message ?? "Could not change email."
-            );
-          } else {
-            setChangeEmailSuccess(
-              `Verification sent to ${newEmail}. Your email will update once you click the link.`
-            );
-          }
-        }}
-      >
-        Change email
-      </Button>
-      {changeEmailSuccess && <FormSuccess message={changeEmailSuccess} />}
-      {changeEmailError && <FormError message={changeEmailError} />}
-      <Divider />
-      <NotificationPreferences />
-      <Divider />
-      <PrivacyCenter />
-      <Divider />
-      <Typography>Change password</Typography>
-      <PasswordField
-        label="Current password"
-        name="currentPassword"
-        fullWidth
-        margin="normal"
-        value={currentPassword}
-        onChange={(e) => {
-          setCurrentPassword(e.target.value);
-          setCurrentPasswordError(null);
-        }}
-        error={currentPasswordError !== null}
-        helperText={currentPasswordError}
-      />
-      <PasswordField
-        label="New password"
-        name="newPassword"
-        fullWidth
-        margin="normal"
-        value={newPassword}
-        onChange={(e) => {
-          setNewPassword(e.target.value);
-          setNewPasswordError(validatePassword(e.target.value));
-        }}
-        error={newPasswordError !== null}
-        helperText={newPasswordError}
-      />
-      <PasswordField
-        label="Confirm new password"
-        name="confirmNewPassword"
-        fullWidth
-        margin="normal"
-        value={confirmNewPassword}
-        onChange={(e) => {
-          setConfirmNewPassword(e.target.value);
-          setConfirmNewPasswordError(
-            e.target.value !== newPassword ? "Passwords do not match." : null
-          );
-        }}
-        error={confirmNewPasswordError !== null}
-        helperText={confirmNewPasswordError}
-      />
-      <FormControlLabel
-        control={
-          <Checkbox
-            checked={revokeOtherSessions}
-            onChange={(e) => setRevokeOtherSessions(e.target.checked)}
-          />
-        }
-        label="Log out of other devices"
-      />
-      <Button
-        variant="contained"
-        disabled={
-          !currentPassword ||
-          validatePassword(newPassword) !== null ||
-          confirmNewPassword !== newPassword
-        }
-        onClick={async () => {
-          setChangePasswordError(null);
-          setChangePasswordSuccess(false);
-          const { error } = await authClient.changePassword({
-            currentPassword,
-            newPassword,
-            revokeOtherSessions,
-          });
-          if (error) {
-            if (error.code === "INVALID_PASSWORD") {
-              setCurrentPasswordError(copyFor(error).message);
-            } else {
-              setChangePasswordError(copyFor(error).message);
-            }
-          } else {
-            setCurrentPassword("");
-            setNewPassword("");
-            setConfirmNewPassword("");
-            setChangePasswordSuccess(true);
-          }
-        }}
-      >
-        Change password
-      </Button>
-      {changePasswordSuccess && <FormSuccess message="Password changed." />}
-      {changePasswordError && <FormError message={changePasswordError} />}
-      <Divider />
-      <Typography>Active sessions</Typography>
-      <List>
-        {sessions.map((s: unknown) => {
-          const session = s as { userAgent?: string; createdAt?: string; current?: boolean };
-          return (
-            <ListItem key={session.createdAt}>
-              <ListItemText
-                primary={session.userAgent ?? "Unknown"}
-                secondary={
-                  session.createdAt
-                    ? new Date(session.createdAt).toLocaleString()
-                    : undefined
-                }
-              />
-              {session.current && <Chip label="This device" size="small" />}
-            </ListItem>
-          );
-        })}
-      </List>
-      <Button variant="contained" onClick={handleRevokeOthers}>
-        Log out of all other devices
-      </Button>
-    </>
+    <Stack spacing={3}>
+      <Stack spacing={0.75} component="header">
+        <Typography variant="overline" color="primary">Your account</Typography>
+        <Typography variant="h2" component="h1">Profile</Typography>
+        <Typography color="text.secondary">
+          Keep your personal details accurate. Preferences, security, and privacy live in Settings.
+        </Typography>
+      </Stack>
+
+      <Grid container spacing={3}>
+        <Grid size={{ xs: 12, md: 8 }}>
+          <Card variant="outlined">
+            <CardContent>
+              <Stack spacing={2.5}>
+                <Stack spacing={0.5}>
+                  <Typography variant="h5" component="h2">Personal information</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    This is the information shown on your UnivAI account.
+                  </Typography>
+                </Stack>
+                <TextField
+                  label="Name"
+                  name="name"
+                  fullWidth
+                  value={name}
+                  onChange={(event) => {
+                    setName(event.target.value);
+                    setNameError(validateName(event.target.value));
+                    setSaveSuccess(false);
+                  }}
+                  error={nameError !== null}
+                  helperText={nameError ?? INVALID_USER_NAME_MESSAGE}
+                />
+                <TextField
+                  label="Phone (optional)"
+                  name="phone"
+                  fullWidth
+                  value={phone}
+                  onChange={(event) => {
+                    setPhone(event.target.value);
+                    setPhoneError(validatePhone(event.target.value));
+                    setSaveSuccess(false);
+                  }}
+                  error={phoneError !== null}
+                  helperText={phoneError ?? "Used only for account and course support."}
+                />
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                  <Button variant="contained" disabled={!canSave} onClick={handleSave}>
+                    Save changes
+                  </Button>
+                  {saveSuccess ? <FormSuccess message="Profile updated." /> : null}
+                </Stack>
+                {saveError ? <FormError message={saveError} /> : null}
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid size={{ xs: 12, md: 4 }}>
+          <Card variant="outlined">
+            <CardContent>
+              <Stack spacing={2} className="align-start">
+                <Avatar>{name.charAt(0).toUpperCase()}</Avatar>
+                <Stack spacing={0.25}>
+                  <Typography variant="h5">{name || "UnivAI learner"}</Typography>
+                  <Typography variant="body2" color="text.secondary">{user.email}</Typography>
+                </Stack>
+                <Chip label={(user.role ?? "student").replaceAll("_", " ")} size="small" color="primary" variant="outlined" />
+                <Divider flexItem />
+                <Stack spacing={0.25}>
+                  <Typography variant="caption" color="text.secondary">Registration number</Typography>
+                  <Typography>{user.registrationNumber}</Typography>
+                </Stack>
+                <Button
+                  component={Link}
+                  href="/settings"
+                  variant="outlined"
+                  startIcon={<SettingsOutlined />}
+                  fullWidth
+                >
+                  Open settings
+                </Button>
+                {user.role === "student" ? (
+                  <Button
+                    component={Link}
+                    href="/absences"
+                    variant="text"
+                    startIcon={<FactCheckOutlined />}
+                    fullWidth
+                  >
+                    Attendance &amp; appeal history
+                  </Button>
+                ) : null}
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+    </Stack>
   );
 }

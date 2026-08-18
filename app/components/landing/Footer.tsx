@@ -62,7 +62,7 @@ export default function Footer() {
               <LinkGroup heading="Product" links={footer.productLinks} />
             </Grid>
             <Grid size={{ xs: 6, md: 3 }}>
-              <LinkGroup heading="Families" links={footer.familyLinks} />
+              <LinkGroup heading="Career" links={footer.audienceLinks} />
             </Grid>
             <Grid size={{ xs: 6, md: 2 }}>
               <LinkGroup heading="Account" links={footer.accountLinks} />

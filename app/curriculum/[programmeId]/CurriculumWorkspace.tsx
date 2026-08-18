@@ -330,7 +330,7 @@ export default function CurriculumWorkspace({
         <CardContent>
           <Stack spacing={2}>
             <Stack direction="row" spacing={2}>
-              <Typography variant="subtitle1" data-generated-content="true" lang="en" dir="ltr">
+              <Typography variant="subtitle1" data-generated-content="true" dir="auto">
                 {programme.name}
               </Typography>
               <Stack direction="row" spacing={1}>
@@ -410,7 +410,7 @@ export default function CurriculumWorkspace({
                     <CardContent>
                       <Stack spacing={1}>
                         <Stack direction="row" spacing={2}>
-                          <Typography variant="body2" data-generated-content="true" lang="en" dir="ltr">
+                          <Typography variant="body2" data-generated-content="true" dir="auto">
                             {semester.name}
                           </Typography>
                           <Button
@@ -435,7 +435,7 @@ export default function CurriculumWorkspace({
                             {semesterCourses.map((course) => (
                               <TableRow key={course.id}>
                                 <TableCell>
-                                  <Typography variant="body2" data-generated-content="true" lang="en" dir="ltr">
+                                  <Typography variant="body2" data-generated-content="true" dir="auto">
                                     {course.title}
                                   </Typography>
                                 </TableCell>
@@ -550,7 +550,7 @@ export default function CurriculumWorkspace({
                     </IconButton>
                   </Stack>
                   <ListItemText
-                    primary={<span data-generated-content="true" lang="en" dir="ltr">{courseTitle(courseId)}</span>}
+                    primary={<span data-generated-content="true" dir="auto">{courseTitle(courseId)}</span>}
                   />
                 </Stack>
               </ListItem>
@@ -584,7 +584,7 @@ export default function CurriculumWorkspace({
                       />
                     }
                     label={(
-                      <span data-generated-content="true" lang="en" dir="ltr">
+                      <span data-generated-content="true" dir="auto">
                         {`${course.title} (${course.credits} cr, ${course.lecture_hours + course.tutorial_hours + course.lab_hours} h)`}
                       </span>
                     )}

@@ -20,7 +20,7 @@ import {
 } from "@/lib/collections";
 import { spawnGeneration } from "@/lib/generation";
 import { getProgrammeForCollection } from "@/lib/programmes";
-import { requireUserApi, requireVerifiedUserApi } from "@/lib/session";
+import { requireStudentApi, requireVerifiedUserApi } from "@/lib/session";
 import { env } from "@/lib/env";
 import { isStandalone } from "@/lib/runtime";
 import { enforceUserRateLimit } from "@/lib/rate-limits";
@@ -91,7 +91,7 @@ function publicBook(book: Book | null): Book | null {
 }
 
 export async function GET() {
-  const gate = await requireUserApi();
+  const gate = await requireStudentApi();
   if (gate instanceof Response) return gate;
 
   const books = await query<Book & { uploaded_at: string }>(

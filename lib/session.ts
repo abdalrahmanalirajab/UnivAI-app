@@ -28,16 +28,23 @@ export async function requireUser(currentPath?: string): Promise<SessionUser> {
   return user;
 }
 
+/** Requires the student role; admin accounts return to the admin workspace. */
+export async function requireStudent(currentPath?: string): Promise<SessionUser> {
+  const user = await requireUser(currentPath);
+  if (isAdminRole(user.role)) redirect("/admin");
+  return user;
+}
+
 /** Requires an authenticated account whose email address is verified. */
 export async function requireVerifiedUser(currentPath?: string): Promise<SessionUser> {
-  const user = await requireUser(currentPath);
+  const user = await requireStudent(currentPath);
   if (!user.emailVerified) redirect("/verify-email");
   return user;
 }
 
 /** Requires the student's first learning source to be fully prepared. */
 export async function requirePreparedSource(currentPath?: string): Promise<SessionUser> {
-  const user = await requireUser(currentPath);
+  const user = await requireStudent(currentPath);
   const state = await getOnboardingState(user);
   if (!state.hasPreparedSource) redirect("/upload");
   return user;
@@ -60,7 +67,9 @@ export async function requireAdmin(): Promise<SessionUser> {
 /** Requires super_admin; everyone else is bounced to their dashboard. */
 export async function requireSuperAdmin(): Promise<SessionUser> {
   const user = await requireUser();
-  if (user.role !== "super_admin") redirect("/dashboard");
+  if (user.role !== "super_admin") {
+    redirect(isAdminRole(user.role) ? "/admin" : "/dashboard");
+  }
   return user;
 }
 
@@ -79,9 +88,22 @@ export async function requireUserApi(): Promise<SessionUser | Response> {
   return user;
 }
 
+/** API equivalent of requireStudent; admin accounts cannot use learner APIs. */
+export async function requireStudentApi(): Promise<SessionUser | Response> {
+  const user = await requireUserApi();
+  if (user instanceof Response) return user;
+  if (isAdminRole(user.role)) {
+    return Response.json(
+      { error: "Students only.", code: "STUDENT_ROLE_REQUIRED" },
+      { status: 403 },
+    );
+  }
+  return user;
+}
+
 /** API equivalent of requireVerifiedUser; does not require an uploaded source. */
 export async function requireVerifiedUserApi(): Promise<SessionUser | Response> {
-  const user = await requireUserApi();
+  const user = await requireStudentApi();
   if (user instanceof Response) return user;
   if (!user.emailVerified) {
     return Response.json(
@@ -93,7 +115,7 @@ export async function requireVerifiedUserApi(): Promise<SessionUser | Response> 
 }
 
 export async function requirePreparedSourceApi(): Promise<SessionUser | Response> {
-  const user = await requireUserApi();
+  const user = await requireStudentApi();
   if (user instanceof Response) return user;
   const state = await getOnboardingState(user);
   if (!state.hasPreparedSource) {

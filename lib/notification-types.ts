@@ -48,6 +48,12 @@ export type NotificationEvent =
   | { type: "admin.action_required"; title: string; safeSummary: string }
   | { type: "security.password_changed" }
   | { type: "security.sessions_revoked" }
+  | {
+      type: "privacy.request_resolved";
+      requestLabel: string;
+      status: "completed" | "declined";
+      outcome: string;
+    }
   | { type: "billing.subscription_activated"; planName: string }
   | { type: "billing.payment_failed"; planName: string }
   | { type: "billing.subscription_suspended"; planName: string }

@@ -7,7 +7,9 @@ export const AR_UI: Readonly<Record<string, string>> = {
   "Standalone development data": "بيانات تطوير مستقلة",
   "Why UnivAI": "لماذا UnivAI",
   Preview: "معاينة",
-  "For families": "للعائلات",
+  "For fresh graduates": "للخريجين الجدد",
+  Career: "المسار المهني",
+  "Career growth": "النمو المهني",
   Questions: "الأسئلة",
   Upload: "رفع الكتب",
   Schedule: "الجدول",
@@ -22,8 +24,9 @@ export const AR_UI: Readonly<Record<string, string>> = {
   "Open account menu": "فتح قائمة الحساب",
   "Open navigation": "فتح التنقل",
   Account: "الحساب",
-  "Plan and coins": "الخطة والعملات",
-  Profile: "الإعدادات والملف الشخصي",
+  "Plan and Credits": "الخطة والرصيد",
+  Profile: "الملف الشخصي",
+  Settings: "الإعدادات",
   "Signing out…": "جارٍ تسجيل الخروج…",
   "Sign out": "تسجيل الخروج",
   "Mobile navigation": "التنقل على الهاتف",
@@ -48,8 +51,10 @@ export const AR_UI: Readonly<Record<string, string>> = {
   "Continue with Google": "المتابعة باستخدام Google",
   or: "أو",
   "You can add this later on your profile.": "يمكنك إضافة هذا لاحقًا من إعدادات الحساب.",
-  "This changes website controls and labels. Generated lectures and exams remain in English.":
-    "يغيّر هذا أزرار الموقع ونصوصه فقط. وتظل المحاضرات والاختبارات المنشأة باللغة الإنجليزية.",
+  "This changes website controls and labels. Generated content remains in its authored language.":
+    "يغيّر هذا أزرار الموقع ونصوصه فقط. ويظل المحتوى المُنشأ بلغته الأصلية.",
+  "Generated lessons and exams remain in their authored language.":
+    "تظل الدروس والاختبارات المُنشأة بلغتها الأصلية.",
   "I have read and accept the current": "قرأت وأقبل",
   "EULA and Content Use Agreement": "اتفاقية الاستخدام وحقوق المحتوى",
   "I confirm that I am responsible for having the right to use materials I upload.":
@@ -197,18 +202,12 @@ export const AR_UI: Readonly<Record<string, string>> = {
   "Close transcript": "إغلاق النص المكتوب",
   "Sources and citations": "المصادر والاستشهادات",
   "Was this answer helpful?": "هل كانت هذه الإجابة مفيدة؟",
-  "Rating": "التقييم",
   "Like": "إعجاب",
-  "Liked": "تم الإعجاب",
   "Report": "إبلاغ",
-  "Reported": "تم الإبلاغ",
   "AI output feedback": "ملاحظات على مخرجات الذكاء الاصطناعي",
-  "Rate this AI output": "قيّم مخرجات الذكاء الاصطناعي هذه",
-  "Save rating": "حفظ التقييم",
-  "Rating saved": "تم حفظ التقييم",
   "Report this AI output": "الإبلاغ عن مخرجات الذكاء الاصطناعي هذه",
-  "Choose the main reason. A report can be submitted without a rating or like.":
-    "اختر السبب الرئيسي. يمكنك إرسال البلاغ دون تقييم أو إعجاب.",
+  "Choose the main reason. Reporting is separate from liking this output.":
+    "اختر السبب الرئيسي. الإبلاغ منفصل عن الإعجاب بهذه المخرجات.",
   "Reason": "السبب",
   "Additional detail (optional)": "تفاصيل إضافية (اختياري)",
   "Submit report": "إرسال البلاغ",
@@ -218,11 +217,8 @@ export const AR_UI: Readonly<Record<string, string>> = {
   "Unsafe or inappropriate": "غير آمن أو غير لائق",
   "Copyright or privacy concern": "مشكلة حقوق نشر أو خصوصية",
   "Broken or incomplete output": "مخرجات معطلة أو غير مكتملة",
-  "Thanks — your rating was saved.": "شكرًا — تم حفظ تقييمك.",
   "Thanks — you liked this output.": "شكرًا — سجلنا إعجابك بهذه المخرجات.",
-  "Like removed.": "تمت إزالة الإعجاب.",
   "Report submitted for review.": "تم إرسال البلاغ للمراجعة.",
-  "Could not save rating.": "تعذر حفظ التقييم.",
   "Could not save like.": "تعذر حفظ الإعجاب.",
   "Could not submit report.": "تعذر إرسال البلاغ.",
   "Feedback is unavailable because this output has no recorded identifiers yet.":
@@ -289,8 +285,8 @@ export const AR_UI: Readonly<Record<string, string>> = {
   Approved: "تم الاعتماد",
   "Back to schedule": "العودة إلى الجدول",
   Books: "الكتب",
-  "Coin activity": "نشاط العملات",
-  Credits: "الساعات المعتمدة",
+  "Credit activity": "سجل الرصيد",
+  Credits: "الرصيد",
   GPA: "المعدل التراكمي",
   Learner: "المتعلم",
   Learners: "المتعلمون",
@@ -355,12 +351,11 @@ export const AR_UI: Readonly<Record<string, string>> = {
     "اختر كتابًا دراسيًا واحدًا أو أكثر للبدء. يُضاف كل كتاب إلى مكتبتك مع الاحتفاظ بكتبك وجدولك وتقدمك الحالي.",
   Clear: "مسح",
   "Close membership details": "إغلاق تفاصيل العضوية",
-  "Coin balance": "رصيد العملات",
-  coins: "عملات",
-  Coins: "العملات",
-  "coins each week": "عملة كل أسبوع",
-  "Coins never expire and never affect learning access or grades.":
-    "لا تنتهي صلاحية العملات ولا تؤثر في الوصول إلى التعلم أو الدرجات.",
+  "Credit balance": "الرصيد المتاح",
+  credits: "نقاط رصيد",
+  "Credits each week": "نقاط رصيد كل أسبوع",
+  "Credits never expire and never affect learning access or grades.":
+    "لا تنتهي صلاحية الرصيد ولا يؤثر في الوصول إلى التعلم أو الدرجات.",
   "Collection name": "اسم المجموعة",
   "Collection:": "المجموعة:",
   "Complete lecture": "إكمال المحاضرة",
@@ -457,7 +452,7 @@ export const AR_UI: Readonly<Record<string, string>> = {
   "Log in to resend your private verification link.":
     "سجل الدخول لإعادة إرسال رابط التحقق الخاص بك.",
   "Low confidence": "ثقة منخفضة",
-  "Membership and coin details": "تفاصيل العضوية والعملات",
+  "Membership and Credit details": "تفاصيل العضوية والرصيد",
   "Membership details sections": "أقسام تفاصيل العضوية",
   "Membership is optional. You can upload your book now.":
     "العضوية اختيارية. يمكنك رفع كتابك الآن.",
@@ -472,6 +467,19 @@ export const AR_UI: Readonly<Record<string, string>> = {
   Notification: "الإشعار",
   Subject: "الموضوع",
   "No delivery records match these filters.": "لا توجد سجلات تسليم تطابق عوامل التصفية.",
+  "Deliveries per page": "عمليات التسليم في الصفحة",
+  Immediate: "فوري",
+  Outbox: "صندوق الصادر",
+  Delivered: "تم التسليم",
+  Queued: "في قائمة الانتظار",
+  Retrying: "إعادة المحاولة",
+  Skipped: "تم التخطي",
+  Billing: "الفوترة",
+  Bounced: "مرفوض من الخادم",
+  "Admin action inbox": "صندوق إجراءات الإدارة",
+  "Decisions learners are waiting for. Admin email alerts link back here.":
+    "قرارات ينتظرها المتعلمون. تعيد تنبيهات البريد المسؤول إلى هنا.",
+  "Practice quiz": "اختبار تدريبي",
   "Sent:": "أُرسل في:",
   "Started:": "بدأ في:",
   records: "سجلات",
@@ -541,7 +549,7 @@ export const AR_UI: Readonly<Record<string, string>> = {
   "The full learning loop": "دورة التعلم الكاملة",
   "One book in. A guided university journey out.": "كتاب واحد يدخل، ورحلة جامعية موجهة تبدأ.",
   "Lecture preview": "معاينة المحاضرة",
-  "A calmer student home": "واجهة أهدأ للمتعلم",
+  "Your learning command center": "مركز قيادتك للتعلم",
   "Open the app. Know what to do.": "افتح التطبيق واعرف خطوتك التالية.",
   "Today puts one timely action first. The rest is available when you ask for it.":
     "تضع صفحة اليوم إجراءً مناسبًا واحدًا أولًا، وتبقى بقية الخيارات متاحة عند الحاجة.",
@@ -553,23 +561,23 @@ export const AR_UI: Readonly<Record<string, string>> = {
   "Replay spoken answer from the beginning": "إعادة الإجابة المنطوقة من البداية",
   "Spoken answer position": "موضع الإجابة المنطوقة",
   "Product principles": "مبادئ المنتج",
-  "This preference lives in settings, not the navigation bar. Generated learning and exam content always remains English.":
-    "يوجد هذا الخيار في الإعدادات وليس شريط التنقل. وتظل مواد التعلم والاختبارات المنشأة باللغة الإنجليزية دائمًا.",
-  "Plan details and coin activity": "تفاصيل الخطة ونشاط العملات",
+  "This preference lives in settings, not the navigation bar. Generated learning and exam content remains in its authored language.":
+    "يوجد هذا الخيار في الإعدادات وليس شريط التنقل. وتظل مواد التعلم والاختبارات المُنشأة بلغتها الأصلية.",
+  "Plan details and Credit activity": "تفاصيل الخطة وسجل الرصيد",
   "Plan details": "تفاصيل الخطة",
   Subscribed: "تاريخ الاشتراك",
   Provider: "مقدم الخدمة",
   Revoked: "تاريخ الإلغاء",
-  "About UnivAI coins": "حول عملات UnivAI",
+  "About UnivAI Credits": "حول رصيد UnivAI",
   "Weekly allowance": "المخصص الأسبوعي",
   "Next grant": "المنحة التالية",
   "Revoke membership": "إلغاء العضوية",
-  "No coin activity yet": "لا يوجد نشاط للعملات بعد",
+  "No Credit activity yet": "لا يوجد نشاط للرصيد بعد",
   "Your first wallet entry will appear here.": "سيظهر أول سجل لمحفظتك هنا.",
   "View plans": "عرض الخطط",
   "Revoke membership?": "هل تريد إلغاء العضوية؟",
-  "Paid benefits stop immediately. Your coins and complete Free learning access remain.":
-    "تتوقف المزايا المدفوعة فورًا، وتبقى عملاتك ووصولك الكامل إلى التعلم المجاني.",
+  "Paid benefits stop immediately. Your Credits and complete Free learning access remain.":
+    "تتوقف المزايا المدفوعة فورًا، ويبقى رصيدك ووصولك الكامل إلى التعلم المجاني.",
   "Password, session, payment, and membership changes are always emailed for your safety.":
     "تُرسل تغييرات كلمة المرور والجلسات والدفع والعضوية دائمًا بالبريد حفاظًا على أمانك.",
   "Retry started — generation is running.": "بدأت إعادة المحاولة — الإنشاء جارٍ.",
@@ -714,7 +722,7 @@ export const AR_UI: Readonly<Record<string, string>> = {
     "تدريبات تنفذها بنفسك. علّم كل تدريب بعد الانتهاء منه.",
   "Section completed.": "اكتمل السكشن.",
   "PayPal membership": "عضوية PayPal",
-  "View plan and coins": "عرض الخطة والعملات",
+  "View plan and Credits": "عرض الخطة والرصيد",
   "Payment policy": "سياسة الدفع",
   "No refunds.": "لا توجد مبالغ مستردة.",
   "PayPal checkout was cancelled. Your learning access is unchanged.":
@@ -817,12 +825,22 @@ export const AR_UI: Readonly<Record<string, string>> = {
   "A newer plan version is live — this schedule was updated from plan version":
     "هناك إصدار أحدث من الخطة — تم تحديث هذا الجدول من إصدار الخطة",
   section: "سكشن",
-  "Every plan includes the same learning, assessments, transcript, and certificate. Paid plans support UnivAI and add weekly personalization coins.":
-    "تشمل كل الخطط التعلم والتقييمات والسجل والشهادة نفسها. تدعم الخطط المدفوعة UnivAI وتضيف عملات تخصيص أسبوعية.",
-  "Membership payments are final. Revoking stops paid benefits immediately; earned coins and Free learning access remain.":
-    "مدفوعات العضوية نهائية. يوقف الإلغاء المزايا المدفوعة فورًا، وتبقى العملات المكتسبة والوصول المجاني.",
-  "Payments are final; coins and Free access remain after revocation.":
-    "المدفوعات نهائية؛ تبقى العملات والوصول المجاني بعد الإلغاء.",
+  "Every plan includes the same learning, assessments, transcript, and certificate. Paid plans support UnivAI and add weekly Credits.":
+    "تشمل كل الخطط التعلم والتقييمات والسجل والشهادة نفسها. تدعم الخطط المدفوعة UnivAI وتضيف رصيدًا أسبوعيًا.",
+  "Membership payments are final. Revoking stops paid benefits immediately; earned Credits and Free learning access remain.":
+    "مدفوعات العضوية نهائية. يوقف الإلغاء المزايا المدفوعة فورًا، ويبقى الرصيد المكتسب والوصول المجاني.",
+  "Payments are final; Credits and Free access remain after revocation.":
+    "المدفوعات نهائية؛ يبقى الرصيد والوصول المجاني بعد الإلغاء.",
+  "Generate 5-question practice": "أنشئ تدريبًا من 5 أسئلة",
+  "Resume latest practice": "استأنف آخر تدريب",
+  "Submit appeal": "أرسل التظلم",
+  "Available Credits": "الرصيد المتاح",
+  "Welcome grant": "رصيد الترحيب",
+  "Seven-day grant": "منحة الأيام السبعة",
+  "Membership payment": "دفعة العضوية",
+  "Learning action": "إجراء تعليمي",
+  "Account adjustment": "تسوية الحساب",
+  "Rows per page:": "صفوف كل صفحة:",
   ". You are still logged in and can continue setting up your account.":
     ". ما زلت مسجل الدخول ويمكنك متابعة إعداد حسابك.",
   "· version": "· الإصدار",
@@ -909,38 +927,52 @@ export const AR_UI: Readonly<Record<string, string>> = {
   "See progress without guesswork.": "شاهد التقدم دون تخمين.",
   "Honest support": "دعم صادق",
   "Guidance that knows its limits.": "إرشاد يدرك حدوده.",
-  "Family confidence": "طمأنينة للعائلة",
-  "Stay informed without hovering.": "ابقَ مطلعًا دون مراقبة مفرطة.",
-  "Confidence without hovering.": "طمأنينة دون مراقبة مفرطة.",
-  "See whether learning is moving forward, with clear signals and fewer guesses.":
-    "اعرف ما إذا كان التعلم يتقدم عبر مؤشرات واضحة وتخمينات أقل.",
-  "What families need most": "ما تحتاجه العائلات أكثر",
-  "Know what the learner is working toward.": "اعرف الهدف الذي يعمل المتعلم نحوه.",
-  "Meaningful progress": "تقدم ذو معنى",
-  "See effort turn into momentum.": "شاهد الجهد يتحول إلى تقدم.",
-  "Room to grow": "مساحة للنمو",
-  "Support independence without taking over.": "ادعم الاستقلالية دون السيطرة.",
-  "Thoughtful by design": "مصمم بعناية",
-  "Clear boundaries, responsible access, and family oversight stay part of the experience.":
-    "تظل الحدود الواضحة والوصول المسؤول وإشراف العائلة جزءًا من التجربة.",
-  "Our standard": "معيارنا",
+  "Built for ambitious fresh graduates": "مصمم للخريجين الجدد الطموحين",
+  "Build career-ready skills": "ابنِ مهارات جاهزة لسوق العمل",
+  "fast and in order.": "بسرعة وبترتيب.",
+  "Build job-ready skills.": "ابنِ مهارات جاهزة لسوق العمل.",
+  "Fast. In order.": "بسرعة. وبترتيب.",
+  "Turn trusted material into a focused learning path that keeps you moving, measuring progress, and staying competitive.":
+    "حوّل المواد الموثوقة إلى مسار تعلم مركز يساعدك على التقدم وقياس إنجازك والحفاظ على قدرتك التنافسية.",
+  "UnivAI turns trusted material into scheduled live lectures, synced slides, practice, assessments, and a verified transcript—so you can close skill gaps quickly and stay competitive.":
+    "تحوّل UnivAI المواد الموثوقة إلى محاضرات مباشرة مجدولة وشرائح متزامنة وتدريب وتقييمات وسجل موثق، لتسد فجوات مهاراتك بسرعة وتحافظ على قدرتك التنافسية.",
+  "Start upskilling": "ابدأ تطوير مهاراتك",
+  "One ordered roadmap": "خريطة تعلم مرتبة",
+  "Prove your progress": "أثبت تقدمك",
+  "Career momentum": "زخم مهني",
+  "Build the skills that move you forward.": "ابنِ المهارات التي تدفع مسيرتك إلى الأمام.",
+  "Skills that stay current": "مهارات تواكب السوق",
+  "Keep sharpening what your next role demands.": "واصل صقل المهارات التي تتطلبها وظيفتك القادمة.",
+  "Get ahead without learning out of order.": "تقدم دون أن تتعلم بترتيب عشوائي.",
+  "Build job-relevant depth quickly through a clear sequence, focused practice, and visible proof of progress.":
+    "ابنِ عمقًا مهنيًا بسرعة عبر تسلسل واضح وتدريب مركز ودليل ملموس على تقدمك.",
+  "What an early career needs most": "أهم ما تحتاجه في بداية مسيرتك",
+  "An ordered roadmap": "خريطة طريق مرتبة",
+  "Know what to learn now and what comes next.": "اعرف ما تتعلمه الآن وما تأتي به الخطوة التالية.",
+  "Job-relevant depth": "عمق مرتبط بسوق العمل",
+  "Turn trusted sources into skills you can actually use.": "حوّل المصادر الموثوقة إلى مهارات يمكنك استخدامها فعلًا.",
+  "Track your progress and keep closing skill gaps.": "تابع تقدمك واستمر في سد فجوات مهاراتك.",
+  "Focused by design": "مصمم للتركيز",
+  "Structured learning, source-backed guidance, and measurable progress keep every study session moving toward career readiness.":
+    "يحافظ التعلم المنظم والإرشاد المدعوم بالمصادر والتقدم القابل للقياس على اتجاه كل جلسة نحو الجاهزية المهنية.",
+  "Built to advance": "مصمم لتتقدم",
   "Start with one better study session": "ابدأ بجلسة دراسة أفضل",
   "A stronger learning rhythm starts here.": "يبدأ إيقاع تعلم أقوى من هنا.",
   "Discover a calmer, clearer way to keep learning moving.":
     "اكتشف طريقة أهدأ وأوضح لاستمرار التعلم.",
   "The essentials, before you begin.": "الأساسيات قبل أن تبدأ.",
   "Who is UnivAI for?": "لمن صُممت UnivAI؟",
-  "Learners, families, and educators who want clearer direction and steadier progress.":
-    "للمتعلمين والعائلات والمعلمين الذين يريدون اتجاهًا أوضح وتقدمًا أكثر ثباتًا.",
+  "Ambitious fresh graduates and early-career professionals who want to build relevant skills quickly, clearly, and in the right order.":
+    "للخريجين الجدد الطموحين والمهنيين في بداية مسيرتهم الذين يريدون بناء مهارات مهمة بسرعة ووضوح وبالترتيب الصحيح.",
   "What makes it different?": "ما الذي يميزها؟",
   "UnivAI turns study into one focused journey. The deeper experience is saved for members.":
     "تحول UnivAI الدراسة إلى رحلة واحدة مركزة، وتتاح التجربة الأعمق للأعضاء.",
   "Can I see it first?": "هل يمكنني رؤيتها أولًا؟",
   "Yes. Try the sample above, then create an account when you are ready for more.":
     "نعم. جرّب النموذج أعلاه، ثم أنشئ حسابًا عندما تكون مستعدًا للمزيد.",
-  "Is it designed with families in mind?": "هل روعي تصميمها للعائلات؟",
-  "Yes. Clear progress and responsible access are part of the product direction.":
-    "نعم. التقدم الواضح والوصول المسؤول جزء من توجه المنتج.",
+  "How does UnivAI help me stay competitive?": "كيف تساعدني UnivAI على الحفاظ على قدرتي التنافسية؟",
+  "It turns trusted material into an ordered course with live lectures, practice, assessment, and visible progress.":
+    "تحوّل المواد الموثوقة إلى مقرر مرتب يضم محاضرات مباشرة وتدريبًا وتقييمًا وتقدمًا واضحًا.",
   "How do you approach privacy?": "كيف تتعاملون مع الخصوصية؟",
   "We treat clear controls and honest privacy information as launch requirements.":
     "نعتبر الضوابط الواضحة ومعلومات الخصوصية الصريحة من متطلبات الإطلاق.",
@@ -975,6 +1007,25 @@ export const AR_UI: Readonly<Record<string, string>> = {
 const AR_UI_PATTERNS: ReadonlyArray<
   readonly [RegExp, (...matches: string[]) => string]
 > = [
+  [/^Ask · (\d+) Credits$/, (_value, amount) => `اسأل · ${amount} من الرصيد`],
+  [/^Regenerate · (\d+) Credits$/, (_value, amount) => `أعد الإنشاء · ${amount} من الرصيد`],
+  [/^Submit appeal · (\d+) Credits$/, (_value, amount) => `أرسل التظلم · ${amount} من الرصيد`],
+  [
+    /^Generate 5-question practice · (\d+) Credits$/,
+    (_value, amount) => `أنشئ تدريبًا من 5 أسئلة · ${amount} من الرصيد`,
+  ],
+  [/^(\d[\d,]*) Credits$/, (_value, amount) => `${amount} من الرصيد`],
+  [/^Balance (\d[\d,]*)$/, (_value, amount) => `الرصيد ${amount}`],
+  [/^(\d+) total entries$/, (_value, count) => `${count} إجمالي السجلات`],
+  [
+    /^Open membership and Credit details\. (\d[\d,]*) Credits available$/,
+    (_value, amount) => `افتح تفاصيل العضوية والرصيد. المتاح ${amount}`,
+  ],
+  [/^Created (.+)$/, (_value, date) => `أُنشئ في ${date}`],
+  [/^Submitted ([^·]+)$/, (_value, date) => `أُرسل في ${date}`],
+  [/^Next retry (.+)$/, (_value, date) => `المحاولة التالية ${date}`],
+  [/^Delivered (.+)$/, (_value, date) => `تم التسليم في ${date}`],
+  [/^(\d+) attempts?$/, (_value, count) => `${count} محاولات`],
   [/^(\d+) total$/, (_value, count) => `${count} إجماليًا`],
   [/^(\d+) open$/, (_value, count) => `${count} متاح`],
   [/^(\d+) attended$/, (_value, count) => `${count} حضور`],

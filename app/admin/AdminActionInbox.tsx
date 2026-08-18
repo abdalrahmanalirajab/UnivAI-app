@@ -18,6 +18,7 @@ import FormControlLabel from "@mui/material/FormControlLabel";
 import MenuItem from "@mui/material/MenuItem";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
+import TablePagination from "@mui/material/TablePagination";
 import Typography from "@mui/material/Typography";
 import FactCheckOutlined from "@mui/icons-material/FactCheckOutlined";
 import type { AdminAction, AbsenceOutcome } from "@/lib/absence-cases";
@@ -59,12 +60,21 @@ const DECISIONS: Array<{ value: AbsenceOutcome; label: string; effect: string }>
   { value: "unexcused", label: "Absence not accepted", effect: "Keep normal grade rules with no special remedy." },
 ];
 
+function decisionsFor(selected: CaseDetail | null) {
+  return selected?.items[0]?.itemType === "quiz"
+    ? DECISIONS.filter((decision) => decision.value !== "access_only")
+    : DECISIONS;
+}
+
 function title(value: string | null): string {
   return (value ?? "none").replaceAll("_", " ").replace(/^./, (letter) => letter.toUpperCase());
 }
 
 export default function AdminActionInbox() {
   const [actions, setActions] = useState<AdminAction[] | null>(null);
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(10);
+  const [total, setTotal] = useState(0);
   const [selected, setSelected] = useState<CaseDetail | null>(null);
   const [outcome, setOutcome] = useState<AbsenceOutcome>("excused");
   const [reason, setReason] = useState("");
@@ -76,15 +86,19 @@ export default function AdminActionInbox() {
 
   const load = useCallback(async () => {
     try {
-      const response = await fetch("/api/admin/actions", { cache: "no-store" });
+      const params = new URLSearchParams({ page: String(page + 1), pageSize: String(pageSize) });
+      const response = await fetch(`/api/admin/actions?${params}`, { cache: "no-store" });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? "Could not load admin actions.");
       setActions(body.actions as AdminAction[]);
+      setTotal(Number(body.pagination?.total ?? body.actions?.length ?? 0));
+      const normalizedPage = Math.max(0, Number(body.pagination?.page ?? 1) - 1);
+      if (normalizedPage !== page) setPage(normalizedPage);
       setError(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not load admin actions.");
     }
-  }, []);
+  }, [page, pageSize]);
 
   useEffect(() => {
     void load();
@@ -206,6 +220,21 @@ export default function AdminActionInbox() {
               </CardContent>
             </Card>
           ))}
+          {actions !== null && total > 0 ? (
+            <TablePagination
+              component="div"
+              count={total}
+              page={page}
+              rowsPerPage={pageSize}
+              rowsPerPageOptions={[5, 10, 25]}
+              onPageChange={(_event, nextPage) => setPage(nextPage)}
+              onRowsPerPageChange={(event) => {
+                setPageSize(Number(event.target.value));
+                setPage(0);
+              }}
+              labelRowsPerPage="Actions per page"
+            />
+          ) : null}
         </Stack>
       </CardContent>
 
@@ -331,11 +360,11 @@ export default function AdminActionInbox() {
 
                   <Divider>or make the final decision</Divider>
               <TextField select label="Final decision" value={outcome} onChange={(event) => setOutcome(event.target.value as AbsenceOutcome)}>
-                {DECISIONS.map((decision) => (
+                {decisionsFor(selected).map((decision) => (
                   <MenuItem key={decision.value} value={decision.value}>{decision.label}</MenuItem>
                 ))}
               </TextField>
-              <Alert severity="info">{DECISIONS.find((decision) => decision.value === outcome)?.effect}</Alert>
+              <Alert severity="info">{decisionsFor(selected).find((decision) => decision.value === outcome)?.effect}</Alert>
               <TextField
                 label="Decision reason shown to learner"
                 required

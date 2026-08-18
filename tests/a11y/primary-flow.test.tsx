@@ -108,7 +108,7 @@ describe("feedback flow", () => {
 
     expect(screen.getByRole("button", { name: "Like" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Report" })).toBeTruthy();
-    expect(screen.getByLabelText("5 stars")).toBeTruthy();
+    expect(screen.queryByRole("radio")).toBeNull();
     expect(await axe(document.body)).toHaveNoViolations();
   }, 20000);
 

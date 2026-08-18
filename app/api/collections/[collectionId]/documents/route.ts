@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { promises as fs } from "fs";
 import path from "path";
-import { requireUserApi, requireVerifiedUserApi } from "@/lib/session";
+import { requireStudentApi, requireVerifiedUserApi } from "@/lib/session";
 import { parseJsonLine, REPO_ROOT, runPython } from "@/lib/python";
 import { env } from "@/lib/env";
 import { isStandalone } from "@/lib/runtime";
@@ -37,7 +37,7 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ collectionId: string }> },
 ) {
-  const gate = await requireUserApi();
+  const gate = await requireStudentApi();
   if (gate instanceof Response) return gate;
 
   const { collectionId: raw } = await params;
@@ -165,7 +165,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ collectionId: string }> },
 ) {
-  const gate = await requireUserApi();
+  const gate = await requireStudentApi();
   if (gate instanceof Response) return gate;
   const limited = await enforceUserRateLimit(gate.id, "upload");
   if (limited) return limited;

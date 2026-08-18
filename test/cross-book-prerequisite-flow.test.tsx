@@ -228,7 +228,10 @@ describe("tamper test — session-derived authorization wins", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
-    vi.doMock("@/lib/session", () => ({ requireUserApi: mockGate }));
+    vi.doMock("@/lib/session", () => ({
+      requireUserApi: mockGate,
+      requireStudentApi: mockGate,
+    }));
     vi.doMock("@/lib/programmes", () => ({ approveProgramme: mockApproveProgramme }));
     // Approval starts the real course build. These tests are about which
     // identity the route trusts, so the build is stubbed out entirely.

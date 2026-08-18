@@ -96,9 +96,7 @@ export default function RaiseHandTeaser() {
                   variant="body2"
                   color="text.secondary"
                   aria-live="polite"
-                  data-generated-content="true"
-                  lang="en"
-                  dir="ltr"
+                  data-generated-content="true" dir="auto"
                 >
                   {complete ? null : displayedText}
                 </Typography>

@@ -8,7 +8,7 @@ const FREE: SubscriptionSnapshot = {
   planCode: "free",
   planName: "Free",
   monthlyPriceUsd: 0,
-  weeklyCoins: 100,
+  weeklyCredits: 100,
   pendingPlanCode: null,
   status: "active",
   provider: "none",
@@ -18,13 +18,15 @@ const FREE: SubscriptionSnapshot = {
   cancelledAt: null,
   createdAt: "2026-08-11T12:00:00.000Z",
   updatedAt: "2026-08-11T12:00:00.000Z",
-  coins: {
+  credits: {
     balance: 200,
-    weeklyAllowance: 100,
-    weekStartedAt: "2026-08-10",
+    reservedBalance: 0,
+    availableBalance: 200,
+    weeklyGrantAmount: 100,
     nextGrantAt: "2026-08-17T00:00:00.000Z",
   },
-  coinTransactions: [],
+  creditActivity: [],
+  creditActivityPagination: { page: 1, pageSize: 10, total: 0, pages: 1 },
 };
 
 afterEach(() => {

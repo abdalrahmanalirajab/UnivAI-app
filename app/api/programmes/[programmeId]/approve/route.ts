@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requireUserApi } from "@/lib/session";
+import { requireStudentApi } from "@/lib/session";
 import { approveProgramme } from "@/lib/programmes";
 import { startApprovedCourseBuild } from "@/lib/generation";
 import { enforceUserRateLimit } from "@/lib/rate-limits";
@@ -16,12 +16,12 @@ export async function POST(
   { params }: { params: Promise<{ programmeId: string }> },
 ) {
   // Authorization comes ONLY from the server session (auth.api.getSession via
-  // requireUserApi). Nothing client-sent is ever trusted for authorization:
+  // requireStudentApi). Nothing client-sent is ever trusted for authorization:
   // the session's registrationNumber scopes every query, and the client-sent
   // planVersion is used solely as the optimistic-concurrency check required
   // for exact-version approval — never as an authorization signal. Any other
   // client-sent user id, name, or status field in the body is ignored.
-  const gate = await requireUserApi();
+  const gate = await requireStudentApi();
   if (gate instanceof Response) return gate;
   const limited = await enforceUserRateLimit(gate.id, "generation");
   if (limited) return limited;

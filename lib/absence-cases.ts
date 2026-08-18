@@ -12,6 +12,10 @@ import {
   type AbsenceTriage,
 } from "./absence-triage";
 import { enqueueEmailNotificationWithClient } from "./notification-outbox";
+import {
+  reserveCreditsWithClient,
+  settleCreditReservationWithClient,
+} from "./credits";
 
 export type AbsenceItemType = "lecture" | "quiz";
 export type AbsenceOutcome = "excused" | "access_only" | "unexcused";
@@ -212,10 +216,11 @@ export async function submitAbsenceCase(
   user: { id: string; registrationNumber: string },
   reasonValue: string,
   requestedItems: Array<{ itemType: AbsenceItemType; week: number }>,
+  idempotencyKey: string,
 ): Promise<LearnerAbsenceCase> {
   const reason = cleanReason(reasonValue);
-  if (!Array.isArray(requestedItems) || requestedItems.length < 1 || requestedItems.length > 4) {
-    throw new AbsenceCaseError("Choose between one and four missed lectures or quizzes.");
+  if (!Array.isArray(requestedItems) || requestedItems.length !== 1) {
+    throw new AbsenceCaseError("Choose exactly one missed lecture or quiz per appeal.");
   }
   const unique = new Set(requestedItems.map(itemKey));
   if (unique.size !== requestedItems.length) throw new AbsenceCaseError("Each missed item may be selected once.");
@@ -241,6 +246,14 @@ export async function submitAbsenceCase(
   let caseId = "";
   try {
     await client.query("BEGIN");
+    const reservation = await reserveCreditsWithClient(client, {
+      userId: user.id,
+      purpose: "appeal",
+      idempotencyKey: `appeal:${user.id}:${idempotencyKey}`,
+      referenceType: selected[0].itemType,
+      referenceId: `${selected[0].itemType}:${selected[0].week}`,
+      ttlSeconds: 10 * 60,
+    });
     const inserted = await client.query<{ id: string }>(
       `INSERT INTO absence_cases
          (student_id, status, reason, waiting_on, question_code, recommendation,
@@ -269,6 +282,7 @@ export async function submitAbsenceCase(
     );
     await recordTriage(client, caseId, facts, triage);
     await createAdminAction(client, caseId, user.registrationNumber, triage.sensitivityFlags, 0);
+    await settleCreditReservationWithClient(client, user.id, reservation.id);
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");
@@ -386,6 +400,36 @@ export async function getLearnerAbsenceCases(studentId: string): Promise<Learner
     [studentId],
   );
   return mapCases(studentId, rows);
+}
+
+export async function getLearnerAbsenceCasePage(
+  studentId: string,
+  page: number,
+  pageSize: number,
+): Promise<{
+  cases: LearnerAbsenceCase[];
+  pagination: { page: number; pageSize: number; total: number; pages: number };
+}> {
+  const count = await queryOne<{ total: string }>(
+    "SELECT COUNT(*)::text AS total FROM absence_cases WHERE student_id = $1",
+    [studentId],
+  );
+  const total = Number(count?.total ?? 0);
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  const normalizedPage = Math.min(Math.max(1, page), pages);
+  const rows = await query<CaseRow>(
+    `SELECT id::text, status, reason, waiting_on, question_code, outcome,
+            decision_reason, submitted_at, decided_at
+       FROM absence_cases
+      WHERE student_id = $1
+      ORDER BY created_at DESC, id DESC
+      LIMIT $2 OFFSET $3`,
+    [studentId, pageSize, (normalizedPage - 1) * pageSize],
+  );
+  return {
+    cases: await mapCases(studentId, rows),
+    pagination: { page: normalizedPage, pageSize, total, pages },
+  };
 }
 
 export async function getLearnerAbsenceCase(
@@ -731,6 +775,53 @@ export async function getAdminActions(): Promise<AdminAction[]> {
   }));
 }
 
+export async function getAdminActionPage(page: number, pageSize: number): Promise<{
+  actions: AdminAction[];
+  pagination: { page: number; pageSize: number; total: number; pages: number };
+}> {
+  const condition = `action.status IN ('pending', 'assigned')
+    AND action.action_type = 'absence_review'
+    AND action.entity_type = 'absence_case'`;
+  const count = await queryOne<{ total: string }>(
+    `SELECT COUNT(*)::text AS total FROM admin_action_items AS action WHERE ${condition}`,
+  );
+  const total = Number(count?.total ?? 0);
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  const normalizedPage = Math.min(Math.max(1, page), pages);
+  const rows = await query<{
+    id: string; entity_id: string; student_id: string; student_name: string;
+    title: string; safe_summary: string; priority: string; status: string;
+    waiting_on: "learner" | "admin" | "none"; created_at: Date;
+  }>(
+    `SELECT action.id::text, action.entity_id::text, action.student_id,
+            learner.name AS student_name, action.title, action.safe_summary,
+            action.priority, action.status, absence_case.waiting_on, action.created_at
+       FROM admin_action_items AS action
+       JOIN absence_cases AS absence_case ON absence_case.id = action.entity_id
+       LEFT JOIN "user" AS learner ON learner."registrationNumber" = action.student_id
+      WHERE ${condition}
+      ORDER BY CASE action.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 ELSE 2 END,
+               action.created_at ASC, action.id ASC
+      LIMIT $1 OFFSET $2`,
+    [pageSize, (normalizedPage - 1) * pageSize],
+  );
+  return {
+    actions: rows.map((row) => ({
+      id: row.id,
+      caseId: row.entity_id,
+      studentId: row.student_id,
+      studentName: row.student_name,
+      title: row.title,
+      safeSummary: row.safe_summary,
+      priority: row.priority,
+      status: row.status,
+      waitingOn: row.waiting_on,
+      createdAt: iso(row.created_at)!,
+    })),
+    pagination: { page: normalizedPage, pageSize, total, pages },
+  };
+}
+
 export async function getAdminAbsenceCase(caseId: string) {
   const absenceCase = await queryOne<CaseRow & {
     student_id: string; student_name: string; student_email: string;
@@ -837,10 +928,16 @@ export async function decideAbsenceCase(
   let committed = false;
   try {
     await client.query("BEGIN");
-    const locked = await client.query<{ student_id: string; user_id: string }>(
-      `SELECT absence_case.student_id, learner."id"::text AS user_id
+    const locked = await client.query<{
+      student_id: string;
+      user_id: string;
+      item_type: AbsenceItemType;
+    }>(
+      `SELECT absence_case.student_id, learner."id"::text AS user_id,
+              item.item_type
          FROM absence_cases AS absence_case
         JOIN "user" AS learner ON learner."registrationNumber" = absence_case.student_id
+        JOIN absence_case_items AS item ON item.case_id = absence_case.id
         WHERE absence_case.id = $1::uuid AND absence_case.status = 'pending_admin'
           AND absence_case.waiting_on = 'admin'
         FOR UPDATE OF absence_case`,
@@ -848,6 +945,13 @@ export async function decideAbsenceCase(
     );
     const target = locked.rows[0];
     if (!target) throw new AbsenceCaseError("This case is not waiting for an admin decision.", 409);
+    if (target.item_type === "quiz" && outcome === "access_only") {
+      throw new AbsenceCaseError(
+        "Quiz appeals can only be approved for grade exclusion or denied.",
+        400,
+        "QUIZ_MAKEUP_NOT_ALLOWED",
+      );
+    }
     targetStudentId = target.student_id;
     await client.query(
       `UPDATE absence_cases SET status = $1, waiting_on = 'none', outcome = $2,

@@ -4,7 +4,7 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { documentStorageKey, getDocument, type Document } from "@/lib/collections";
 import { REPO_ROOT } from "@/lib/python";
-import { requireUserApi } from "@/lib/session";
+import { requireStudentApi } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -105,7 +105,7 @@ async function serve(
   context: { params: Promise<{ id: string }> },
   headOnly: boolean,
 ): Promise<Response> {
-  const gate = await requireUserApi();
+  const gate = await requireStudentApi();
   if (gate instanceof Response) return gate;
 
   const { id } = await context.params;

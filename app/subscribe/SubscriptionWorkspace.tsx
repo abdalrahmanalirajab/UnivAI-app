@@ -38,17 +38,17 @@ const PLAN_COPY: Record<
     features: [
       "Complete UnivAI learning experience",
       "All assessments and certificates",
-      "100 personalization coins weekly",
-      "Coins roll over",
+      "100 Credits every seven days",
+      "Credits roll over",
     ],
   },
   supporter: {
     label: "Support UnivAI",
     action: "Become a Supporter",
-    impact: "Support the project and receive more personalization coins.",
+    impact: "Support the project and receive more learning Credits.",
     features: [
       "Everything in Free",
-      "300 personalization coins weekly",
+      "300 Credits every seven days",
       "More room for visual customization",
       "Help keep learning open",
     ],
@@ -59,7 +59,7 @@ const PLAN_COPY: Record<
     impact: "Our highest contribution tier for committed supporters.",
     features: [
       "Everything in Supporter",
-      "1,000 personalization coins weekly",
+      "1,000 Credits every seven days",
       "Largest customization allowance",
       "Make the biggest monthly contribution",
     ],
@@ -125,7 +125,9 @@ export default function SubscriptionWorkspace({
   }
 
   const paidMembershipActive =
-    subscription?.planCode !== "free" && subscription?.status === "active";
+    subscription?.planCode !== "free" &&
+    subscription?.status !== "cancelled" &&
+    subscription?.status !== "expired";
 
   return (
     <Stack spacing={4} className="subscription-workspace">
@@ -135,7 +137,7 @@ export default function SubscriptionWorkspace({
         </Typography>
         <Typography color="text.secondary" className="subscription-lede">
           Every plan includes the same learning, assessments, transcript, and certificate. Paid
-          plans support UnivAI and add weekly personalization coins.
+          plans support UnivAI and add rolling seven-day Credits.
         </Typography>
       </Stack>
 
@@ -156,7 +158,7 @@ export default function SubscriptionWorkspace({
                   <Typography variant="subtitle2">No refunds</Typography>
                   <Typography variant="caption">
                     Membership payments are final. Revoking stops paid benefits immediately;
-                    earned coins and Free learning access remain.
+                    earned Credits and Free learning access remain.
                   </Typography>
                 </Stack>
               }
@@ -178,7 +180,7 @@ export default function SubscriptionWorkspace({
       </Stack>
 
       <Alert severity="warning" icon={<InfoOutlined />} className="subscription-mobile-refund">
-        <strong>No refunds.</strong> Payments are final; coins and Free access remain after
+        <strong>No refunds.</strong> Payments are final; Credits and Free access remain after
         revocation.
       </Alert>
 
@@ -240,12 +242,12 @@ export default function SubscriptionWorkspace({
                       </Typography>
                     </Stack>
 
-                    <Stack direction="row" className="subscription-coin-allowance align-end">
+                    <Stack direction="row" className="subscription-credit-allowance align-end">
                       <Typography variant="h5">
-                        {NUMBER_FORMATTER.format(plan.weeklyCoins)}
+                        {NUMBER_FORMATTER.format(plan.weeklyCredits)}
                       </Typography>
                       <Stack spacing={0}>
-                        <Typography variant="body2">coins each week</Typography>
+                        <Typography variant="body2">Credits every 7 days</Typography>
                         <Typography variant="caption" color="text.secondary">
                           For optional personalization
                         </Typography>

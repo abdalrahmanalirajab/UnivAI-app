@@ -28,22 +28,21 @@ export default function Hero() {
           <Chip
             color="secondary"
             variant="outlined"
-            label="From one book to a complete semester"
+            label="Built for ambitious fresh graduates"
             className="eyebrow-chip hero-eyebrow"
           />
           <Typography id="hero-heading" variant="h1" component="h1">
             <Box component="span" className="hero-headline-secondary">
-              Books
+              Build job-ready skills.
             </Box>{" "}
-            become{" "}
             <Box component="span" className="hero-headline-accent">
-              journeys.
+              Fast. In order.
             </Box>
           </Typography>
           <Typography variant="body1" color="text.secondary" className="hero-subhead">
-            UnivAI turns your source into scheduled live lectures, synced slides,
-            questions, assessments, and a verified final transcript—then shows you
-            only the next useful step.
+            UnivAI turns trusted material into scheduled live lectures, synced
+            slides, practice, assessments, and a verified transcript—so you can
+            close skill gaps quickly and stay competitive.
           </Typography>
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} className="hero-actions">
             <Button
@@ -53,14 +52,14 @@ export default function Hero() {
               href={user ? "/start" : "/register"}
               endIcon={<ArrowForwardRounded />}
             >
-              {user ? "Continue learning" : "Build my course"}
+              {user ? "Continue learning" : "Start upskilling"}
             </Button>
             <Button variant="outlined" size="large" component="a" href="#how-it-works">
               See the journey
             </Button>
           </Stack>
           <Box className="wrap-row simple-hero-proof" aria-label="Product guarantees">
-            {["Confirm before upload", "Ask during lectures", "Results without waiting"].map(
+            {["One ordered roadmap", "Ask during lectures", "Prove your progress"].map(
               (point) => (
                 <Chip
                   key={point}

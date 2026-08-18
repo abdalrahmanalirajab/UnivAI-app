@@ -26,14 +26,14 @@ describe("AI output feedback contract", () => {
     mockQuery.mockResolvedValue([]);
   });
 
-  it("requires a 1–5 rating", () => {
-    expect(parseAiOutputFeedbackRequest({ ...TARGET, action: "rating", rating: 5 })).toMatchObject({
-      ok: true,
-      value: { action: "rating", rating: 5, targetType: "section" },
-    });
-    expect(parseAiOutputFeedbackRequest({ ...TARGET, action: "rating", rating: 0 })).toEqual({
+  it("supports only like and report actions", () => {
+    expect(parseAiOutputFeedbackRequest({ ...TARGET, action: "rating", rating: 5 })).toEqual({
       ok: false,
-      error: "rating must be an integer from 1 to 5.",
+      error: "action must be like or report.",
+    });
+    expect(parseAiOutputFeedbackRequest({ ...TARGET, action: "like", liked: true })).toMatchObject({
+      ok: true,
+      value: { action: "like", liked: true, targetType: "section" },
     });
   });
 
@@ -89,4 +89,3 @@ describe("AI output feedback contract", () => {
     expect(mockQueryOne.mock.calls[1][1]).toContain("Slides stop early.");
   });
 });
-

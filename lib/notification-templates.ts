@@ -1,5 +1,6 @@
 import { env } from "./env";
 import type { NotificationEvent, RenderedNotification } from "./notification-types";
+import type { UiLocale } from "./legal-documents";
 
 function inline(value: string, fallback: string): string {
   const clean = value
@@ -38,7 +39,96 @@ function message(subject: string, detail: string, action: string, pathname: stri
   return `${detail}\n\n${action}:\n${actionUrl(pathname)}\n\n— UnivAI`;
 }
 
-export function renderNotification(event: NotificationEvent): RenderedNotification {
+function arabicMessage(detail: string, action: string, pathname: string): string {
+  return `${detail}\n\n${action}:\n${actionUrl(pathname)}\n\n— UnivAI`;
+}
+
+function arabicDate(value: string | Date, label: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) throw new Error(`${label} must be a valid date.`);
+  return new Intl.DateTimeFormat("ar-EG", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "UTC",
+    timeZoneName: "short",
+  }).format(date);
+}
+
+function renderArabicNotification(event: NotificationEvent): RenderedNotification {
+  switch (event.type) {
+    case "course.ready": {
+      const course = inline(event.courseTitle, "مقررك");
+      return { category: "course", eventType: event.type, subject: `${course} جاهز`, text: arabicMessage(`أصبح المقرر «${course}» جاهزًا. يمكنك الآن عرض الجدول وبدء التعلم.`, "افتح مقررك", "/dashboard") };
+    }
+    case "course.failed": {
+      const course = inline(event.courseTitle, "مقررك");
+      return { category: "course", eventType: event.type, subject: `${course} يحتاج إلى انتباهك`, text: arabicMessage(`تعذر إكمال إعداد «${course}». مصدرك محفوظ؛ افتح UnivAI للمراجعة أو إعادة المحاولة.`, "راجع المقرر", "/library") };
+    }
+    case "lecture.reminder": {
+      const lecture = inline(event.lectureTitle, "محاضرتك");
+      return { category: "lecture", eventType: event.type, subject: `تذكير: ${lecture}`, text: arabicMessage(`تبدأ «${lecture}» في ${arabicDate(event.startsAt, "startsAt")}.`, "اعرض جدولك", "/schedule") };
+    }
+    case "assessment.result": {
+      const assessment = inline(event.assessmentTitle, "تقييمك");
+      const score = finiteScore(event.score, "score");
+      const maxScore = finiteScore(event.maxScore, "maxScore");
+      return { category: "assessment", eventType: event.type, subject: `نتيجة ${assessment}: ${score}/${maxScore}`, text: arabicMessage(`نتيجتك في «${assessment}» هي ${score}/${maxScore}. الحالة: ${event.passed ? "اجتزت" : "لم تجتز"}.`, "اعرض نتائجك", "/transcript") };
+    }
+    case "final.retake_scheduled":
+      return { category: "assessment", eventType: event.type, subject: "تم تحديد موعد إعادة الاختبار النهائي", text: arabicMessage(`ستتاح الإعادة في ${arabicDate(event.availableAt, "availableAt")}. استثمر الأيام السبعة في المراجعة. قد يرفض المسؤول الطلب قبل بدء الإعادة إذا لم يستوفِ السبب السياسة.`, "اعرض حالة الاختبار النهائي", "/exams") };
+    case "final.retake_declined": {
+      const reason = inline(event.reason, "لم يستوفِ الطلب سياسة الإعادة.");
+      return { category: "assessment", eventType: event.type, subject: "رُفض طلب إعادة الاختبار النهائي", text: arabicMessage(`رفض المسؤول طلب الإعادة. السبب: ${reason}. ستُستخدم نتيجة الاختبار الأساسي كدرجة رسمية؛ وإن لم يُسلَّم اختبار نهائي فتكون النتيجة غياب — 0 (F).`, "اعرض حالة الاختبار النهائي", "/exams") };
+    }
+    case "transcript.ready": {
+      const course = inline(event.courseTitle, "المقرر");
+      const grade = inline(event.grade, "متاحة");
+      return { category: "transcript", eventType: event.type, subject: `درجة ${course} جاهزة`, text: arabicMessage(`درجتك النهائية في ${course} هي ${grade}. أصبح سجلك الأكاديمي متاحًا.`, "افتح السجل الأكاديمي", "/transcript") };
+    }
+    case "absence.clarification_required":
+      return { category: "assessment", eventType: event.type, subject: "طلب الغياب يحتاج إلى معلومات إضافية", text: arabicMessage(paragraph(event.question, "افتح طلب الغياب للمتابعة."), "أجب عن الطلب", "/absences") };
+    case "absence.decision": {
+      const labels = { excused: "تم قبول السبب واستبعاد العنصر من حساب الدرجة", access_only: "تمت الموافقة على محاضرة تعويضية تفاعلية لمرة واحدة", unexcused: "لم يُقبل سبب الغياب" } as const;
+      return { category: "assessment", eventType: event.type, subject: "تم اتخاذ قرار بشأن طلب الغياب", text: arabicMessage(`${labels[event.outcome]}. ملاحظة المسؤول: ${paragraph(event.decisionReason, "افتح UnivAI لمراجعة القرار.")}`, "راجع القرار", "/absences") };
+    }
+    case "admin.action_required": {
+      const title = inline(event.title, "إجراء إداري مطلوب");
+      return { category: "admin", eventType: event.type, subject: title, text: arabicMessage(paragraph(event.safeSummary, "افتح صندوق إجراءات الإدارة للمراجعة."), "افتح صندوق الإجراءات", "/admin#actions") };
+    }
+    case "security.password_changed":
+      return { category: "security", eventType: event.type, subject: "تم تغيير كلمة مرور UnivAI", text: arabicMessage("تم تغيير كلمة مرورك. إن لم تكن أنت، فأعد تعيينها فورًا وألغِ الجلسات الأخرى.", "أمّن حسابك", "/settings#security") };
+    case "security.sessions_revoked":
+      return { category: "security", eventType: event.type, subject: "تم تسجيل خروج جلسات UnivAI الأخرى", text: arabicMessage("أُلغيت جلسات تسجيل الدخول الأخرى. إن لم تكن أنت، فغيّر كلمة مرورك فورًا.", "راجع حسابك", "/settings#security") };
+    case "privacy.request_resolved": {
+      const request = inline(event.requestLabel, "الخصوصية");
+      const completed = event.status === "completed";
+      const subject = completed ? `اكتمل طلب ${request}` : `تحديث بشأن طلب ${request}`;
+      return { category: "security", eventType: event.type, subject, text: arabicMessage(`${completed ? "اكتمل طلبك." : "تعذر إكمال طلبك."} النتيجة: ${paragraph(event.outcome, "افتح UnivAI لمراجعة النتيجة.")}`, "راجع الطلب", "/settings#privacy") };
+    }
+    case "billing.subscription_activated": {
+      const plan = inline(event.planName, "المدفوعة");
+      return { category: "billing", eventType: event.type, subject: `خطة ${plan} نشطة`, text: arabicMessage(`اشتراك ${plan} نشط، وأضيفت منحة Credits الكاملة إلى رصيدك.`, "اعرض خطتك", "/subscribe") };
+    }
+    case "billing.payment_failed": {
+      const plan = inline(event.planName, "المدفوعة");
+      return { category: "billing", eventType: event.type, subject: `مشكلة في دفع خطة ${plan}`, text: arabicMessage(`تعذر تجديد اشتراك ${plan}. يظل محتواك التعليمي متاحًا.`, "راجع خطتك", "/subscribe") };
+    }
+    case "billing.subscription_suspended": {
+      const plan = inline(event.planName, "المدفوعة");
+      return { category: "billing", eventType: event.type, subject: `خطة ${plan} موقوفة مؤقتًا`, text: arabicMessage(`اشتراك ${plan} موقوف مؤقتًا. يظل محتواك التعليمي متاحًا.`, "راجع خطتك", "/subscribe") };
+    }
+    case "billing.subscription_cancelled": {
+      const plan = inline(event.planName, "المدفوعة");
+      return { category: "billing", eventType: event.type, subject: `تم إلغاء خطة ${plan}`, text: arabicMessage("تم إلغاء اشتراكك. تظل مقرراتك وخصائصك الأكاديمية متاحة.", "اعرض خطتك", "/subscribe") };
+    }
+  }
+}
+
+export function renderNotification(event: NotificationEvent, locale: UiLocale = "en"): RenderedNotification {
+  if (locale === "ar") return renderArabicNotification(event);
   switch (event.type) {
     case "course.ready": {
       const course = inline(event.courseTitle, "Your course");
@@ -214,7 +304,7 @@ export function renderNotification(event: NotificationEvent): RenderedNotificati
           "Your UnivAI password was changed",
           "Your password was changed. If this was not you, reset it immediately and revoke your other sessions.",
           "Secure your account",
-          "/profile",
+          "/settings#security",
         ),
       };
     case "security.sessions_revoked":
@@ -226,9 +316,31 @@ export function renderNotification(event: NotificationEvent): RenderedNotificati
           "Your other UnivAI sessions were signed out",
           "Your other signed-in sessions were revoked. If this was not you, change your password immediately.",
           "Review your account",
-          "/profile",
+          "/settings#security",
         ),
       };
+    case "privacy.request_resolved": {
+      const request = inline(event.requestLabel, "privacy");
+      const outcome = paragraph(event.outcome, "Open UnivAI to review the outcome.");
+      const completed = event.status === "completed";
+      return {
+        // Privacy outcomes are mandatory account messages, so they use the
+        // existing required security channel instead of an optional category.
+        category: "security",
+        eventType: event.type,
+        subject: completed
+          ? `Your ${request} request is complete`
+          : `Update on your ${request} request`,
+        text: message(
+          completed
+            ? `Your ${request} request is complete`
+            : `Update on your ${request} request`,
+          `${completed ? "Your request was completed." : "Your request could not be completed."} Outcome: ${outcome}`,
+          "Review the request",
+          "/settings#privacy",
+        ),
+      };
+    }
     case "billing.subscription_activated": {
       const plan = inline(event.planName, "paid");
       return {
@@ -237,7 +349,7 @@ export function renderNotification(event: NotificationEvent): RenderedNotificati
         subject: `Your ${plan} plan is active`,
         text: message(
           `Your ${plan} plan is active`,
-          `Your ${plan} subscription is active and its weekly coin allowance is available.`,
+          `Your ${plan} subscription is active and its full Credit grant is available.`,
           "View your plan",
           "/subscribe",
         ),

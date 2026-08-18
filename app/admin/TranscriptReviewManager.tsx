@@ -11,6 +11,7 @@ import Divider from "@mui/material/Divider";
 import Grid from "@mui/material/Grid";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
+import TablePagination from "@mui/material/TablePagination";
 import Typography from "@mui/material/Typography";
 
 type ReviewStatus = "pending" | "held" | "released";
@@ -31,23 +32,27 @@ export default function TranscriptReviewManager({ registrationNumber }: { regist
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(10);
+  const [total, setTotal] = useState(0);
 
   const load = useCallback(async () => {
     setTranscripts(null);
     try {
       const response = await fetch(
-        `/api/admin/transcripts?sid=${encodeURIComponent(registrationNumber)}`,
+        `/api/admin/transcripts?sid=${encodeURIComponent(registrationNumber)}&page=${page + 1}&pageSize=${pageSize}`,
         { cache: "no-store" },
       );
       const body = await response.json().catch(() => null);
       if (!response.ok) throw new Error(body?.error ?? "Could not load transcript reviews.");
       setTranscripts(body.transcripts ?? []);
+      setTotal(Number(body.pagination?.total ?? 0));
       setError(null);
     } catch (reason) {
       setTranscripts([]);
       setError(reason instanceof Error ? reason.message : "Could not load transcript reviews.");
     }
-  }, [registrationNumber]);
+  }, [page, pageSize, registrationNumber]);
 
   useEffect(() => {
     void load();
@@ -146,6 +151,20 @@ export default function TranscriptReviewManager({ registrationNumber }: { regist
               ) : null}
             </Stack>
           ))}
+          {transcripts !== null && total > 0 ? (
+            <TablePagination
+              component="div"
+              count={total}
+              page={page}
+              rowsPerPage={pageSize}
+              rowsPerPageOptions={[5, 10, 25]}
+              onPageChange={(_event, nextPage) => setPage(nextPage)}
+              onRowsPerPageChange={(event) => {
+                setPageSize(Number(event.target.value));
+                setPage(0);
+              }}
+            />
+          ) : null}
         </Stack>
       </CardContent>
     </Card>

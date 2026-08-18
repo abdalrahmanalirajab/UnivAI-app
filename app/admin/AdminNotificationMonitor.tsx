@@ -8,14 +8,10 @@ import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
 import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
+import Divider from "@mui/material/Divider";
 import MenuItem from "@mui/material/MenuItem";
 import Stack from "@mui/material/Stack";
-import Table from "@mui/material/Table";
-import TableBody from "@mui/material/TableBody";
-import TableCell from "@mui/material/TableCell";
-import TableContainer from "@mui/material/TableContainer";
-import TableHead from "@mui/material/TableHead";
-import TableRow from "@mui/material/TableRow";
+import TablePagination from "@mui/material/TablePagination";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import MailOutlineRounded from "@mui/icons-material/MailOutlineRounded";
@@ -76,6 +72,7 @@ export default function AdminNotificationMonitor({
   const [draft, setDraft] = useState<Filters>(EMPTY_FILTERS);
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [data, setData] = useState<MonitorResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -92,7 +89,7 @@ export default function AdminNotificationMonitor({
     setLoading(true);
     setError(null);
 
-    const params = new URLSearchParams({ page: String(page), pageSize: "25" });
+    const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
     if (scope === "selected" && selectedRegistrationNumber) {
       params.set("sid", selectedRegistrationNumber);
     }
@@ -114,7 +111,7 @@ export default function AdminNotificationMonitor({
     } finally {
       if (!controller.signal.aborted) setLoading(false);
     }
-  }, [filters, page, scope, selectedRegistrationNumber]);
+  }, [filters, page, pageSize, scope, selectedRegistrationNumber]);
 
   useEffect(() => {
     void load();
@@ -220,88 +217,70 @@ export default function AdminNotificationMonitor({
 
           {data ? (
             <>
-              <TableContainer className="admin-table-scroll">
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Recipient</TableCell>
-                      <TableCell>Status</TableCell>
-                      <TableCell>Notification</TableCell>
-                      <TableCell>Subject</TableCell>
-                      <TableCell>Attempts</TableCell>
-                      <TableCell>Timing</TableCell>
-                      <TableCell>Provider</TableCell>
-                      <TableCell>Error</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {data.notifications.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={8}>No delivery records match these filters.</TableCell>
-                      </TableRow>
-                    ) : data.notifications.map((delivery) => (
-                      <TableRow key={`${delivery.source}-${delivery.id}`}>
-                        <TableCell>
-                          <Typography variant="body2">{delivery.learner.name}</Typography>
-                          <Typography component="div" variant="caption" color="text.secondary">
-                            {delivery.learner.registrationNumber}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {delivery.learner.email}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Chip size="small" color={statusColor(delivery.status)} label={titleCase(delivery.status)} />
-                          <Typography component="div" variant="caption" color="text.secondary">
-                            {delivery.source === "direct" ? "Immediate" : "Outbox"}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="body2">{titleCase(delivery.category)}</Typography>
-                          <Typography variant="caption" color="text.secondary">{delivery.eventType}</Typography>
-                        </TableCell>
-                        <TableCell>{delivery.subject}</TableCell>
-                        <TableCell>{delivery.attempts}</TableCell>
-                        <TableCell>
-                          <Typography component="div" variant="caption">Created: {formatDateTime(delivery.createdAt)}</Typography>
-                          {delivery.sentAt ? <Typography component="div" variant="caption">Submitted: {formatDateTime(delivery.sentAt)}</Typography> : null}
-                          {delivery.nextAttemptAt ? <Typography component="div" variant="caption">Next: {formatDateTime(delivery.nextAttemptAt)}</Typography> : null}
-                          {delivery.processingStartedAt ? <Typography component="div" variant="caption">Started: {formatDateTime(delivery.processingStartedAt)}</Typography> : null}
-                        </TableCell>
-                        <TableCell>
-                          <Chip
-                            size="small"
-                            color={delivery.providerStatus === "delivered" ? "success" : delivery.providerStatus === "failed" || delivery.providerStatus === "bounced" ? "error" : "default"}
-                            label={titleCase(delivery.providerStatus)}
-                            variant="outlined"
-                          />
-                          {delivery.deliveredAt ? (
-                            <Typography component="div" variant="caption">Delivered: {formatDateTime(delivery.deliveredAt)}</Typography>
-                          ) : delivery.providerEventAt ? (
-                            <Typography component="div" variant="caption">Updated: {formatDateTime(delivery.providerEventAt)}</Typography>
-                          ) : null}
-                        </TableCell>
-                        <TableCell>{delivery.error ?? "—"}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
+              {data.notifications.length === 0 ? (
+                <Alert severity="info">No delivery records match these filters.</Alert>
+              ) : (
+                <Stack spacing={1.25}>
+                  {data.notifications.map((delivery) => (
+                    <Card key={`${delivery.source}-${delivery.id}`} variant="outlined">
+                      <CardContent>
+                        <Stack spacing={1.25}>
+                          <Stack direction={{ xs: "column", sm: "row" }} spacing={1} className="spread-row">
+                            <Stack spacing={0.25}>
+                              <Typography variant="subtitle1">{delivery.subject}</Typography>
+                              <Typography variant="body2" color="text.secondary">
+                                {titleCase(delivery.category)} · {delivery.eventType}
+                              </Typography>
+                            </Stack>
+                            <Stack direction="row" spacing={1} className="wrap-row">
+                              <Chip size="small" color={statusColor(delivery.status)} label={titleCase(delivery.status)} />
+                              <Chip
+                                size="small"
+                                variant="outlined"
+                                color={delivery.providerStatus === "delivered" ? "success" : delivery.providerStatus === "failed" || delivery.providerStatus === "bounced" ? "error" : "default"}
+                                label={titleCase(delivery.providerStatus)}
+                              />
+                            </Stack>
+                          </Stack>
+                          <Divider />
+                          <Stack direction={{ xs: "column", md: "row" }} spacing={2} className="spread-row">
+                            <Stack spacing={0.25}>
+                              <Typography variant="body2">{delivery.learner.name}</Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                {delivery.learner.registrationNumber} · {delivery.learner.email}
+                              </Typography>
+                            </Stack>
+                            <Stack spacing={0.25}>
+                              <Typography variant="caption">Created {formatDateTime(delivery.createdAt)}</Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                {delivery.source === "direct" ? "Immediate" : "Outbox"} · {delivery.attempts} attempt{delivery.attempts === 1 ? "" : "s"}
+                              </Typography>
+                              {delivery.sentAt ? <Typography variant="caption">Submitted {formatDateTime(delivery.sentAt)}</Typography> : null}
+                              {delivery.nextAttemptAt ? <Typography variant="caption">Next retry {formatDateTime(delivery.nextAttemptAt)}</Typography> : null}
+                              {delivery.deliveredAt ? <Typography variant="caption">Delivered {formatDateTime(delivery.deliveredAt)}</Typography> : null}
+                            </Stack>
+                          </Stack>
+                          {delivery.error ? <Alert severity="error">{delivery.error}</Alert> : null}
+                        </Stack>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </Stack>
+              )}
 
-              <Stack direction="row" spacing={1.5} className="align-center justify-end">
-                <Typography variant="body2" color="text.secondary">
-                  {data.pagination.total} records · Page {data.pagination.page} of {data.pagination.pages}
-                </Typography>
-                <Button disabled={loading || page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>
-                  Previous
-                </Button>
-                <Button
-                  disabled={loading || page >= data.pagination.pages}
-                  onClick={() => setPage((value) => value + 1)}
-                >
-                  Next
-                </Button>
-              </Stack>
+              <TablePagination
+                component="div"
+                count={data.pagination.total}
+                page={Math.max(0, data.pagination.page - 1)}
+                rowsPerPage={data.pagination.pageSize}
+                rowsPerPageOptions={[10, 25, 50]}
+                onPageChange={(_event, nextPage) => setPage(nextPage + 1)}
+                onRowsPerPageChange={(event) => {
+                  setPageSize(Number(event.target.value));
+                  setPage(1);
+                }}
+                labelRowsPerPage="Deliveries per page"
+              />
             </>
           ) : null}
         </Stack>

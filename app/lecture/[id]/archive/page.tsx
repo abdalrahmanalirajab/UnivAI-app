@@ -10,6 +10,7 @@ import OutputFeedback from "@/app/components/OutputFeedback";
 import { lectureFeedbackTarget } from "@/lib/ai-output-feedback-types";
 import ArchiveBackButton from "./ArchiveBackButton";
 import LectureArchive from "./LectureArchive";
+import PracticeQuizButtons from "../PracticeQuizButtons";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -55,7 +56,7 @@ export default async function LectureArchivePage({
         <Typography variant="overline" color="text.secondary">
           Week {access.week} · completed lecture
         </Typography>
-        <Typography variant="h4" data-generated-content="true" lang="en" dir="ltr">
+        <Typography variant="h4" data-generated-content="true" dir="auto">
           {access.title}
         </Typography>
         <Typography variant="body2" color="text.secondary">
@@ -65,7 +66,7 @@ export default async function LectureArchivePage({
 
       {deck ? (
         <>
-          <Stack data-generated-content="true" lang="en" dir="ltr">
+          <Stack data-generated-content="true" dir="auto">
             <LectureArchive deck={deck} narration={script?.segments ?? []} />
           </Stack>
           {access.artifactId && access.artifactVersion ? (
@@ -81,6 +82,7 @@ export default async function LectureArchivePage({
         </Alert>
       )}
 
+      <PracticeQuizButtons lectureId={id} />
       <ArchiveBackButton />
     </Stack>
   );

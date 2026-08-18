@@ -242,8 +242,8 @@ export async function buildPersonalDataExport(input: {
     outputReactions,
     outputReports,
     subscriptions,
-    coinWallet,
-    coinTransactions,
+    creditWallet,
+    creditTransactions,
     notificationPreferences,
     notificationOutbox,
     notificationDeliveryLog,
@@ -395,13 +395,14 @@ export async function buildPersonalDataExport(input: {
       [input.userId],
     ),
     optionalRows(
-      `SELECT balance, weekly_allowance, week_started_at, updated_at
-         FROM coin_wallets WHERE user_id = $1::uuid`,
+      `SELECT balance, reserved_balance, weekly_grant_amount, next_grant_at, updated_at
+         FROM credit_wallets WHERE user_id = $1::uuid`,
       [input.userId],
     ),
     optionalRows(
-      `SELECT id::text, amount, balance_after, reason, created_at
-         FROM coin_transactions WHERE user_id = $1::uuid ORDER BY created_at, id`,
+      `SELECT id::text, amount, balance_after, reason, reference_type,
+              reference_id, metadata, created_at
+         FROM credit_transactions WHERE user_id = $1::uuid ORDER BY created_at, id`,
       [input.userId],
     ),
     optionalRows(
@@ -492,7 +493,7 @@ export async function buildPersonalDataExport(input: {
       },
     },
     subscription: subscriptions,
-    coins: { wallet: coinWallet[0] ?? null, transactions: coinTransactions },
+    credits: { wallet: creditWallet[0] ?? null, transactions: creditTransactions },
     notifications: {
       preferences: notificationPreferences,
       outbox: notificationOutbox,

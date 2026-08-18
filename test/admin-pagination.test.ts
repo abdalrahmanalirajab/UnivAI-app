@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   now: vi.fn(),
   getOffsetMs: vi.fn(),
   getAttendance: vi.fn(),
+  enqueueEmailNotification: vi.fn(),
 }));
 
 vi.mock("@/lib/session", () => ({ requireAdminApi: mocks.requireAdminApi }));
@@ -18,6 +19,9 @@ vi.mock("@/lib/clock", () => ({ now: mocks.now, getOffsetMs: mocks.getOffsetMs }
 vi.mock("@/lib/attendance", () => ({
   getAttendance: mocks.getAttendance,
   summarize: () => ({ onTimeCount: 0, lateCount: 0, absentCount: 0 }),
+}));
+vi.mock("@/lib/notification-outbox", () => ({
+  enqueueEmailNotification: mocks.enqueueEmailNotification,
 }));
 
 const ADMIN = {
@@ -32,6 +36,7 @@ beforeEach(() => {
   mocks.now.mockResolvedValue(new Date("2026-08-12T12:00:00.000Z"));
   mocks.getOffsetMs.mockResolvedValue(0);
   mocks.getAttendance.mockResolvedValue([]);
+  mocks.enqueueEmailNotification.mockResolvedValue({ queued: true });
 });
 
 describe("bounded admin learner access", () => {
@@ -85,7 +90,14 @@ describe("privacy request administration", () => {
   });
 
   it("updates and audit-logs a verified workflow decision atomically", async () => {
-    mocks.queryOne.mockResolvedValue({ id: "6a9a738f-0df7-4c96-a28d-e381ad8638c7" });
+    mocks.queryOne.mockResolvedValue({
+      id: "6a9a738f-0df7-4c96-a28d-e381ad8638c7",
+      user_id: "10000000-0000-4000-8000-000000000003",
+      request_type: "access",
+      status: "completed",
+      admin_note: "Export delivered to the verified learner.",
+      updated_at: "2026-08-12T12:00:00.000Z",
+    });
     const { PATCH } = await import("@/app/api/admin/privacy-requests/route");
     const response = await PATCH(
       new Request("http://localhost/api/admin/privacy-requests", {
@@ -111,5 +123,15 @@ describe("privacy request administration", () => {
       ADMIN.id,
       ADMIN.email,
     ]);
+    expect(mocks.enqueueEmailNotification).toHaveBeenCalledWith({
+      userId: "10000000-0000-4000-8000-000000000003",
+      eventId: "privacy-request:6a9a738f-0df7-4c96-a28d-e381ad8638c7:completed",
+      event: {
+        type: "privacy.request_resolved",
+        requestLabel: "personal-data access",
+        status: "completed",
+        outcome: "Export delivered to the verified learner.",
+      },
+    });
   });
 });

@@ -753,6 +753,71 @@ export async function listPendingFinalExamRetakes(
   }));
 }
 
+export async function listPendingFinalExamRetakePage(
+  studentId: string | undefined,
+  page: number,
+  pageSize: number,
+): Promise<{
+  requests: AdminRetakeRequest[];
+  pagination: { page: number; pageSize: number; total: number; pages: number };
+}> {
+  await ensureFinalExamRetakeSchema();
+  const count = await queryOne<{ total: string }>(
+    `SELECT COUNT(*)::text AS total
+       FROM final_exam_cases AS final_case
+      WHERE final_case.retake_requested_at IS NOT NULL
+        AND final_case.declined_at IS NULL
+        AND final_case.retake_exam_id IS NULL
+        AND final_case.finalized_at IS NULL
+        AND ($1::text IS NULL OR final_case.student_id = $1)`,
+    [studentId ?? null],
+  );
+  const total = Number(count?.total ?? 0);
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  const normalizedPage = Math.min(Math.max(1, page), pages);
+  const rows = await query<{
+    student_id: string;
+    student_name: string;
+    student_email: string;
+    curriculum_id: string;
+    retake_requested_at: Date;
+    retake_reason: string;
+    retake_available_at: Date;
+    retake_closes_at: Date;
+    primary_result: StoredFinalResult | null;
+  }>(
+    `SELECT final_case.student_id, learner.name AS student_name,
+            learner.email AS student_email, final_case.curriculum_id,
+            final_case.retake_requested_at, final_case.retake_reason,
+            final_case.retake_available_at, final_case.retake_closes_at,
+            final_case.primary_result
+       FROM final_exam_cases AS final_case
+       JOIN "user" AS learner ON learner."registrationNumber" = final_case.student_id
+      WHERE final_case.retake_requested_at IS NOT NULL
+        AND final_case.declined_at IS NULL
+        AND final_case.retake_exam_id IS NULL
+        AND final_case.finalized_at IS NULL
+        AND ($1::text IS NULL OR final_case.student_id = $1)
+      ORDER BY final_case.retake_requested_at ASC, final_case.curriculum_id ASC
+      LIMIT $2 OFFSET $3`,
+    [studentId ?? null, pageSize, (normalizedPage - 1) * pageSize],
+  );
+  return {
+    requests: rows.map((row) => ({
+      studentId: row.student_id,
+      studentName: row.student_name,
+      studentEmail: row.student_email,
+      curriculumId: row.curriculum_id,
+      requestedAt: row.retake_requested_at.toISOString(),
+      reason: row.retake_reason,
+      availableAt: row.retake_available_at.toISOString(),
+      closesAt: row.retake_closes_at.toISOString(),
+      provisionalResult: compactResult(row.primary_result),
+    })),
+    pagination: { page: normalizedPage, pageSize, total, pages },
+  };
+}
+
 /** Reconcile every case whose request or retake deadline has elapsed. */
 export async function reconcileDueFinalExamCases(referenceTime: Date): Promise<FinalizationOutcome[]> {
   await ensureFinalExamRetakeSchema();

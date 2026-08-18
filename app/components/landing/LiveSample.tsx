@@ -68,9 +68,7 @@ export default function LiveSample() {
 
                   <Paper
                     className="lecture-slide"
-                    data-generated-content="true"
-                    lang="en"
-                    dir="ltr"
+                    data-generated-content="true" dir="auto"
                   >
                     <Stack spacing={2}>
                       <Typography variant="overline" color="primary">

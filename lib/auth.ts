@@ -132,7 +132,7 @@ export const auth = betterAuth({
       // The RAG / LiveKit namespace key. Server-generated; client can't set it.
       registrationNumber: { type: "string", required: false, input: false },
       // This preference localizes application chrome only. Generated learning
-      // and assessment content stays in English.
+      // and assessment content stays in its authored language.
       uiLocale: { type: "string", required: false, input: true, defaultValue: "en" },
       // Signup assertions and current-version evidence. The create hook
       // overwrites versions/timestamps server-side and also writes immutable

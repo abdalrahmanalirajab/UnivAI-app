@@ -40,7 +40,7 @@ export default function LectureArchive({ deck, narration }: { deck: SlideDeck; n
       return;
     }
     const utterance = new SpeechSynthesisUtterance(narrationText);
-    utterance.lang = "en";
+    utterance.lang = /[\u0600-\u06ff]/u.test(narrationText) ? "ar-EG" : "en-US";
     utterance.rate = 1;
     utterance.onend = () => {
       if (index < deck.slides.length - 1) setIndex((value) => value + 1);

@@ -36,16 +36,16 @@ export const metadata: Metadata = {
     template: "%s | UnivAI",
   },
   description:
-    "A focused learning experience that helps learners build momentum and gives families greater confidence.",
+    "A structured learning experience that helps fresh graduates build career-ready skills quickly and in the right order.",
   applicationName: "UnivAI",
   icons: {
     icon: "/brand/univai-mark.svg",
   },
   keywords: [
     "learning platform",
-    "student progress",
-    "family learning",
-    "education",
+    "fresh graduate skills",
+    "career-ready learning",
+    "structured upskilling",
   ],
 };
 

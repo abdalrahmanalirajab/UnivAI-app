@@ -1,11 +1,11 @@
 import { getOnboardingState } from "@/lib/onboarding";
 import { getStartDestination } from "@/lib/onboarding-flow";
-import { requireUserApi } from "@/lib/session";
+import { requireStudentApi } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const gate = await requireUserApi();
+  const gate = await requireStudentApi();
   if (gate instanceof Response) return gate;
 
   const state = await getOnboardingState(gate);

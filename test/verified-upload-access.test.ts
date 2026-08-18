@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/session", () => ({
   requireUserApi: vi.fn(),
+  requireStudentApi: mocks.gate,
   requireVerifiedUserApi: mocks.gate,
 }));
 vi.mock("@/lib/db", () => ({ query: mocks.query, queryOne: mocks.queryOne }));

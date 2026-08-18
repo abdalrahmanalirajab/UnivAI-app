@@ -3,7 +3,7 @@ import { NextRequest } from "next/server";
 import { now } from "@/lib/clock";
 import {
   declineFinalExamRetake,
-  listPendingFinalExamRetakes,
+  listPendingFinalExamRetakePage,
 } from "@/lib/final-exam-retakes";
 import { requireAdminApi } from "@/lib/session";
 
@@ -21,8 +21,13 @@ export async function GET(request: NextRequest) {
   const supplied = request.nextUrl.searchParams.get("sid");
   const sid = supplied ? registrationNumber(supplied) : null;
   if (supplied && !sid) return Response.json({ error: "Choose a valid learner." }, { status: 400 });
+  const page = Number(request.nextUrl.searchParams.get("page") ?? "1");
+  const pageSize = Number(request.nextUrl.searchParams.get("pageSize") ?? "10");
+  if (!Number.isInteger(page) || page < 1 || page > 100_000 || !Number.isInteger(pageSize) || pageSize < 1 || pageSize > 50) {
+    return Response.json({ error: "Invalid pagination." }, { status: 400 });
+  }
   return Response.json(
-    { requests: await listPendingFinalExamRetakes(sid ?? undefined) },
+    await listPendingFinalExamRetakePage(sid ?? undefined, page, pageSize),
     { headers: { "Cache-Control": "private, no-store" } },
   );
 }
