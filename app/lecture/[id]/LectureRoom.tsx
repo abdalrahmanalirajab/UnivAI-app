@@ -36,6 +36,7 @@ import {
   shouldRecoverLivePresence,
 } from "@/lib/live-presence-client";
 import { LIVE_SPEECH_STATES, LIVE_STATES } from "@/lib/standalone-contracts";
+import { readJsonApiResponse } from "@/lib/api-response";
 
 /**
  * The live lecture room.
@@ -91,6 +92,15 @@ function isSpeechState(value: unknown): value is SpeechState {
 }
 
 type Props = { lectureId: string };
+
+type LectureTokenResponse = {
+  error?: string;
+  token?: string;
+  url?: string;
+  registrationNumber?: string;
+  lecture?: { week: number; title: string };
+  attendance?: { status: string; lateMinutes: number } | null;
+};
 
 export default function LectureRoom({ lectureId }: Props) {
   const [room] = useState(() => new Room({ adaptiveStream: true }));
@@ -209,13 +219,24 @@ export default function LectureRoom({ lectureId }: Props) {
       room.removeAllListeners();
       const tokenUrl = `/api/lecture/${lectureId}/token${isRetry ? "?restart=1" : ""}`;
       const res = await fetch(tokenUrl, { method: "POST" });
-      const data = await res.json();
+      const data = await readJsonApiResponse<LectureTokenResponse>(
+        res,
+        "The lecture service is restarting. Please try again.",
+      );
       if (!res.ok) throw new Error(data.error ?? "Could not join the lecture.");
+      if (
+        typeof data.token !== "string" ||
+        typeof data.url !== "string" ||
+        typeof data.registrationNumber !== "string" ||
+        !data.lecture
+      ) {
+        throw new Error("The lecture service returned an incomplete response. Please try again.");
+      }
 
       setWeek(data.lecture.week);
       setSid(data.registrationNumber);
       setTitle(data.lecture.title);
-      setAttendance(data.attendance);
+      setAttendance(data.attendance ?? null);
 
       room
         .on(RoomEvent.TrackSubscribed, (track: RemoteTrack) => {
