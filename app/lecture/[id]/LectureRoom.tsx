@@ -133,6 +133,7 @@ export default function LectureRoom({ lectureId }: Props) {
   const startupStartedAt = useRef(0);
   const startupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const turnTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handAckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const firstAudioReported = useRef(false);
   const startupComplete = useRef(false);
   const legacyAnswerSequence = useRef(0);
@@ -281,6 +282,11 @@ export default function LectureRoom({ lectureId }: Props) {
               });
             }
             if (message.type === "hand") {
+              if (handAckTimer.current) {
+                clearTimeout(handAckTimer.current);
+                handAckTimer.current = null;
+              }
+              if (message.state === "raised") setHand("raised");
               if (message.state === "acked") setHand("acked");
               if (message.state === "lowered") {
                 setHand("idle");
@@ -348,6 +354,7 @@ export default function LectureRoom({ lectureId }: Props) {
     return () => {
       if (startupTimer.current) clearTimeout(startupTimer.current);
       if (turnTimer.current) clearTimeout(turnTimer.current);
+      if (handAckTimer.current) clearTimeout(handAckTimer.current);
       reply({ type: "presence", state: "leaving" }).catch(() => undefined);
       room.disconnect();
     };
@@ -404,11 +411,24 @@ export default function LectureRoom({ lectureId }: Props) {
   }, [lastAnswer, lectureId]);
 
   async function raiseHand() {
+    if (handAckTimer.current) clearTimeout(handAckTimer.current);
     setHand("raised");
+    setVoiceFallback(null);
     try {
       await reply({ type: "raise_hand" });
-    } catch {
+      handAckTimer.current = setTimeout(() => {
+        setHand((current) => {
+          if (current !== "raised") return current;
+          setVoiceFallback(
+            "The lecturer did not acknowledge your raised hand. Check the live connection and try again.",
+          );
+          return "idle";
+        });
+        handAckTimer.current = null;
+      }, 5_000);
+    } catch (error) {
       setHand("idle");
+      throw error;
     }
   }
 

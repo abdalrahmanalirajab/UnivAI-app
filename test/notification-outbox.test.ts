@@ -106,11 +106,14 @@ describe("notification outbox", () => {
   });
 
   it("can queue a required retake decision inside its domain transaction", async () => {
-    const clientQuery = vi.fn(async (sql: string) => ({
-      rows: sql.includes('SELECT "uiLocale"')
-        ? [{ ui_locale: "en" }]
-        : [{ id: "decision-email", status: "pending" }],
-    }));
+    const clientQuery = vi.fn(async (sql: string, params?: unknown[]) => {
+      void params;
+      return {
+        rows: sql.includes('SELECT "uiLocale"')
+          ? [{ ui_locale: "en" }]
+          : [{ id: "decision-email", status: "pending" }],
+      };
+    });
     const client = { query: clientQuery } as unknown as PoolClient;
 
     await expect(

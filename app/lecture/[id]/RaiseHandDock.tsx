@@ -192,7 +192,7 @@ export default function RaiseHandDock({
   const [answerOpen, setAnswerOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [selectedCitation, setSelectedCitation] = useState<CitationV1 | null>(null);
-  const [waitingTooltipOpen, setWaitingTooltipOpen] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const latestAnswer = answers[answers.length - 1] ?? null;
   const phase = getRaiseHandControlPhase({
     agentState,
@@ -223,12 +223,6 @@ export default function RaiseHandDock({
     if (hand !== "idle" && agentState !== "answering") setAnswerOpen(false);
   }, [agentState, hand]);
 
-  useEffect(() => {
-    if (!waitingTooltipOpen) return;
-    const timer = window.setTimeout(() => setWaitingTooltipOpen(false), 2_400);
-    return () => window.clearTimeout(timer);
-  }, [waitingTooltipOpen]);
-
   const unavailable = !connected || micBlocked || agentState === "ended";
   const idleTooltip = !connected
     ? "Reconnect before raising your hand"
@@ -244,7 +238,16 @@ export default function RaiseHandDock({
 
   async function beginQuestion() {
     setAnswerOpen(false);
-    await onRaiseHand();
+    setActionError(null);
+    try {
+      await onRaiseHand();
+    } catch (error) {
+      setActionError(
+        error instanceof Error
+          ? error.message
+          : "The lecturer did not receive your raised hand. Try again.",
+      );
+    }
   }
 
   async function finishRecording() {
@@ -286,6 +289,7 @@ export default function RaiseHandDock({
     setPending("cancel");
     try {
       await onCancel();
+      setPending(null);
     } catch (error) {
       setPending(null);
       throw error;
@@ -312,7 +316,7 @@ export default function RaiseHandDock({
                       color="inherit"
                       disabled={unavailable}
                       aria-label={idleTooltip}
-                      onClick={() => void beginQuestion().catch(() => undefined)}
+                      onClick={() => void beginQuestion()}
                     >
                       <PanToolAltRounded />
                     </IconButton>
@@ -324,25 +328,23 @@ export default function RaiseHandDock({
 
           {phase === "waiting" ? (
             <Fade in timeout={180}>
-              <span className="raise-hand-round-content">
-                <Tooltip
-                  title="Wait for the lecturer to finish the current sentence"
-                  placement="left"
-                  open={waitingTooltipOpen}
-                  onOpen={() => setWaitingTooltipOpen(true)}
-                  onClose={() => setWaitingTooltipOpen(false)}
-                >
+              <Stack direction="row" spacing={1} className="raise-hand-busy-content align-center">
+                <CircularProgress size={20} color="inherit" />
+                <Typography variant="body2">
+                  Hand raised — finishing the current sentence
+                </Typography>
+                <Tooltip title="Lower hand" placement="top">
                   <IconButton
-                    className="raise-hand-round-button"
                     color="inherit"
-                    aria-label="Hand raised. Wait for the lecturer to finish the current sentence"
-                    aria-disabled="true"
-                    onClick={() => setWaitingTooltipOpen(true)}
+                    size="small"
+                    aria-label="Lower hand"
+                    disabled={pending !== null}
+                    onClick={() => void cancelQuestion().catch(() => undefined)}
                   >
-                    <MicOffRounded />
+                    <CloseRounded />
                   </IconButton>
                 </Tooltip>
-              </span>
+              </Stack>
             </Fade>
           ) : null}
 
@@ -478,6 +480,11 @@ export default function RaiseHandDock({
             </Fade>
           ) : null}
         </Paper>
+        {phase !== "review" && (actionError || problem) ? (
+          <Alert severity="warning" onClose={() => setActionError(null)}>
+            {actionError || problem}
+          </Alert>
+        ) : null}
       </div>
 
       <Popper

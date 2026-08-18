@@ -85,13 +85,25 @@ describe("raise-hand transforming control", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", {
-      name: "Hand raised. Wait for the lecturer to finish the current sentence",
-    }));
-    expect((await screen.findByRole("tooltip")).textContent).toContain(
-      "Wait for the lecturer to finish the current sentence",
-    );
+    expect(screen.getByText("Hand raised — finishing the current sentence")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Lower hand" }));
     expect(onToggleMute).not.toHaveBeenCalled();
+  });
+
+  it("shows a delivery error instead of silently returning to idle", async () => {
+    const user = userEvent.setup();
+    render(
+      <RaiseHandDock
+        {...props({
+          onRaiseHand: vi.fn(async () => {
+            throw new Error("The voice connection did not receive that action.");
+          }),
+        })}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Raise your hand" }));
+    expect(await screen.findByText("The voice connection did not receive that action.")).toBeTruthy();
   });
 
   it("offers both microphone and check controls to finish recording", async () => {
