@@ -61,6 +61,7 @@ import { POST } from "@/app/api/lecture/[id]/token/route";
 
 const VERIFIER = new TokenVerifier(mockEnv.LIVEKIT_API_KEY, mockEnv.LIVEKIT_API_SECRET);
 const listRoomsSpy = vi.spyOn(RoomServiceClient.prototype, "listRooms");
+const listParticipantsSpy = vi.spyOn(RoomServiceClient.prototype, "listParticipants");
 const createRoomSpy = vi.spyOn(RoomServiceClient.prototype, "createRoom");
 const deleteRoomSpy = vi.spyOn(RoomServiceClient.prototype, "deleteRoom");
 const updateRoomMetadataSpy = vi.spyOn(RoomServiceClient.prototype, "updateRoomMetadata");
@@ -198,6 +199,7 @@ describe("POST /api/lecture/[id]/token — personalized signed metadata", () => 
       segments: [{ slide: 1, text: "Grounded segment", citations: [{ page: 3 }] }],
     });
     listRoomsSpy.mockReset().mockResolvedValue([]);
+    listParticipantsSpy.mockReset().mockResolvedValue([{ kind: 4 }] as never);
     createRoomSpy.mockReset().mockResolvedValue({} as never);
     deleteRoomSpy.mockReset().mockResolvedValue(undefined);
     updateRoomMetadataSpy.mockReset().mockResolvedValue({} as never);
@@ -398,6 +400,18 @@ describe("POST /api/lecture/[id]/token — personalized signed metadata", () => 
     expect(response.status).toBe(200);
     expect(createRoomSpy).not.toHaveBeenCalled();
     expect(updateRoomMetadataSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("replaces an existing learner room that has no lecturer", async () => {
+    listRoomsSpy.mockResolvedValue([{}] as never);
+    listParticipantsSpy.mockResolvedValue([{ kind: 0 }] as never);
+
+    const response = await post();
+
+    expect(response.status).toBe(200);
+    expect(deleteRoomSpy).toHaveBeenCalledTimes(1);
+    expect(createRoomSpy).toHaveBeenCalledTimes(1);
+    expect(updateRoomMetadataSpy).not.toHaveBeenCalled();
   });
 
   it("replaces a stale learner room when the browser explicitly retries", async () => {

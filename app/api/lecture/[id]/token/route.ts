@@ -35,7 +35,12 @@ async function configureRoom(
     // room can never summon the lecturer: every browser retry just waits for
     // another 45 seconds. A user-initiated retry therefore replaces this
     // learner-scoped room, which creates a fresh LiveKit job.
-    if (restart) {
+    // A full page refresh resets the browser's retry counter, so also inspect
+    // the room itself. LiveKit's ParticipantInfo.Kind value for an agent is 4.
+    const hasLecturer = restart
+      ? false
+      : (await service.listParticipants(room)).some((participant) => participant.kind === 4);
+    if (restart || !hasLecturer) {
       await service.deleteRoom(room);
     } else {
       await service.updateRoomMetadata(room, serialized);
