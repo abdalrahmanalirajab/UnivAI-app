@@ -155,12 +155,23 @@ export default function LectureRoom({ lectureId }: Props) {
         setVoiceFallback(null);
       }
     } catch (publishError) {
-      if (message.type !== "presence") {
-        setVoiceFallback("The voice connection did not receive that action. Check your connection and try again.");
+      if (message.type === "presence") throw publishError;
+      const response = await fetch(`/api/lecture/${lectureId}/control`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(message),
+      }).catch(() => null);
+      if (response?.ok) {
+        if (message.type === "question" || message.type === "retry" || message.type === "cancel") {
+          setTranscript(null);
+          setVoiceFallback(null);
+        }
+        return;
       }
-      throw publishError;
+      const body = await response?.json().catch(() => null) as { error?: string } | null;
+      throw new Error(body?.error ?? "The lecturer is reconnecting. Try again shortly.");
     }
-  }, [room]);
+  }, [lectureId, room]);
 
   const muteMicrophone = useCallback(async () => {
     const track = micRef.current;
@@ -660,6 +671,7 @@ export default function LectureRoom({ lectureId }: Props) {
         onRetry={retrySpeech}
         onCancel={cancelQuestion}
         onSend={sendQuestion}
+        onDismissProblem={() => setVoiceFallback(null)}
         onAnswerRegenerated={(turn, output) => {
           setAnswerHistory((previous) => appendLiveAnswerTurn(previous, turn));
           setAnswerOutput(output);

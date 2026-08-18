@@ -200,6 +200,7 @@ export default function StandaloneLectureRoom({ lectureId }: { lectureId: number
         onRetry={retryQuestion}
         onCancel={cancelQuestion}
         onSend={sendQuestion}
+        onDismissProblem={() => undefined}
       />
     </Stack>
   );

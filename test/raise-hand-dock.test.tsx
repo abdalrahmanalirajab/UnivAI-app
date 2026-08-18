@@ -90,7 +90,7 @@ describe("raise-hand transforming control", () => {
     expect(onToggleMute).not.toHaveBeenCalled();
   });
 
-  it("shows a delivery error instead of silently returning to idle", async () => {
+  it("hides SDK details and shows a dismissible notice without moving the control", async () => {
     const user = userEvent.setup();
     render(
       <RaiseHandDock
@@ -103,7 +103,12 @@ describe("raise-hand transforming control", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "Raise your hand" }));
-    expect(await screen.findByText("The voice connection did not receive that action.")).toBeTruthy();
+    expect(await screen.findByText("The lecturer is reconnecting. Try again shortly.")).toBeTruthy();
+    expect(screen.queryByText("The voice connection did not receive that action.")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    await waitFor(() => {
+      expect(screen.queryByText("The lecturer is reconnecting. Try again shortly.")).toBeNull();
+    });
   });
 
   it("offers both microphone and check controls to finish recording", async () => {

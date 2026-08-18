@@ -187,7 +187,13 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     // the learner by name. Signed by LIVEKIT_API_SECRET inside the JWT.
     metadata: JSON.stringify(metadata),
   });
-  token.addGrant({ room, roomJoin: true, canPublish: true, canSubscribe: true });
+  token.addGrant({
+    room,
+    roomJoin: true,
+    canPublish: true,
+    canPublishData: true,
+    canSubscribe: true,
+  });
 
   return Response.json({
     token: await token.toJwt(),

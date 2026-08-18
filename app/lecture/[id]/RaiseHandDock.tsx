@@ -12,6 +12,7 @@ import IconButton from "@mui/material/IconButton";
 import Paper from "@mui/material/Paper";
 import Popper from "@mui/material/Popper";
 import Stack from "@mui/material/Stack";
+import Snackbar from "@mui/material/Snackbar";
 import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
@@ -88,6 +89,7 @@ type Props = {
   onRetry: () => Promise<void> | void;
   onCancel: () => Promise<void> | void;
   onSend: (question: string) => Promise<void> | void;
+  onDismissProblem?: () => void;
   onAnswerRegenerated?: (turn: LiveAnswerTurn, output: OutputVersion) => void;
 };
 
@@ -182,6 +184,7 @@ export default function RaiseHandDock({
   onRetry,
   onCancel,
   onSend,
+  onDismissProblem,
   onAnswerRegenerated,
 }: Props) {
   const announcedAnswerId = useRef<string | null>(null);
@@ -193,6 +196,7 @@ export default function RaiseHandDock({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [selectedCitation, setSelectedCitation] = useState<CitationV1 | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [dismissedProblem, setDismissedProblem] = useState<string | null>(null);
   const latestAnswer = answers[answers.length - 1] ?? null;
   const phase = getRaiseHandControlPhase({
     agentState,
@@ -202,6 +206,7 @@ export default function RaiseHandDock({
     finishing,
   });
   const level = useMicrophoneLevel(mic, phase === "recording");
+  const visibleProblem = problem && problem !== dismissedProblem ? problem : null;
 
   useEffect(() => {
     setText(transcript ?? "");
@@ -211,6 +216,10 @@ export default function RaiseHandDock({
   useEffect(() => {
     if (agentState !== "listening" || transcript !== null) setFinishing(false);
   }, [agentState, transcript]);
+
+  useEffect(() => {
+    if (!problem) setDismissedProblem(null);
+  }, [problem]);
 
   useEffect(() => {
     if (latestAnswer && announcedAnswerId.current !== latestAnswer.id) {
@@ -243,11 +252,17 @@ export default function RaiseHandDock({
       await onRaiseHand();
     } catch (error) {
       setActionError(
-        error instanceof Error
+        error instanceof Error && error.message.includes("reconnecting")
           ? error.message
-          : "The lecturer did not receive your raised hand. Try again.",
+          : "The lecturer is reconnecting. Try again shortly.",
       );
     }
+  }
+
+  function dismissNotice() {
+    setActionError(null);
+    if (problem) setDismissedProblem(problem);
+    onDismissProblem?.();
   }
 
   async function finishRecording() {
@@ -269,6 +284,11 @@ export default function RaiseHandDock({
       await onSend(question);
     } catch (error) {
       setPending(null);
+      setActionError(
+        error instanceof Error && /Credits|reconnecting/i.test(error.message)
+          ? error.message
+          : "Your question could not be sent. Try again shortly.",
+      );
       throw error;
     }
   }
@@ -278,9 +298,10 @@ export default function RaiseHandDock({
     setPending("retry");
     try {
       await onRetry();
-    } catch (error) {
+    } catch {
       setPending(null);
-      throw error;
+      setActionError("The microphone could not restart. Type your question instead.");
+      throw new Error("The microphone could not restart.");
     }
   }
 
@@ -290,9 +311,10 @@ export default function RaiseHandDock({
     try {
       await onCancel();
       setPending(null);
-    } catch (error) {
+    } catch {
       setPending(null);
-      throw error;
+      setActionError("The request could not be completed. Try again shortly.");
+      throw new Error("The request could not be completed.");
     }
   }
 
@@ -452,7 +474,9 @@ export default function RaiseHandDock({
                     }
                   }}
                 />
-                {problem && !speechDetail ? <Alert severity="warning">{problem}</Alert> : null}
+                {visibleProblem && !speechDetail ? (
+                  <Alert severity="warning" onClose={dismissNotice}>{visibleProblem}</Alert>
+                ) : null}
                 <Stack direction="row" spacing={1} className="spread-row align-center">
                   <Tooltip title="Try microphone again">
                     <span>
@@ -480,12 +504,18 @@ export default function RaiseHandDock({
             </Fade>
           ) : null}
         </Paper>
-        {phase !== "review" && (actionError || problem) ? (
-          <Alert severity="warning" onClose={() => setActionError(null)}>
-            {actionError || problem}
-          </Alert>
-        ) : null}
       </div>
+
+      <Snackbar
+        open={phase !== "review" && Boolean(actionError || visibleProblem)}
+        autoHideDuration={6_000}
+        anchorOrigin={{ vertical: "top", horizontal: "center" }}
+        onClose={dismissNotice}
+      >
+        <Alert severity="warning" variant="filled" onClose={dismissNotice}>
+          {actionError || visibleProblem}
+        </Alert>
+      </Snackbar>
 
       <Popper
         open={answerOpen && latestAnswer !== null}
