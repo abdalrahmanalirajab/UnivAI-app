@@ -242,7 +242,7 @@ describe("POST /api/lecture/[id]/token — personalized signed metadata", () => 
       course_id: "course-ai-101",
       plan_version: 3,
       week: 3,
-      lecture_id: "course-ai-101",
+      lecture_id: PUBLIC_LECTURE_ID,
       learner_id: MOHAMED.registrationNumber,
       nonce: metadata.nonce,
       display_name: "Mohamed Hany",

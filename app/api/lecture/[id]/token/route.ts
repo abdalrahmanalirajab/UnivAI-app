@@ -173,7 +173,11 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     course_id: script.lectureId,
     plan_version: programme.plan_version,
     week: lecture.week,
-    lecture_id: script.lectureId,
+    // Credit reservations are scoped to the public lecture route id. The
+    // artifact/course id above identifies generated content and is not the
+    // same UUID, so passing it here makes every valid raised-hand reservation
+    // look as if it belongs to another lecture in the Live worker.
+    lecture_id: lectureId,
     learner_id: sid,
     nonce: metadata.nonce,
     display_name: spokenName,
