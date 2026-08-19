@@ -38,6 +38,7 @@ import {
 import { LIVE_SPEECH_STATES, LIVE_STATES } from "@/lib/standalone-contracts";
 import { readJsonApiResponse } from "@/lib/api-response";
 import { ConnectionAttemptGate, HandAcknowledgement } from "@/lib/live-session-client";
+import { notifyCreditBalanceChanged } from "@/lib/credit-balance-client";
 
 /**
  * The live lecture room.
@@ -163,7 +164,7 @@ export default function LectureRoom({ lectureId }: Props) {
         // one must not leave the browser and lecturer disagreeing indefinitely.
         encoded.options,
       );
-      if (message.type === "question" || message.type === "retry" || message.type === "cancel") {
+      if (message.type === "retry" || message.type === "cancel") {
         setTranscript(null);
         setVoiceFallback(null);
       }
@@ -179,7 +180,7 @@ export default function LectureRoom({ lectureId }: Props) {
         body: JSON.stringify(message),
       }).catch(() => null);
       if (response?.ok) {
-        if (message.type === "question" || message.type === "retry" || message.type === "cancel") {
+        if (message.type === "retry" || message.type === "cancel") {
           setTranscript(null);
           setVoiceFallback(null);
         }
@@ -278,7 +279,11 @@ export default function LectureRoom({ lectureId }: Props) {
             if (message.type === "slide" && typeof message.n === "number") setSlide(message.n);
             if (message.type === "state" && isAgentState(message.state)) {
               setAgentState(message.state);
-              if (message.state === "answering") setSteps([]);
+              if (message.state === "answering") {
+                setSteps([]);
+                setTranscript(null);
+                setVoiceFallback(null);
+              }
               if (message.state === "listening") {
                 setVoiceFallback(null);
                 setSteps([]);
@@ -310,6 +315,7 @@ export default function LectureRoom({ lectureId }: Props) {
                 setAnswerHistory((previous) => appendLiveAnswerTurn(previous, turn));
               }
             }
+            if (message.type === "credit") notifyCreditBalanceChanged();
             if (message.type === "transcript") setTranscript(message.text ?? null);
             if (message.type === "speech" && isSpeechState(message.state)) {
               const detail = typeof message.detail === "string" ? message.detail : null;
@@ -576,6 +582,7 @@ export default function LectureRoom({ lectureId }: Props) {
     if (!response.ok || !body.reservation) {
       throw new Error(body.error ?? "Could not reserve 2 Credits for this question.");
     }
+    notifyCreditBalanceChanged();
     try {
       await reply({
         type: "question",
@@ -587,7 +594,7 @@ export default function LectureRoom({ lectureId }: Props) {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reservationId: body.reservation.id }),
-      }).catch(() => undefined);
+      }).then(() => notifyCreditBalanceChanged()).catch(() => undefined);
       throw error;
     }
   }

@@ -74,6 +74,10 @@ describe("membership details dialog", () => {
     const trigger = await screen.findByRole("button", {
       name: /Open membership and Credit details/,
     });
+    expect(trigger.textContent).toContain("3.5K Credits");
+    expect(trigger.getAttribute("aria-label")).toBe(
+      "Open membership and Credit details. 3,500 Credits available",
+    );
     await user.click(trigger);
 
     expect(await screen.findByRole("dialog", { name: /Membership/ })).toBeTruthy();

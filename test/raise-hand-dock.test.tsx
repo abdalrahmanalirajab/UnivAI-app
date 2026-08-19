@@ -72,7 +72,7 @@ describe("raise-hand transforming control", () => {
     expect(onRaiseHand).toHaveBeenCalledOnce();
   });
 
-  it("explains the waiting state on click without opening the microphone", async () => {
+  it("uses a compact waiting icon with an explanatory tooltip", async () => {
     const user = userEvent.setup();
     const onToggleMute = vi.fn();
     render(
@@ -85,8 +85,12 @@ describe("raise-hand transforming control", () => {
       />,
     );
 
-    expect(screen.getByText("Hand raised — finishing the current sentence")).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "Lower hand" }));
+    expect(screen.queryByText("Hand raised — finishing the current sentence")).toBeNull();
+    await user.hover(screen.getByRole("button", { name: "Hand raised. Lower hand" }));
+    expect((await screen.findByRole("tooltip")).textContent).toContain(
+      "Hand raised. The lecturer is finishing the current sentence. Click to lower your hand.",
+    );
+    await user.click(screen.getByRole("button", { name: "Hand raised. Lower hand" }));
     expect(onToggleMute).not.toHaveBeenCalled();
   });
 
@@ -150,6 +154,10 @@ describe("raise-hand transforming control", () => {
     await user.type(transcript, "Explain chaining simply");
     await user.click(screen.getByRole("button", { name: /Ask.*2 Credits/ }));
     expect(onSend).toHaveBeenCalledWith("Explain chaining simply");
+    expect((transcript as HTMLInputElement).value).toBe("Explain chaining simply");
+    expect(
+      (screen.getByRole("button", { name: "Sending…" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
   });
 
   it("shows a successful answer above the control and opens history on demand", async () => {
@@ -170,7 +178,9 @@ describe("raise-hand transforming control", () => {
     );
 
     expect(await screen.findByText("Chaining stores colliding keys together.")).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "Conversation (1)" }));
+    await user.click(screen.getByRole("button", {
+      name: "Open raise-hand conversation, 1 turn",
+    }));
     await waitFor(() => {
       expect(screen.getByLabelText("Raise-hand conversation")).toBeTruthy();
     });

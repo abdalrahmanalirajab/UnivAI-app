@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Alert from "@mui/material/Alert";
+import Badge from "@mui/material/Badge";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
@@ -321,6 +322,23 @@ export default function RaiseHandDock({
   return (
     <>
       <div className="raise-hand-dock">
+        {answers.length > 0 ? (
+          <Paper elevation={8} className="raise-hand-history-control">
+            <Tooltip title="Open raise-hand conversation" placement="left">
+              <IconButton
+                className="raise-hand-round-button"
+                color="inherit"
+                aria-label={`Open raise-hand conversation, ${answers.length} ${answers.length === 1 ? "turn" : "turns"}`}
+                onClick={() => setHistoryOpen(true)}
+              >
+                <Badge badgeContent={answers.length} max={99} color="secondary">
+                  <ForumRounded />
+                </Badge>
+              </IconButton>
+            </Tooltip>
+          </Paper>
+        ) : null}
+
         <Paper
           ref={setAnchorElement}
           elevation={10}
@@ -350,23 +368,22 @@ export default function RaiseHandDock({
 
           {phase === "waiting" ? (
             <Fade in timeout={180}>
-              <Stack direction="row" spacing={1} className="raise-hand-busy-content align-center">
-                <CircularProgress size={20} color="inherit" />
-                <Typography variant="body2">
-                  Hand raised — finishing the current sentence
-                </Typography>
-                <Tooltip title="Lower hand" placement="top">
+              <span className="raise-hand-round-content">
+                <Tooltip
+                  title="Hand raised. The lecturer is finishing the current sentence. Click to lower your hand."
+                  placement="left"
+                >
                   <IconButton
+                    className="raise-hand-round-button"
                     color="inherit"
-                    size="small"
-                    aria-label="Lower hand"
+                    aria-label="Hand raised. Lower hand"
                     disabled={pending !== null}
                     onClick={() => void cancelQuestion().catch(() => undefined)}
                   >
-                    <CloseRounded />
+                    <PanToolAltRounded />
                   </IconButton>
                 </Tooltip>
-              </Stack>
+              </span>
             </Fade>
           ) : null}
 
