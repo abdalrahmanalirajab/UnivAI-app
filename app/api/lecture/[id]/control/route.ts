@@ -8,7 +8,7 @@ import { requireLearningActionApi } from "@/lib/session";
 export const dynamic = "force-dynamic";
 
 type LiveControlMessage =
-  | { type: "raise_hand" }
+  | { type: "raise_hand"; request_id?: string }
   | { type: "mic"; muted: boolean }
   | { type: "retry" }
   | { type: "cancel" }
@@ -23,7 +23,15 @@ function liveKitHttpUrl(url: string): string {
 function validMessage(value: unknown): value is LiveControlMessage {
   if (!value || typeof value !== "object") return false;
   const message = value as Record<string, unknown>;
-  if (message.type === "raise_hand" || message.type === "retry" || message.type === "cancel") {
+  if (message.type === "raise_hand") {
+    return message.request_id === undefined || (
+      typeof message.request_id === "string" &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        message.request_id,
+      )
+    );
+  }
+  if (message.type === "retry" || message.type === "cancel") {
     return true;
   }
   if (message.type === "mic") return typeof message.muted === "boolean";

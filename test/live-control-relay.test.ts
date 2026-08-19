@@ -43,14 +43,24 @@ describe("live control relay", () => {
   });
 
   it("relays a raise-hand command when the browser data channel is unavailable", async () => {
-    const response = await request({ type: "raise_hand" });
+    const requestId = "22222222-2222-4222-8222-222222222222";
+    const response = await request({ type: "raise_hand", request_id: requestId });
 
     expect(response.status).toBe(200);
     expect(sendData).toHaveBeenCalledOnce();
     const [room, payload, kind] = sendData.mock.calls[0];
     expect(room).toBe("lecture-S-2026-000042-week-3");
     expect(kind).toBe(DataPacket_Kind.RELIABLE);
-    expect(JSON.parse(new TextDecoder().decode(payload))).toEqual({ type: "raise_hand" });
+    expect(JSON.parse(new TextDecoder().decode(payload))).toEqual({
+      type: "raise_hand",
+      request_id: requestId,
+    });
+  });
+
+  it("rejects malformed raised-hand request ids", async () => {
+    const response = await request({ type: "raise_hand", request_id: "not-a-request-id" });
+    expect(response.status).toBe(400);
+    expect(sendData).not.toHaveBeenCalled();
   });
 
   it("rejects untrusted control payloads", async () => {

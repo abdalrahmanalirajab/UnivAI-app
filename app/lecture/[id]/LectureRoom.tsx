@@ -37,6 +37,7 @@ import {
 } from "@/lib/live-presence-client";
 import { LIVE_SPEECH_STATES, LIVE_STATES } from "@/lib/standalone-contracts";
 import { readJsonApiResponse } from "@/lib/api-response";
+import { ConnectionAttemptGate, HandAcknowledgement } from "@/lib/live-session-client";
 
 /**
  * The live lecture room.
@@ -143,10 +144,11 @@ export default function LectureRoom({ lectureId }: Props) {
   const startupStartedAt = useRef(0);
   const startupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const turnTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const handAckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const firstAudioReported = useRef(false);
   const startupComplete = useRef(false);
-  const connectionAttempt = useRef(0);
+  const connectionGate = useRef(new ConnectionAttemptGate());
+  const connectionAbort = useRef<AbortController | null>(null);
+  const handAcknowledgement = useRef(new HandAcknowledgement());
   const legacyAnswerSequence = useRef(0);
   const micRef = useRef<LocalAudioTrack | null>(null);
   const [mic, setMic] = useState<LocalAudioTrack | null>(null);
@@ -166,7 +168,11 @@ export default function LectureRoom({ lectureId }: Props) {
         setVoiceFallback(null);
       }
     } catch (publishError) {
-      if (message.type === "presence") throw publishError;
+      // Presence and startup timing are session signals, not user controls.
+      // Relaying them through the control endpoint only creates noisy 400s.
+      if (message.type === "presence" || message.type === "startup_audio_playing") {
+        throw publishError;
+      }
       const response = await fetch(`/api/lecture/${lectureId}/control`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -193,19 +199,27 @@ export default function LectureRoom({ lectureId }: Props) {
     if (!alreadyMuted) await reply({ type: "mic", muted: true });
   }, [reply]);
 
-  const connect = useCallback(async () => {
-    const isRetry = connectionAttempt.current > 0;
-    connectionAttempt.current += 1;
+  const connect = useCallback(async (restart = false) => {
+    const attempt = connectionGate.current.begin();
+    const isCurrent = () => connectionGate.current.isCurrent(attempt);
+    connectionAbort.current?.abort();
+    const abortController = new AbortController();
+    connectionAbort.current = abortController;
     setError(null);
     startupStartedAt.current = performance.now();
     firstAudioReported.current = false;
     startupComplete.current = false;
     if (startupTimer.current) clearTimeout(startupTimer.current);
     startupTimer.current = setTimeout(() => {
-      setError("The lecturer did not start audio within 45 seconds. Please try again.");
+      if (isCurrent()) {
+        setError("The lecturer did not start audio within 45 seconds. Please try again.");
+      }
     }, 45_000);
     try {
-      if (isRetry) {
+      // Each attempt owns exactly one set of room callbacks. This also removes
+      // callbacks from an explicit retry before its disconnect event fires.
+      room.removeAllListeners();
+      if (restart) {
         // The old room may have been created while the worker was draining. A
         // LiveKit room gets its automatic lecturer dispatch only once, so a
         // retry must leave it before the server replaces it with a fresh room.
@@ -215,14 +229,16 @@ export default function LectureRoom({ lectureId }: Props) {
         setMic(null);
         setConnected(false);
       }
-      // Avoid stacking another copy of every event callback after a retry.
-      room.removeAllListeners();
-      const tokenUrl = `/api/lecture/${lectureId}/token${isRetry ? "?restart=1" : ""}`;
-      const res = await fetch(tokenUrl, { method: "POST" });
+      const tokenUrl = `/api/lecture/${lectureId}/token${restart ? "?restart=1" : ""}`;
+      const res = await fetch(tokenUrl, {
+        method: "POST",
+        signal: abortController.signal,
+      });
       const data = await readJsonApiResponse<LectureTokenResponse>(
         res,
         "The lecture service is restarting. Please try again.",
       );
+      if (!isCurrent()) return;
       if (!res.ok) throw new Error(data.error ?? "Could not join the lecture.");
       if (
         typeof data.token !== "string" ||
@@ -240,6 +256,7 @@ export default function LectureRoom({ lectureId }: Props) {
 
       room
         .on(RoomEvent.TrackSubscribed, (track: RemoteTrack) => {
+          if (!isCurrent()) return;
           // The Lecturer's synthesized voice.
           if (track.kind === Track.Kind.Audio && audioRef.current) {
             track.attach(audioRef.current);
@@ -250,9 +267,11 @@ export default function LectureRoom({ lectureId }: Props) {
           }
         })
         .on(RoomEvent.AudioPlaybackStatusChanged, () => {
+          if (!isCurrent()) return;
           setAudioBlocked(!room.canPlaybackAudio);
         })
         .on(RoomEvent.DataReceived, (payload: Uint8Array) => {
+          if (!isCurrent()) return;
           // Slide sync and status, sent by the voice worker.
           try {
             const message = JSON.parse(new TextDecoder().decode(payload));
@@ -330,13 +349,24 @@ export default function LectureRoom({ lectureId }: Props) {
               });
             }
             if (message.type === "hand") {
-              if (handAckTimer.current) {
-                clearTimeout(handAckTimer.current);
-                handAckTimer.current = null;
+              const requestId = typeof message.request_id === "string"
+                ? message.request_id
+                : undefined;
+              if (message.state === "rejected") {
+                if (!handAcknowledgement.current.finish(requestId)) return;
+                setHand("idle");
+                setVoiceFallback(
+                  typeof message.detail === "string"
+                    ? message.detail
+                    : "Finish the current question before raising your hand again.",
+                );
+                return;
               }
+              if (!handAcknowledgement.current.acknowledge(requestId)) return;
               if (message.state === "raised") setHand("raised");
               if (message.state === "acked") setHand("acked");
               if (message.state === "lowered") {
+                handAcknowledgement.current.finish(requestId);
                 setHand("idle");
                 setSpeechState(null);
                 setSpeechDetail(null);
@@ -352,19 +382,23 @@ export default function LectureRoom({ lectureId }: Props) {
           }
         })
         .on(RoomEvent.Reconnecting, () => {
+          if (!isCurrent()) return;
           setConnected(false);
           setAgentState("waiting");
         })
         .on(RoomEvent.Reconnected, () => {
+          if (!isCurrent()) return;
           setConnected(true);
           reply({ type: "presence", state: "present" }).catch(() => undefined);
         })
         .on(RoomEvent.Disconnected, () => {
+          if (!isCurrent()) return;
           setConnected(false);
           setAgentState((current) => (current === "ended" ? current : "waiting"));
         });
 
       await room.connect(data.url, data.token);
+      if (!isCurrent()) return;
       // Participant events provide the fast path. This explicit ready signal
       // also lets the worker detect a half-open browser connection by heartbeat.
       await reply({ type: "presence", state: "present" }).catch(() => undefined);
@@ -383,6 +417,10 @@ export default function LectureRoom({ lectureId }: Props) {
           noiseSuppression: true,
           autoGainControl: true,
         });
+        if (!isCurrent()) {
+          track.stop();
+          return;
+        }
         micRef.current = track;
         setMic(track);
         await track.mute();          // published, but silent until the student unmutes
@@ -392,21 +430,34 @@ export default function LectureRoom({ lectureId }: Props) {
       }
 
     } catch (err) {
+      if (!isCurrent() || (err instanceof DOMException && err.name === "AbortError")) return;
       if (startupTimer.current) clearTimeout(startupTimer.current);
       setError(err instanceof Error ? err.message : "Could not join the lecture.");
     }
   }, [lectureId, muteMicrophone, reply, room]);
 
   useEffect(() => {
-    connect();
+    const gate = connectionGate.current;
+    const handAck = handAcknowledgement.current;
+    // React development mode intentionally mounts, cleans up, and mounts an
+    // effect again. Deferring the join by one task lets that probe cancel the
+    // first setup before it can request a token or touch the shared Room.
+    const mountConnect = window.setTimeout(() => void connect(false), 0);
     return () => {
+      window.clearTimeout(mountConnect);
+      gate.cancel();
+      connectionAbort.current?.abort();
+      connectionAbort.current = null;
       if (startupTimer.current) clearTimeout(startupTimer.current);
       if (turnTimer.current) clearTimeout(turnTimer.current);
-      if (handAckTimer.current) clearTimeout(handAckTimer.current);
-      reply({ type: "presence", state: "leaving" }).catch(() => undefined);
-      room.disconnect();
+      handAck.cancel();
+      room.removeAllListeners();
+      const track = micRef.current;
+      micRef.current = null;
+      track?.stop();
+      void room.disconnect();
     };
-  }, [connect, reply, room]);
+  }, [connect, room]);
 
   useEffect(() => {
     if (!connected || agentState === "ended") return;
@@ -459,22 +510,24 @@ export default function LectureRoom({ lectureId }: Props) {
   }, [lastAnswer, lectureId]);
 
   async function raiseHand() {
-    if (handAckTimer.current) clearTimeout(handAckTimer.current);
+    const requestId = crypto.randomUUID();
     setHand("raised");
     setVoiceFallback(null);
+    // Arm this before publishing. The worker can acknowledge quickly enough
+    // for its data message to arrive before publishData's promise resolves.
+    handAcknowledgement.current.start(requestId, () => {
+      setHand((current) => {
+        if (current !== "raised") return current;
+        setVoiceFallback(
+          "The raised-hand request did not reach the lecturer. Try again.",
+        );
+        return "idle";
+      });
+    }, 8_000);
     try {
-      await reply({ type: "raise_hand" });
-      handAckTimer.current = setTimeout(() => {
-        setHand((current) => {
-          if (current !== "raised") return current;
-          setVoiceFallback(
-            "The lecturer did not acknowledge your raised hand. Check the live connection and try again.",
-          );
-          return "idle";
-        });
-        handAckTimer.current = null;
-      }, 5_000);
+      await reply({ type: "raise_hand", request_id: requestId });
     } catch (error) {
+      handAcknowledgement.current.finish(requestId);
       setHand("idle");
       throw error;
     }
@@ -549,7 +602,7 @@ export default function LectureRoom({ lectureId }: Props) {
           <AlertTitle>Could not join</AlertTitle>
           {error}
         </Alert>
-        <Button variant="contained" onClick={connect}>
+        <Button variant="contained" onClick={() => void connect(true)}>
           Try again
         </Button>
       </Stack>
