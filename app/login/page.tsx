@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import AuthCard from "@/app/components/AuthCard";
 import { FormError } from "@/app/components/FormAlerts";
@@ -14,6 +14,7 @@ import { validateEmail } from "@/lib/validators";
 import { authClient } from "@/lib/auth-client";
 import { copyFor, type AuthError } from "@/lib/errorMap";
 import GoogleSignInButton from "@/app/components/GoogleSignInButton";
+import { googleOAuthCallbackErrorMessage } from "@/lib/oauth-callback-error";
 
 function LoginForm() {
   const [email, setEmail] = useState("");
@@ -26,6 +27,11 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectParam = searchParams.get("redirect");
+
+  useEffect(() => {
+    const callbackError = googleOAuthCallbackErrorMessage(searchParams.get("error"));
+    if (callbackError) setTopLevelError(callbackError);
+  }, [searchParams]);
 
   const canSubmit = validateEmail(email) === null && password.length > 0 && !submitting;
 

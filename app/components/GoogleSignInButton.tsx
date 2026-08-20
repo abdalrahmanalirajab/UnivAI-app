@@ -2,11 +2,30 @@
 
 import { useState } from "react";
 import { authClient } from "@/lib/auth-client";
+import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
+import Dialog from "@mui/material/Dialog";
+import DialogActions from "@mui/material/DialogActions";
+import DialogContent from "@mui/material/DialogContent";
+import DialogTitle from "@mui/material/DialogTitle";
 import Divider from "@mui/material/Divider";
 import Stack from "@mui/material/Stack";
 import SvgIcon from "@mui/material/SvgIcon";
-import type { UiLocale } from "@/lib/legal-documents";
+import Typography from "@mui/material/Typography";
+import LegalAcceptanceFields from "@/app/components/LegalAcceptanceFields";
+import {
+  CURRENT_EULA_VERSION,
+  CURRENT_PRIVACY_NOTICE_VERSION,
+  type UiLocale,
+} from "@/lib/legal-documents";
+
+export type LegalAttestation = {
+  eulaAccepted: boolean;
+  eulaVersion: string;
+  privacyNoticeAcknowledged: boolean;
+  privacyNoticeVersion: string;
+  uiLocale: UiLocale;
+};
 
 /**
  * "Continue with Google" for /login and /register — the same control on both,
@@ -45,48 +64,58 @@ function GoogleMark() {
 
 export default function GoogleSignInButton({
   callbackURL = "/start",
+  errorCallbackURL = "/login",
   onError,
+  onLegalRequired,
   disabled = false,
   legalAttestation,
 }: {
   /** Where Google returns the learner once the account exists. */
   callbackURL?: string;
+  /** Friendly page used when Google returns an OAuth callback error. */
+  errorCallbackURL?: string;
   onError?: (message: string) => void;
+  onLegalRequired?: () => void;
   disabled?: boolean;
   /** Required on the registration page; login keeps this absent. */
-  legalAttestation?: {
-    eulaAccepted: boolean;
-    eulaVersion: string;
-    privacyNoticeAcknowledged: boolean;
-    privacyNoticeVersion: string;
-    uiLocale: UiLocale;
-  };
+  legalAttestation?: LegalAttestation;
 }) {
   const [submitting, setSubmitting] = useState(false);
+  const [consentOpen, setConsentOpen] = useState(false);
+  const [consentLocale, setConsentLocale] = useState<UiLocale>("en");
+  const [agreedToEula, setAgreedToEula] = useState(false);
+  const [acknowledgedPrivacy, setAcknowledgedPrivacy] = useState(false);
+  const [showConsentErrors, setShowConsentErrors] = useState(false);
+  const [consentError, setConsentError] = useState<string | null>(null);
 
-  const start = async () => {
+  const continueWithGoogle = async (attestation: LegalAttestation) => {
+    if (!attestation.eulaAccepted || !attestation.privacyNoticeAcknowledged) {
+      onLegalRequired?.();
+      onError?.("Both agreements are required to continue with Google.");
+      return;
+    }
     setSubmitting(true);
     onError?.("");
+    setConsentError(null);
     try {
-      if (legalAttestation) {
-        const acceptance = await fetch("/api/legal/preaccept", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(legalAttestation),
-        });
-        const acceptanceBody = await acceptance.json().catch(() => null);
-        if (!acceptance.ok) {
-          onError?.(
-            acceptanceBody?.error ??
-              "Accept the EULA and acknowledge the Privacy Notice before continuing with Google.",
-          );
-          setSubmitting(false);
-          return;
-        }
+      const acceptance = await fetch("/api/legal/preaccept", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(attestation),
+      });
+      const acceptanceBody = await acceptance.json().catch(() => null);
+      if (!acceptance.ok) {
+        const message = acceptanceBody?.error ??
+          "Accept the EULA and acknowledge the Privacy Notice before continuing with Google.";
+        setConsentError(message);
+        onError?.(message);
+        setSubmitting(false);
+        return;
       }
       const { error } = await authClient.signIn.social({
         provider: "google",
         callbackURL,
+        errorCallbackURL,
       });
       // A successful call navigates away to Google, so reaching this line with
       // an error means the redirect never started. The common cause by far is a
@@ -94,15 +123,45 @@ export default function GoogleSignInButton({
       // unknown provider — say that plainly rather than "try again", which
       // would never work.
       if (error) {
-        onError?.(
-          "Google sign-in is not available on this server. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET, then restart it.",
-        );
+        const message =
+          "Google sign-in is not available on this server. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET, then restart it.";
+        setConsentError(message);
+        onError?.(message);
         setSubmitting(false);
       }
     } catch {
-      onError?.("Google sign-in could not be started. Please try again.");
+      const message = "Google sign-in could not be started. Please try again.";
+      setConsentError(message);
+      onError?.(message);
       setSubmitting(false);
     }
+  };
+
+  const start = () => {
+    if (legalAttestation) {
+      void continueWithGoogle(legalAttestation);
+      return;
+    }
+    setConsentLocale(document.documentElement.lang === "ar" ? "ar" : "en");
+    setShowConsentErrors(false);
+    setConsentError(null);
+    setConsentOpen(true);
+  };
+
+  const acceptAndContinue = () => {
+    if (!agreedToEula || !acknowledgedPrivacy) {
+      setShowConsentErrors(true);
+      const targetId = !agreedToEula ? "google-consent-eula" : "google-consent-privacy";
+      window.requestAnimationFrame(() => document.getElementById(targetId)?.focus());
+      return;
+    }
+    void continueWithGoogle({
+      eulaAccepted: true,
+      eulaVersion: CURRENT_EULA_VERSION,
+      privacyNoticeAcknowledged: true,
+      privacyNoticeVersion: CURRENT_PRIVACY_NOTICE_VERSION,
+      uiLocale: consentLocale,
+    });
   };
 
   return (
@@ -117,6 +176,49 @@ export default function GoogleSignInButton({
       >
         Continue with Google
       </Button>
+      <Dialog
+        open={consentOpen}
+        onClose={() => {
+          if (!submitting) setConsentOpen(false);
+        }}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>Continue safely with Google</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={2}>
+            <Typography>
+              Google sign-in creates a UnivAI account when this email is new. Both agreements are
+              required before that account can be created.
+            </Typography>
+            {consentError ? <Alert severity="error">{consentError}</Alert> : null}
+            <LegalAcceptanceFields
+              idPrefix="google-consent"
+              uiLocale={consentLocale}
+              agreedToEula={agreedToEula}
+              acknowledgedPrivacy={acknowledgedPrivacy}
+              showErrors={showConsentErrors}
+              disabled={submitting}
+              onEulaChange={(checked) => {
+                setAgreedToEula(checked);
+                if (checked && acknowledgedPrivacy) setShowConsentErrors(false);
+              }}
+              onPrivacyChange={(checked) => {
+                setAcknowledgedPrivacy(checked);
+                if (checked && agreedToEula) setShowConsentErrors(false);
+              }}
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConsentOpen(false)} disabled={submitting}>
+            Cancel
+          </Button>
+          <Button variant="contained" onClick={acceptAndContinue} disabled={submitting}>
+            Accept and continue with Google
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Stack>
   );
 }

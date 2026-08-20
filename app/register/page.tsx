@@ -2,16 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import AuthCard from "@/app/components/AuthCard";
 import { FormError } from "@/app/components/FormAlerts";
 import TextField from "@mui/material/TextField";
 import PasswordField from "@/app/components/PasswordField";
-import FormControlLabel from "@mui/material/FormControlLabel";
-import Checkbox from "@mui/material/Checkbox";
 import Button from "@mui/material/Button";
 import MenuItem from "@mui/material/MenuItem";
-import Typography from "@mui/material/Typography";
 import {
   validateName,
   validateEmail,
@@ -25,11 +21,13 @@ import {
 import { authClient } from "@/lib/auth-client";
 import { copyFor, type AuthError } from "@/lib/errorMap";
 import GoogleSignInButton from "@/app/components/GoogleSignInButton";
+import LegalAcceptanceFields from "@/app/components/LegalAcceptanceFields";
 import {
   CURRENT_EULA_VERSION,
   CURRENT_PRIVACY_NOTICE_VERSION,
   type UiLocale,
 } from "@/lib/legal-documents";
+import { googleOAuthCallbackErrorMessage } from "@/lib/oauth-callback-error";
 
 export default function RegisterPage() {
   const [name, setName] = useState("");
@@ -48,6 +46,7 @@ export default function RegisterPage() {
   const [uiLocale, setUiLocale] = useState<UiLocale>("en");
   const [agreedToEula, setAgreedToEula] = useState(false);
   const [acknowledgedPrivacy, setAcknowledgedPrivacy] = useState(false);
+  const [showLegalErrors, setShowLegalErrors] = useState(false);
   const [topLevelError, setTopLevelError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [localeSaving, setLocaleSaving] = useState(false);
@@ -56,18 +55,20 @@ export default function RegisterPage() {
 
   useEffect(() => {
     setUiLocale(document.documentElement.lang === "ar" ? "ar" : "en");
+    const callbackError = googleOAuthCallbackErrorMessage(
+      new URLSearchParams(window.location.search).get("error"),
+    );
+    if (callbackError) setTopLevelError(callbackError);
   }, []);
 
-  const canSubmit =
-    agreedToEula &&
-    acknowledgedPrivacy &&
-    !submitting &&
-    !localeSaving &&
-    validateName(name) === null &&
-    validateEmail(email) === null &&
-    validatePhone(phone) === null &&
-    validatePassword(password) === null &&
-    validateConfirmPassword(password, confirmPassword) === null;
+  const focusMissingLegalAcceptance = () => {
+    const targetId = !agreedToEula ? "registration-eula" : "registration-privacy";
+    window.requestAnimationFrame(() => {
+      const target = document.getElementById(targetId);
+      target?.scrollIntoView?.({ block: "center" });
+      target?.focus();
+    });
+  };
 
   const handleLocaleChange = async (nextLocale: UiLocale) => {
     const previousLocale = uiLocale;
@@ -103,21 +104,40 @@ export default function RegisterPage() {
   };
 
   const handleSubmit = async () => {
-    setSubmitting(true);
     setTopLevelError(null);
-    setNameError(null);
-    setEmailError(null);
-    setPhoneError(null);
-    setPasswordError(null);
-    setConfirmPasswordError(null);
 
     const normalizedName = normalizeName(name);
     const invalidName = validateName(normalizedName);
-    if (invalidName) {
-      setNameError(invalidName);
-      setSubmitting(false);
+    const invalidEmail = validateEmail(email);
+    const invalidPhone = validatePhone(phone);
+    const invalidPassword = validatePassword(password);
+    const invalidConfirmation = validateConfirmPassword(password, confirmPassword);
+    const missingLegalAcceptance = !agreedToEula || !acknowledgedPrivacy;
+    setNameError(invalidName);
+    setEmailError(invalidEmail);
+    setPhoneError(invalidPhone);
+    setPasswordError(invalidPassword);
+    setConfirmPasswordError(invalidConfirmation);
+    setShowLegalErrors(missingLegalAcceptance);
+
+    if (
+      invalidName ||
+      invalidEmail ||
+      invalidPhone ||
+      invalidPassword ||
+      invalidConfirmation ||
+      missingLegalAcceptance
+    ) {
+      setTopLevelError(
+        missingLegalAcceptance
+          ? "Accept both required agreements before creating your account."
+          : "Review the highlighted registration fields.",
+      );
+      if (missingLegalAcceptance) focusMissingLegalAcceptance();
       return;
     }
+
+    setSubmitting(true);
 
     const legalAttestation = {
       eulaAccepted: true as const,
@@ -255,54 +275,44 @@ export default function RegisterPage() {
         error={confirmPasswordError !== null}
         helperText={confirmPasswordError}
       />
-      <FormControlLabel
-        control={
-          <Checkbox
-            checked={agreedToEula}
-            onChange={(e) => setAgreedToEula(e.target.checked)}
-            required
-          />
-        }
-        label={
-          <Typography variant="body2">
-            I have read and accept the current{" "}
-            <Link href={`/legal/eula?lang=${uiLocale}`} target="_blank">
-              EULA and Content Use Agreement
-            </Link>
-            . I confirm that I am responsible for having the right to use materials I upload.
-          </Typography>
-        }
+      <LegalAcceptanceFields
+        idPrefix="registration"
+        uiLocale={uiLocale}
+        agreedToEula={agreedToEula}
+        acknowledgedPrivacy={acknowledgedPrivacy}
+        showErrors={showLegalErrors}
+        disabled={submitting || localeSaving}
+        onEulaChange={(checked) => {
+          setAgreedToEula(checked);
+          if (checked && acknowledgedPrivacy) setShowLegalErrors(false);
+        }}
+        onPrivacyChange={(checked) => {
+          setAcknowledgedPrivacy(checked);
+          if (checked && agreedToEula) setShowLegalErrors(false);
+        }}
       />
-      <FormControlLabel
-        control={
-          <Checkbox
-            checked={acknowledgedPrivacy}
-            onChange={(e) => setAcknowledgedPrivacy(e.target.checked)}
-            required
-          />
-        }
-        label={
-          <Typography variant="body2">
-            I have read the{" "}
-            <Link href={`/legal/privacy?lang=${uiLocale}`} target="_blank">
-              Privacy Notice
-            </Link>
-            . This acknowledgment is separate from optional consent choices.
-          </Typography>
-        }
-      />
-      <Button variant="contained" fullWidth disabled={!canSubmit} onClick={handleSubmit}>
+      <Button
+        variant="contained"
+        fullWidth
+        disabled={submitting || localeSaving}
+        onClick={handleSubmit}
+      >
         Create account
       </Button>
       <GoogleSignInButton
         callbackURL="/start"
-        disabled={!agreedToEula || !acknowledgedPrivacy || submitting || localeSaving}
+        errorCallbackURL="/register"
+        disabled={submitting || localeSaving}
         legalAttestation={{
           eulaAccepted: agreedToEula,
           eulaVersion: CURRENT_EULA_VERSION,
           privacyNoticeAcknowledged: acknowledgedPrivacy,
           privacyNoticeVersion: CURRENT_PRIVACY_NOTICE_VERSION,
           uiLocale,
+        }}
+        onLegalRequired={() => {
+          setShowLegalErrors(true);
+          focusMissingLegalAcceptance();
         }}
         onError={(message) => setTopLevelError(message || null)}
       />
