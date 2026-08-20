@@ -385,7 +385,7 @@ export default function AdminPage() {
             University control room
           </Typography>
           <Typography color="text.secondary">
-            Inspect one learner at a time. Global controls are isolated in System.
+            Inspect one learner at a time. Global controls have dedicated administration areas.
           </Typography>
         </Stack>
         <Button
@@ -496,6 +496,7 @@ export default function AdminPage() {
           <Tab label="Overview" />
           <Tab label="Course" disabled={!selectedSid} />
           <Tab label="Records" disabled={!selectedSid} />
+          <Tab label="Virtual clock" />
           <Tab label="System" />
         </Tabs>
       </Paper>
@@ -910,8 +911,6 @@ export default function AdminPage() {
 
       {tab === 3 ? (
         <Stack spacing={3}>
-          <AdminFeedbackReports selectedRegistrationNumber={selectedSid || undefined} />
-          <AdminNotificationMonitor selectedRegistrationNumber={selectedSid || undefined} />
           <Card>
             <CardContent>
               <Stack spacing={2.5}>
@@ -974,7 +973,13 @@ export default function AdminPage() {
               </Stack>
             </CardContent>
           </Card>
+        </Stack>
+      ) : null}
 
+      {tab === 4 ? (
+        <Stack spacing={3}>
+          <AdminFeedbackReports selectedRegistrationNumber={selectedSid || undefined} />
+          <AdminNotificationMonitor selectedRegistrationNumber={selectedSid || undefined} />
           <Card>
             <CardContent>
               <Stack spacing={2}>

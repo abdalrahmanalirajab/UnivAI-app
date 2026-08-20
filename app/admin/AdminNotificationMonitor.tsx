@@ -82,6 +82,10 @@ export default function AdminNotificationMonitor({
     if (!selectedRegistrationNumber && scope === "selected") setScope("all");
   }, [scope, selectedRegistrationNumber]);
 
+  useEffect(() => {
+    setPage(1);
+  }, [selectedRegistrationNumber]);
+
   const load = useCallback(async () => {
     abortRef.current?.abort();
     const controller = new AbortController();
@@ -274,6 +278,8 @@ export default function AdminNotificationMonitor({
                 page={Math.max(0, data.pagination.page - 1)}
                 rowsPerPage={data.pagination.pageSize}
                 rowsPerPageOptions={[10, 25, 50]}
+                showFirstButton
+                showLastButton
                 onPageChange={(_event, nextPage) => setPage(nextPage + 1)}
                 onRowsPerPageChange={(event) => {
                   setPageSize(Number(event.target.value));
