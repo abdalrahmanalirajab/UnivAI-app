@@ -325,6 +325,11 @@ describe("PayPal subscription routes", () => {
       planCode: "supporter",
       paymentId: "ORDER-DEMO",
     });
+    expect(mocks.enqueueNotification).toHaveBeenCalledWith({
+      userId: USER.id,
+      eventId: "paypal-demo:ORDER-DEMO:activated",
+      event: { type: "billing.subscription_activated", planName: "Supporter" },
+    });
   });
 
   it("revokes a local Sandbox membership without calling PayPal cancellation", async () => {

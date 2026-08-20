@@ -5,6 +5,7 @@ import {
   PayPalRequestError,
 } from "@/lib/paypal";
 import { enforceUserRateLimit } from "@/lib/rate-limits";
+import { enqueueEmailNotification } from "@/lib/notification-outbox";
 import { requireVerifiedUserApi } from "@/lib/session";
 import { getSubscriptionPlan } from "@/lib/subscription-plans";
 import {
@@ -73,6 +74,16 @@ export async function POST(request: Request) {
     userId: gate.id,
     planCode,
     paymentId: body.orderId,
+  });
+  await enqueueEmailNotification({
+    userId: gate.id,
+    eventId: `paypal-demo:${body.orderId}:activated`,
+    event: {
+      type: "billing.subscription_activated",
+      planName: subscription.planName,
+    },
+  }).catch(() => {
+    console.error("[notifications] could not queue demo subscription activation email");
   });
   return Response.json({ active: true, captureBypassed, subscription });
 }
