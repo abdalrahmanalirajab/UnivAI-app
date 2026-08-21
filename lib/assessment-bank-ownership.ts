@@ -32,6 +32,26 @@ export class AssessmentBankOwnershipError extends Error {
   }
 }
 
+export function isGeneratedLearnerQuizBankReady(input: {
+  sid: string;
+  week: number;
+  sourceBookId: number;
+  payload: GeneratedLearnerQuizBank | null;
+}): input is typeof input & { payload: GeneratedLearnerQuizBank } {
+  const { sid, week, sourceBookId, payload } = input;
+  return Boolean(
+    payload &&
+      payload.schema_version === LEARNER_BANK_SCHEMA_VERSION &&
+      payload.owner_student_id === sid &&
+      payload.owner_book_id === sourceBookId &&
+      payload.week === week &&
+      typeof payload.generation_id === "string" &&
+      payload.generation_id.trim() &&
+      Array.isArray(payload.questions) &&
+      payload.questions.length > 0,
+  );
+}
+
 /** Validate Postgres ownership before any generated questions enter Mongo. */
 export function buildLearnerQuestionBankDocument(input: {
   scope: LearnerBankScope;
@@ -42,16 +62,12 @@ export function buildLearnerQuestionBankDocument(input: {
   updatedAt?: Date;
 }) {
   const { scope, chapter, payload, sourceBookId, sourceArtifactId } = input;
-  if (
-    payload.schema_version !== LEARNER_BANK_SCHEMA_VERSION ||
-    payload.owner_student_id !== scope.sid ||
-    payload.owner_book_id !== sourceBookId ||
-    payload.week !== chapter.week ||
-    typeof payload.generation_id !== "string" ||
-    !payload.generation_id.trim() ||
-    !Array.isArray(payload.questions) ||
-    payload.questions.length === 0
-  ) {
+  if (!isGeneratedLearnerQuizBankReady({
+    sid: scope.sid,
+    week: chapter.week,
+    sourceBookId,
+    payload,
+  })) {
     throw new AssessmentBankOwnershipError(
       `Week ${chapter.week} assessment bank is not owned by ${scope.sid}; regenerate its quizzes.`,
     );

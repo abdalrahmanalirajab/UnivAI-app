@@ -1,5 +1,6 @@
 import { query } from "./db";
-import { ensureExamWorld } from "./exams";
+import { ensureExamWorld, learnerAssessmentBanksReady } from "./exams";
+import { AssessmentBankOwnershipError } from "./assessment-bank-ownership";
 import { finalExamWindowAt } from "./final-exam-policy";
 import {
   ensureFinalExamCase,
@@ -27,6 +28,9 @@ export async function ensureAndReconcileScheduledFinals(
 
   for (const learner of learners) {
     try {
+      // Timetable rows are created before generation finishes. A partial build
+      // must not be mistaken for a final-ready course.
+      if (!(await learnerAssessmentBanksReady(learner.student_id))) continue;
       const lectures = await getLectures(learner.student_id);
       const window = finalExamWindowAt(
         referenceTime,
@@ -40,6 +44,9 @@ export async function ensureAndReconcileScheduledFinals(
         window,
       });
     } catch (error) {
+      // A generation failure can race the readiness check. It is not a final
+      // scheduler failure; the next dispatch will retry after generation.
+      if (error instanceof AssessmentBankOwnershipError) continue;
       console.error(`[finals] could not prepare policy case for ${learner.student_id}:`, error);
     }
   }

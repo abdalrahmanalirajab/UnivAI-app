@@ -10,6 +10,7 @@ import { readGeneratedSemesterPlan } from "./semester-plan";
 import {
   AssessmentBankOwnershipError,
   buildLearnerQuestionBankDocument,
+  isGeneratedLearnerQuizBankReady,
   type GeneratedLearnerQuizBank,
 } from "./assessment-bank-ownership";
 
@@ -821,8 +822,45 @@ export async function syncQuestionBanks(link: ExamLink): Promise<void> {
   }
 }
 
+/** Do not create any Mongo exam records until every scheduled week has a
+ * learner-owned Postgres assessment bank. Generation can leave timetable rows
+ * in place after a partial failure, so the timetable alone is not readiness. */
+export async function learnerAssessmentBanksReady(sid: string): Promise<boolean> {
+  const sources = await query<{
+    week: number;
+    book_id: number | null;
+    artifact_id: string | null;
+    artifact_student_id: string | null;
+    quiz_payload: GeneratedLearnerQuizBank | null;
+  }>(
+    `SELECT l.week, la.book_id, la.artifact_id::text AS artifact_id,
+            la.student_id AS artifact_student_id, la.quiz_payload
+       FROM lectures l
+       LEFT JOIN lecture_artifacts la ON la.artifact_id = l.lecture_artifact_id
+      WHERE l.student_id = $1
+      ORDER BY l.week`,
+    [sid],
+  );
+  return sources.length > 0 && sources.every((source) =>
+    source.artifact_id !== null &&
+    source.book_id !== null &&
+    source.artifact_student_id === sid &&
+    isGeneratedLearnerQuizBankReady({
+      sid,
+      week: source.week,
+      sourceBookId: source.book_id,
+      payload: source.quiz_payload,
+    })
+  );
+}
+
 /** Seed one student's exam world once, and remember the ids (keyed by sid). */
 export async function ensureExamWorld(sid: string, studentName: string): Promise<ExamLink> {
+  if (!(await learnerAssessmentBanksReady(sid))) {
+    throw new AssessmentBankOwnershipError(
+      "The learner assessment banks are not complete yet.",
+    );
+  }
   const db = await mongo();
   const links = db.collection("univai_link");
 
