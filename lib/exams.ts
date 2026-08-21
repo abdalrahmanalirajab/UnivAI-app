@@ -30,6 +30,7 @@ import {
 export const QUIZ_WINDOW_MS = 24 * HOUR_MS;
 export const MID_WINDOW_MS = 3 * DAY_MS;
 export const EXAM_SYSTEM_URL = env.EXAM_SYSTEM_URL;
+const MIDTERM_CREATION_RETRY_MS = 5 * 60_000;
 
 export function finalExamAvailabilityAt(
   virtualNow: Date,
@@ -47,7 +48,14 @@ export async function getFinalExamAvailability(
   return finalExamAvailabilityAt(virtualNow, lectures.map((lecture) => lecture.endsAt));
 }
 
-const globalForMongo = globalThis as unknown as { univaiMongo?: MongoClient };
+const globalForMongo = globalThis as unknown as {
+  univaiMongo?: MongoClient;
+  univaiMidtermCreations?: Map<string, Promise<void>>;
+  univaiMidtermRetryAfter?: Map<string, number>;
+};
+
+const midtermCreations = globalForMongo.univaiMidtermCreations ??= new Map();
+const midtermRetryAfter = globalForMongo.univaiMidtermRetryAfter ??= new Map();
 
 async function mongo(): Promise<Db> {
   if (!globalForMongo.univaiMongo) {
@@ -333,6 +341,50 @@ export function isResultWebhookAssessmentType(
   value: unknown,
 ): value is ResultWebhookAssessmentType {
   return value === "quiz" || value === "mid" || value === "final";
+}
+
+async function requestMidtermCreation(input: {
+  key: string;
+  sid: string;
+  curriculumId: string;
+  studentId: string;
+  title: string;
+  chapterIds: string[];
+}): Promise<void> {
+  if ((midtermRetryAfter.get(input.key) ?? 0) > Date.now()) return;
+
+  let creation = midtermCreations.get(input.key);
+  if (!creation) {
+    creation = (async () => {
+      const response = await fetch(`${EXAM_SYSTEM_URL}/api/exams/mid`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          curriculum_id: input.curriculumId,
+          student_id: input.studentId,
+          student_sid: input.sid,
+          title: input.title,
+          chapter_ids: input.chapterIds,
+          passing_mark: 5,
+        }),
+      }).catch(() => null);
+
+      if (response?.ok) {
+        midtermRetryAfter.delete(input.key);
+        return;
+      }
+
+      midtermRetryAfter.set(input.key, Date.now() + MIDTERM_CREATION_RETRY_MS);
+      const detail = response
+        ? (await response.text().catch(() => "")).slice(0, 300)
+        : "exam service unavailable";
+      console.error(`[exams] midterm preparation failed for ${input.sid}; retrying later: ${detail}`);
+    })().finally(() => {
+      midtermCreations.delete(input.key);
+    });
+    midtermCreations.set(input.key, creation);
+  }
+  await creation;
 }
 
 export type ResultWebhook = {
@@ -884,23 +936,36 @@ export async function ensureExamWorld(sid: string, studentName: string): Promise
     const chapterIds = chapters
       .filter((chapter) => chapter.week >= planned.startWeek && chapter.week <= planned.afterWeek)
       .map((chapter) => chapter.chapter_id);
-    const createMidRes = await fetch(`${EXAM_SYSTEM_URL}/api/exams/mid`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        curriculum_id: curriculum._id.toString(),
-        student_id: student._id.toString(),
-        student_sid: sid,
-        title: planned.title,
-        chapter_ids: chapterIds,
-        passing_mark: 5,
-      }),
-    }).catch(() => null);
-    if (!createMidRes?.ok) continue;
-    const midExam = await db.collection("exams").findOne(
-      { student_id: student._id, type: "mid", title: planned.title },
+    const examFilter = {
+      student_id: student._id,
+      curriculum_id: curriculum._id,
+      type: "mid",
+      title: planned.title,
+    };
+    let midExam = await db.collection("exams").findOne(
+      examFilter,
       { sort: { _id: -1 } },
     );
+    const boundChapterCount = midExam
+      ? await db.collection("examchapters").countDocuments({
+          exam_id: midExam._id,
+          chapter_id: { $in: chapterIds.map((chapterId) => new ObjectId(chapterId)) },
+        })
+      : 0;
+    if (!midExam || boundChapterCount !== chapterIds.length) {
+      await requestMidtermCreation({
+        key: `${sid}:${curriculum._id}:${planned.number}`,
+        sid,
+        curriculumId: curriculum._id.toString(),
+        studentId: student._id.toString(),
+        title: planned.title,
+        chapterIds,
+      });
+      midExam = await db.collection("exams").findOne(
+        examFilter,
+        { sort: { _id: -1 } },
+      );
+    }
     if (midExam) {
       midterms.push({
         number: planned.number,
