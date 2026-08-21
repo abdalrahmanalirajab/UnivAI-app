@@ -34,9 +34,15 @@ type FeedbackAction =
 export default function OutputFeedback({
   target = null,
   onRegenerated,
+  allowRegenerate = true,
+  initialFeedbackSent = false,
+  onFeedbackSent,
 }: {
   target?: AiOutputTarget | null;
   onRegenerated?: (turn: LiveAnswerTurn, output: OutputVersion) => void;
+  allowRegenerate?: boolean;
+  initialFeedbackSent?: boolean;
+  onFeedbackSent?: () => void;
 }) {
   const reportLabelId = useId();
   const available = Boolean(
@@ -45,7 +51,7 @@ export default function OutputFeedback({
   const targetKey = target
     ? `${target.targetType}:${target.targetId}:${target.targetVersion}:${target.traceId}`
     : "unavailable";
-  const [feedbackSent, setFeedbackSent] = useState(false);
+  const [feedbackSent, setFeedbackSent] = useState(initialFeedbackSent);
   const [reportOpen, setReportOpen] = useState(false);
   const [reportReason, setReportReason] = useState<AiOutputReportReason | "">("");
   const [reportDetail, setReportDetail] = useState("");
@@ -55,13 +61,13 @@ export default function OutputFeedback({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setFeedbackSent(false);
+    setFeedbackSent(initialFeedbackSent);
     setReportOpen(false);
     setReportReason("");
     setReportDetail("");
     setMessage(null);
     setError(null);
-  }, [targetKey]);
+  }, [initialFeedbackSent, targetKey]);
 
   async function post(action: FeedbackAction) {
     if (!target) throw new Error("This output cannot be identified yet.");
@@ -87,6 +93,7 @@ export default function OutputFeedback({
     try {
       await post({ action: "like", liked: true });
       setFeedbackSent(true);
+      onFeedbackSent?.();
       setMessage("Thanks — you liked this output.");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not save like.");
@@ -106,8 +113,9 @@ export default function OutputFeedback({
         detail: reportDetail.trim() || null,
       });
       setFeedbackSent(true);
+      onFeedbackSent?.();
       setReportOpen(false);
-      setMessage("Report submitted for review.");
+      setMessage("Thank you — your report was submitted for review.");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not submit report.");
     } finally {
@@ -116,7 +124,7 @@ export default function OutputFeedback({
   }
 
   const regenerationAnswerId =
-    target?.targetType === "raise_hand_answer" && /^\d+$/.test(target.targetId)
+    allowRegenerate && target?.targetType === "raise_hand_answer" && /^\d+$/.test(target.targetId)
       ? Number(target.targetId)
       : null;
 

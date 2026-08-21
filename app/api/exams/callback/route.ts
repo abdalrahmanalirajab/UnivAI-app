@@ -93,11 +93,20 @@ export async function POST(request: NextRequest) {
 
   const flagged =
     Boolean(payload.report?.flagged) || payload.integrity_status === "invalidated";
-  const feedback = payload.passed
-    ? "Passed."
-    : payload.integrity_status === "invalidated"
-      ? "Invalidated by proctoring."
-      : "Below the pass mark.";
+  const storedReport = {
+    ...(payload.report ?? {}),
+    integrity_status: payload.integrity_status,
+  };
+  const penaltyApplied =
+    payload.integrity_status !== "invalidated" &&
+    payload.report.integrity_penalty_applied === true;
+  const feedback = payload.integrity_status === "invalidated"
+    ? "Invalidated by proctoring."
+    : penaltyApplied
+      ? "Integrity flag applied; the recorded score is half the original score, rounded up."
+      : payload.passed
+        ? "Passed."
+        : "Below the pass mark.";
 
   const isFinal = payload.type === "final";
   // Review/invalidated callbacks never create the course's final grade.
@@ -133,7 +142,7 @@ export async function POST(request: NextRequest) {
         takenAt,
         payload.exam_id,
         flagged,
-        JSON.stringify(payload.report ?? {}),
+        JSON.stringify(storedReport),
       ]
     );
   }
@@ -187,7 +196,7 @@ export async function POST(request: NextRequest) {
       });
     }
   } else if (
-    !flagged &&
+    payload.integrity_status !== "invalidated" &&
     payload.mark !== null &&
     payload.mark !== undefined &&
     (payload.grading_status === "auto_graded" || payload.grading_status === "graded")

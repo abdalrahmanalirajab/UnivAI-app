@@ -130,14 +130,18 @@ type GradeRow = {
   score: string;
   max_score: string;
   flagged: boolean;
-  report?: { absent?: boolean } | null;
+  report?: { absent?: boolean; integrity_status?: "clean" | "invalidated" } | null;
 };
 
 function assessmentPercentage(rows: GradeRow[], expectedCount: number): number {
   if (expectedCount <= 0) return 0;
   const earnedRatios = rows.reduce((sum, row) => {
     const maximum = Number(row.max_score);
-    if (row.flagged || maximum <= 0) return sum;
+    if (
+      maximum <= 0 ||
+      row.report?.integrity_status === "invalidated" ||
+      (row.flagged && row.report?.integrity_status !== "clean")
+    ) return sum;
     return sum + Math.min(1, Math.max(0, Number(row.score) / maximum));
   }, 0);
   return round2((Math.min(expectedCount, earnedRatios) / expectedCount) * 100);
@@ -264,7 +268,7 @@ export async function upsertCourseTranscript(
       [registrationNumber],
     ),
     query<GradeRow>(
-      `SELECT kind, week, score, max_score, flagged FROM grades
+      `SELECT kind, week, score, max_score, flagged, report FROM grades
         WHERE student_id = $1 AND kind IN ('quiz', 'midterm')`,
       [registrationNumber],
     ),

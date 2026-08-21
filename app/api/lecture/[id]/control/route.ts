@@ -4,6 +4,7 @@ import { DataPacket_Kind, RoomServiceClient } from "livekit-server-sdk";
 import { queryOne } from "@/lib/db";
 import { env } from "@/lib/env";
 import { requireLearningActionApi } from "@/lib/session";
+import { isDemoMediaTransport } from "@/lib/live-session-transport";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +50,7 @@ export async function POST(
   request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
+  if (isDemoMediaTransport()) return new Response(null, { status: 404 });
   const gate = await requireLearningActionApi();
   if (gate instanceof Response) return gate;
 

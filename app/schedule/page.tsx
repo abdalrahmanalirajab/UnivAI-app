@@ -30,9 +30,7 @@ import TableRow from "@mui/material/TableRow";
 import ExpandMoreRounded from "@mui/icons-material/ExpandMoreRounded";
 import Link from "next/link";
 import {
-  formatCountdown,
   formatDateTime,
-  formatLateness,
   formatRelative,
   useVirtualClock,
 } from "@/lib/time";
@@ -109,13 +107,12 @@ const ATTENDANCE_COLOR: Record<string, "success" | "warning" | "error" | "defaul
 /** The one line that tells you what to do about this lecture right now. */
 function urgency(lecture: Lecture, now: Date | null): string {
   if (!now) return "";
-  const ms = (iso: string) => new Date(iso).getTime() - now.getTime();
 
   if (lecture.makeup?.state === "ready") {
     return "One-time make-up approved — start whenever you are ready.";
   }
   if (lecture.makeup?.state === "expired") {
-    return "The one-time make-up closed before its first join.";
+    return "The one-time make-up lecture is no longer available.";
   }
   if (lecture.makeup?.state === "completed") {
     return "You finished your one-time make-up lecture.";
@@ -123,10 +120,6 @@ function urgency(lecture: Lecture, now: Date | null): string {
   if (lecture.makeup?.state === "active") {
     if (lecture.attendance?.inProgress && !lecture.attendance.isConnected) {
       return "The lecturer is waiting for you to resume.";
-    }
-    if (!lecture.attendance?.joinedAt && lecture.makeup.firstJoinCutoffAt) {
-      const toCutoff = ms(lecture.makeup.firstJoinCutoffAt);
-      if (toCutoff > 0) return `Confirming your start — doors close in ${formatCountdown(toCutoff)}`;
     }
     return "Your make-up lecture is in progress.";
   }
@@ -137,12 +130,20 @@ function urgency(lecture: Lecture, now: Date | null): string {
     if (lecture.attendance?.inProgress && !lecture.attendance.isConnected) {
       return "The lecturer is waiting for you to rejoin.";
     }
-    const toCutoff = ms(lecture.joinCutoffAt);
-    if (toCutoff > 0) return `Doors close in ${formatCountdown(toCutoff)}`;
-    return "The doors have closed for this lecture.";
+    return lecture.joinable ? "Available now." : "No longer available to join.";
   }
 
-  return `Ended ${formatRelative(lecture.endsAt, now)}`;
+  return "Lecture ended.";
+}
+
+function attendanceIsVisible(lecture: Lecture, now: Date | null): boolean {
+  return lecture.completed || Boolean(now && now.getTime() >= new Date(lecture.endsAt).getTime());
+}
+
+function attendanceLabel(status: string): string {
+  if (status === "partially_attended") return "Partially attended";
+  if (status === "attended") return "Attended";
+  return "Absent";
 }
 
 export default function SchedulePage() {
@@ -424,18 +425,14 @@ export default function SchedulePage() {
                       <Chip size="small" color="primary" variant="outlined" label="slides open" />
                     </Grid>
                   ) : null}
-                  {lecture.attendance && (!lecture.makeup || lecture.attendance.joinedAt) ? (
+                  {lecture.attendance &&
+                  (!lecture.makeup || lecture.attendance.joinedAt) &&
+                  attendanceIsVisible(lecture, now) ? (
                     <Grid>
                       <Chip
                         size="small"
-                        color={lecture.makeup?.state === "active"
-                          ? "primary"
-                          : ATTENDANCE_COLOR[lecture.attendance.attendanceStatus] ?? "default"}
-                        label={
-                          `${lecture.makeup?.state === "active"
-                            ? "in progress"
-                            : lecture.attendance.attendanceStatus.replaceAll("_", " ")} · ${lecture.attendance.attendancePercentage}%`
-                        }
+                        color={ATTENDANCE_COLOR[lecture.attendance.attendanceStatus] ?? "default"}
+                        label={attendanceLabel(lecture.attendance.attendanceStatus)}
                       />
                     </Grid>
                   ) : null}
@@ -456,26 +453,47 @@ export default function SchedulePage() {
                   (record): record is Section =>
                     isSection(record) && record.week === lecture.week
                 )
-                .map((section) => (
-                  <ListItemButton key={section.id} component={Link} href={`/section/${section.id}`}>
-                    <ListItemText
-                      primary={
-                        <span data-generated-content="true" dir="auto">
-                          Section — {section.title}
-                        </span>
-                      }
-                      secondary={`${formatDateTime(section.startsAt)} · ${section.durationMinutes} min · fixed weekly section time`}
-                    />
-                    <Grid container spacing={1}>
-                      <Grid>
-                        <Chip size="small" color="secondary" variant="outlined" label="section" />
+                .map((section) => {
+                  const sectionOpen = Boolean(
+                    now && now.getTime() >= new Date(section.startsAt).getTime(),
+                  );
+                  const content = (
+                    <>
+                      <ListItemText
+                        primary={
+                          <span data-generated-content="true" dir="auto">
+                            Section — {section.title}
+                          </span>
+                        }
+                        secondary={sectionOpen
+                          ? `${formatDateTime(section.startsAt)} · ${section.durationMinutes} min · open now`
+                          : `${formatDateTime(section.startsAt)} · opens ${now ? formatRelative(section.startsAt, now) : "soon"}`}
+                      />
+                      <Grid container spacing={1}>
+                        <Grid>
+                          <Chip
+                            size="small"
+                            color={sectionOpen ? "secondary" : "default"}
+                            variant="outlined"
+                            label={sectionOpen ? "section open" : "section locked"}
+                          />
+                        </Grid>
+                        <Grid>
+                          <Chip size="small" variant="outlined" label={section.kind} />
+                        </Grid>
                       </Grid>
-                      <Grid>
-                        <Chip size="small" variant="outlined" label={section.kind} />
-                      </Grid>
-                    </Grid>
-                  </ListItemButton>
-                ))}
+                    </>
+                  );
+                  return sectionOpen ? (
+                    <ListItemButton key={section.id} component={Link} href={`/section/${section.id}`}>
+                      {content}
+                    </ListItemButton>
+                  ) : (
+                    <ListItemButton key={section.id} disabled>
+                      {content}
+                    </ListItemButton>
+                  );
+                })}
             </Fragment>
           ))}
           </List>
@@ -522,12 +540,6 @@ export default function SchedulePage() {
                 <Grid>
                   <Chip variant="outlined" label={`${selected.slides} slides`} />
                 </Grid>
-                {!selected.makeup || selected.makeup.state === "active" ? <Grid>
-                  <Chip
-                    variant="outlined"
-                    label={`${selected.makeup ? "first join closes" : "doors close"} ${formatDateTime(selected.joinCutoffAt)}`}
-                  />
-                </Grid> : null}
               </Grid>
 
               {selected.blockedMessage ? (
@@ -551,35 +563,24 @@ export default function SchedulePage() {
                 ) : selected.makeup?.state === "active" && !selected.attendance?.joinedAt ? (
                   <Alert severity="info">
                     <AlertTitle>Your make-up has started</AlertTitle>
-                    Join now. The normal first-entry window is counting from your confirmation
-                    time, and the lecture will continue automatically after you connect.
+                    Join now and the lecture will continue automatically after you connect.
                   </Alert>
                 ) : selected.makeup?.state === "expired" ? (
                   <Alert severity="warning">
                     <AlertTitle>Make-up closed</AlertTitle>
-                    The first-entry window ended after you confirmed without joining. This
-                    one-time access cannot be restarted.
+                    This one-time lecture is no longer available.
                   </Alert>
-                ) : selected.attendance?.joinedAt ? (
-                  <Stack spacing={0.5}>
-                    <Typography variant="body1">
-                      {selected.attendance.status === "late"
-                        ? `You joined ${formatLateness(selected.attendance.lateMinutes)}, at ${formatDateTime(selected.attendance.joinedAt)}.`
-                        : `You joined on time, at ${formatDateTime(selected.attendance.joinedAt)}.`}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {selected.attendance.attendancePercentage}% of lecture content · {selected.attendance.attendedLectureMinutes} attended minutes · {selected.attendance.disconnectCount} disconnect(s)
-                    </Typography>
-                  </Stack>
                 ) : selected.makeup?.state === "completed" ? (
                   <Typography variant="body1">
                     This make-up lecture is finished and cannot be replayed.
                   </Typography>
-                ) : selected.state === "done" ? (
-                  <Typography variant="body1">You never joined this lecture.</Typography>
+                ) : attendanceIsVisible(selected, now) ? (
+                  <Typography variant="body1">
+                    {attendanceLabel(selected.attendance?.attendanceStatus ?? "absent")}
+                  </Typography>
                 ) : (
                   <Typography variant="body1" color="text.secondary">
-                    Nothing recorded yet.
+                    Attendance will appear after the lecture ends.
                   </Typography>
                 )}
               </Stack>
@@ -589,6 +590,7 @@ export default function SchedulePage() {
         <DialogActions>
           <Button onClick={() => setSelected(null)}>Close</Button>
           {selected?.attendance?.attendanceStatus === "absent" &&
+          attendanceIsVisible(selected, now) &&
           !selected.makeup ? (
             <Button
               color="warning"

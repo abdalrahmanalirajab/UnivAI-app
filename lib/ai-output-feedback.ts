@@ -223,6 +223,23 @@ export async function submitAiOutputFeedback(
     canonical.targetVersion,
     canonical.traceId,
   ];
+  const existing = await query<{ submitted: boolean }>(
+    `SELECT (
+       EXISTS (
+         SELECT 1 FROM ai_output_reactions
+          WHERE student_id = $1 AND target_type = $2
+            AND target_id = $3 AND target_version = $4
+       ) OR EXISTS (
+         SELECT 1 FROM ai_output_reports
+          WHERE student_id = $1 AND target_type = $2
+            AND target_id = $3 AND target_version = $4
+       )
+     ) AS submitted`,
+    values.slice(0, 4),
+  );
+  if (existing[0]?.submitted) {
+    return { ok: false, status: 409, error: "Feedback was already submitted for this output." };
+  }
   if (input.action === "like") {
     const reaction = await queryOne<Record<string, unknown>>(
       `INSERT INTO ai_output_reactions

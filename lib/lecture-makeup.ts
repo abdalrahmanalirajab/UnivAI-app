@@ -3,6 +3,7 @@ import "server-only";
 import { now, MINUTE_MS } from "./clock";
 import { query } from "./db";
 import { scriptDurationMinutes, type DurationBearingScript } from "./lecture-duration";
+import { lectureJoinBlockReason } from "./lectures";
 
 export type LectureMakeupState = "ready" | "active" | "completed" | "expired";
 
@@ -25,6 +26,9 @@ type MakeupRow = {
   makeup_started_at: Date | null;
   joined_at: Date | null;
   completed_at: Date | null;
+  is_connected: boolean | null;
+  presence_last_seen_at: Date | null;
+  last_disconnected_at: Date | null;
   script_payload: DurationBearingScript;
 };
 
@@ -40,8 +44,33 @@ function mapMakeup(row: MakeupRow, virtualNow: Date): LectureMakeupAccess {
 
   let state: LectureMakeupState = "ready";
   if (row.completed_at) state = "completed";
-  else if (startedAt && row.joined_at) state = "active";
-  else if (firstJoinCutoffAt && virtualNow > firstJoinCutoffAt) state = "expired";
+  else if (startedAt && row.joined_at && firstJoinCutoffAt && endsAt) {
+    const lastSeenAt = row.presence_last_seen_at
+      ? new Date(row.presence_last_seen_at)
+      : null;
+    const activelyConnected = Boolean(
+      row.is_connected && lastSeenAt &&
+      Math.abs(virtualNow.getTime() - lastSeenAt.getTime()) <= 15_000,
+    );
+    const recordedDisconnect = row.last_disconnected_at
+      ? new Date(row.last_disconnected_at)
+      : null;
+    const lastDisconnectedAt = activelyConnected
+      ? null
+      : recordedDisconnect && lastSeenAt
+        ? new Date(Math.max(recordedDisconnect.getTime(), lastSeenAt.getTime()))
+        : recordedDisconnect ?? lastSeenAt;
+    state = lectureJoinBlockReason({
+      completed: false,
+      previouslyAdmitted: true,
+      virtualNow,
+      startsAt: startedAt,
+      cutoffAt: firstJoinCutoffAt,
+      endsAt,
+      lastDisconnectedAt,
+    }) === null ? "active" : "expired";
+  }
+  else if (firstJoinCutoffAt && virtualNow >= firstJoinCutoffAt) state = "expired";
   else if (startedAt) state = "active";
 
   return {
@@ -71,6 +100,9 @@ export async function getApprovedLectureMakeups(
               item.makeup_started_at,
               attendance.joined_at,
               attendance.completed_at,
+              attendance.is_connected,
+              attendance.presence_last_seen_at,
+              attendance.last_disconnected_at,
               artifact.script_payload
          FROM absence_case_items AS item
          JOIN absence_cases AS absence_case

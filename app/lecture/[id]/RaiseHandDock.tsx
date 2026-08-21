@@ -25,11 +25,10 @@ import MicRounded from "@mui/icons-material/MicRounded";
 import PanToolAltRounded from "@mui/icons-material/PanToolAltRounded";
 import ReplayRounded from "@mui/icons-material/ReplayRounded";
 import SendRounded from "@mui/icons-material/SendRounded";
-import type { LocalAudioTrack } from "livekit-client";
-
 import CitationBubble from "@/app/components/CitationBubble";
 import OutputFeedback from "@/app/components/OutputFeedback";
 import SourcePanel from "@/app/components/SourcePanel";
+import type { AiOutputTarget } from "@/lib/ai-output-feedback-types";
 import type { OutputVersion } from "@/lib/feedback";
 import type { LiveAnswerTurn } from "@/lib/live-conversation";
 import { LIVE_SPEECH_STATES, LIVE_STATES } from "@/lib/standalone-contracts";
@@ -73,7 +72,7 @@ export function getRaiseHandControlPhase(input: {
 type Props = {
   connected: boolean;
   micBlocked: boolean;
-  mic: LocalAudioTrack | null;
+  mic: MediaStreamTrack | { mediaStreamTrack?: MediaStreamTrack } | null;
   muted: boolean;
   hand: HandState;
   agentState: AgentState;
@@ -83,7 +82,8 @@ type Props = {
   progressDetail: string | null;
   transcript: string | null;
   answers: LiveAnswerTurn[];
-  answerOutput: OutputVersion | null;
+  answerOutput: Pick<OutputVersion, "citations" | "feedbackTarget"> | null;
+  answerFeedback?: Record<string, { target: AiOutputTarget; submitted: boolean }>;
   metadataMessage: string | null;
   onRaiseHand: () => Promise<void> | void;
   onToggleMute: () => Promise<void> | void;
@@ -91,16 +91,20 @@ type Props = {
   onCancel: () => Promise<void> | void;
   onSend: (question: string) => Promise<void> | void;
   onDismissProblem?: () => void;
+  onFeedbackSent?: (answerId: string) => void;
   onAnswerRegenerated?: (turn: LiveAnswerTurn, output: OutputVersion) => void;
 };
 
 const WAVE_SHAPE = [0.42, 0.72, 0.55, 1, 0.64, 0.82, 0.48, 0.94, 0.58, 0.76, 1, 0.52, 0.88, 0.62, 0.78, 0.46];
 
-function useMicrophoneLevel(track: LocalAudioTrack | null, active: boolean) {
+function useMicrophoneLevel(
+  track: MediaStreamTrack | { mediaStreamTrack?: MediaStreamTrack } | null,
+  active: boolean,
+) {
   const [level, setLevel] = useState(0);
 
   useEffect(() => {
-    const mediaTrack = track?.mediaStreamTrack;
+    const mediaTrack = track instanceof MediaStreamTrack ? track : track?.mediaStreamTrack;
     if (!active || !mediaTrack || typeof AudioContext === "undefined") {
       setLevel(0);
       return;
@@ -179,6 +183,7 @@ export default function RaiseHandDock({
   transcript,
   answers,
   answerOutput,
+  answerFeedback = {},
   metadataMessage,
   onRaiseHand,
   onToggleMute,
@@ -186,6 +191,7 @@ export default function RaiseHandDock({
   onCancel,
   onSend,
   onDismissProblem,
+  onFeedbackSent,
   onAnswerRegenerated,
 }: Props) {
   const announcedAnswerId = useRef<string | null>(null);
@@ -439,7 +445,7 @@ export default function RaiseHandDock({
                 <CircularProgress size={22} color="inherit" />
                 <Typography variant="body2">
                   {phase === "processing"
-                    ? "Turning speech into text…"
+                    ? progressDetail || "Turning speech into text…"
                     : progressDetail || "Preparing your answer…"}
                 </Typography>
               </Stack>
@@ -572,6 +578,14 @@ export default function RaiseHandDock({
                       ))}
                     </Stack>
                   ) : null}
+                  {answerOutput?.feedbackTarget ? (
+                    <OutputFeedback
+                      target={answerOutput.feedbackTarget}
+                      initialFeedbackSent={answerFeedback[latestAnswer.id]?.submitted ?? false}
+                      onFeedbackSent={() => onFeedbackSent?.(latestAnswer.id)}
+                      onRegenerated={onAnswerRegenerated}
+                    />
+                  ) : null}
                   <Button
                     size="small"
                     variant="outlined"
@@ -656,10 +670,11 @@ export default function RaiseHandDock({
                         {metadataMessage}
                       </Typography>
                     ) : null}
-                    {isLatest && answerOutput?.feedbackTarget ? (
+                    {answerFeedback[turn.id] && !answerFeedback[turn.id].submitted ? (
                       <OutputFeedback
-                        target={answerOutput.feedbackTarget}
-                        onRegenerated={onAnswerRegenerated}
+                        target={answerFeedback[turn.id].target}
+                        allowRegenerate={false}
+                        onFeedbackSent={() => onFeedbackSent?.(turn.id)}
                       />
                     ) : null}
                   </Stack>

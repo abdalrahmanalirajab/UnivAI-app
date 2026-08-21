@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "./auth";
 import { isAdminRole, type SessionUser } from "./auth-types";
+import { isDeveloperEmail } from "./developer-access";
 import { getOnboardingState } from "./onboarding";
 
 /**
@@ -60,7 +61,16 @@ export async function requireLearningAction(currentPath?: string): Promise<Sessi
 /** Requires admin or super_admin; students are bounced to their dashboard. */
 export async function requireAdmin(): Promise<SessionUser> {
   const user = await requireUser();
-  if (!isAdminRole(user.role)) redirect("/dashboard");
+  if (!isAdminRole(user.role) && !isDeveloperEmail(user.email)) redirect("/dashboard");
+  return user;
+}
+
+/** Requires membership in the server-only developer email allowlist. */
+export async function requireDeveloper(): Promise<SessionUser> {
+  const user = await requireUser("/dev");
+  if (!isDeveloperEmail(user.email)) {
+    redirect(isAdminRole(user.role) ? "/admin" : "/dashboard");
+  }
   return user;
 }
 
@@ -142,7 +152,16 @@ export async function requireLearningActionApi(): Promise<SessionUser | Response
 export async function requireAdminApi(): Promise<SessionUser | Response> {
   const user = await getSessionUser();
   if (!user) return Response.json({ error: "Not authenticated." }, { status: 401 });
-  if (!isAdminRole(user.role))
+  if (!isAdminRole(user.role) && !isDeveloperEmail(user.email))
     return Response.json({ error: "Admins only." }, { status: 403 });
+  return user;
+}
+
+export async function requireDeveloperApi(): Promise<SessionUser | Response> {
+  const user = await getSessionUser();
+  if (!user) return Response.json({ error: "Not authenticated." }, { status: 401 });
+  if (!isDeveloperEmail(user.email)) {
+    return Response.json({ error: "Developer access required." }, { status: 403 });
+  }
   return user;
 }

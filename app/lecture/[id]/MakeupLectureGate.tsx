@@ -11,22 +11,29 @@ import CircularProgress from "@mui/material/CircularProgress";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import Link from "next/link";
+import type { ReactNode } from "react";
 import type { LectureMakeupState } from "@/lib/lecture-makeup";
-import LectureRoom from "./LectureRoom";
 
 type Props = {
   lectureId: string;
   week: number;
   title: string;
   initialState: LectureMakeupState;
+  activeRoom: ReactNode;
 };
 
-export default function MakeupLectureGate({ lectureId, week, title, initialState }: Props) {
+export default function MakeupLectureGate({
+  lectureId,
+  week,
+  title,
+  initialState,
+  activeRoom,
+}: Props) {
   const [state, setState] = useState(initialState);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (state === "active") return <LectureRoom lectureId={lectureId} />;
+  if (state === "active") return activeRoom;
 
   if (state === "completed" || state === "expired") {
     return (
@@ -36,7 +43,7 @@ export default function MakeupLectureGate({ lectureId, week, title, initialState
           <AlertTitle>{state === "completed" ? "Make-up completed" : "Make-up closed"}</AlertTitle>
           {state === "completed"
             ? "Your attendance was saved when this one-time lecture finished. It cannot be replayed."
-            : "The first-entry window ended after the make-up was started. This one-time access cannot be restarted."}
+            : "This one-time make-up lecture is no longer available."}
         </Alert>
         <Button component={Link} href="/schedule" variant="contained">
           Return to schedule

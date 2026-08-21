@@ -5,6 +5,7 @@ import { getSectionPack } from "@/lib/lectures";
 import { requireLearningActionApi } from "@/lib/session";
 import { enforceUserRateLimit } from "@/lib/rate-limits";
 import { sectionFeedbackTarget } from "@/lib/ai-output-feedback-types";
+import { isDemoMediaTransport } from "@/lib/live-session-transport";
 
 export const dynamic = "force-dynamic";
 const TOKEN_TTL_SECONDS = 600;
@@ -16,6 +17,7 @@ function httpUrl(url: string): string {
 }
 
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  if (isDemoMediaTransport()) return new Response(null, { status: 404 });
   const gate = await requireLearningActionApi();
   if (gate instanceof Response) return gate;
   const limited = await enforceUserRateLimit(gate.id, "live");

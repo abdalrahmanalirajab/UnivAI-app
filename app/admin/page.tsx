@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Accordion from "@mui/material/Accordion";
 import AccordionDetails from "@mui/material/AccordionDetails";
 import AccordionSummary from "@mui/material/AccordionSummary";
@@ -94,7 +95,19 @@ type Grade = {
   max_score: string;
   feedback: string | null;
   flagged?: boolean;
-  report?: { suspicion_score?: number; events?: unknown[] } | null;
+  report?: {
+    suspicion_score?: number;
+    raw_score?: number | null;
+    integrity_penalty_applied?: boolean;
+    risk_band?: string;
+    events?: unknown[];
+    integrity_events?: Array<{
+      type: string;
+      at: string;
+      evidence_value?: number;
+      details?: Record<string, unknown>;
+    }>;
+  } | null;
 };
 type QaEntry = {
   id: number;
@@ -154,6 +167,30 @@ const EMPTY_SUMMARY: AttendanceSummary = {
 
 type ConfirmAction = "regenerate" | "restart" | null;
 
+const ADMIN_TAB_PATHS = [
+  "/admin",
+  "/admin/course",
+  "/admin/records",
+  "/admin/virtual-clock",
+  "/admin/system",
+] as const;
+
+function registrationNumberFromUrl(value: string | null): string {
+  const registrationNumber = value?.trim() ?? "";
+  return /^S-\d{4}-\d{6}$/.test(registrationNumber) ? registrationNumber : "";
+}
+
+function adminTabFromPath(pathname: string): number {
+  const tab = ADMIN_TAB_PATHS.indexOf(pathname as (typeof ADMIN_TAB_PATHS)[number]);
+  return tab < 0 ? 0 : tab;
+}
+
+function adminUrl(tab: number, registrationNumber: string): string {
+  const pathname = ADMIN_TAB_PATHS[tab] ?? ADMIN_TAB_PATHS[0];
+  if (!registrationNumber) return pathname;
+  return `${pathname}?${new URLSearchParams({ reg_num: registrationNumber })}`;
+}
+
 function detailText(detail: unknown): string {
   if (detail === null || detail === undefined) return "—";
   if (typeof detail === "string") return detail;
@@ -165,6 +202,12 @@ function detailText(detail: unknown): string {
 }
 
 export default function AdminPage() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const urlRegistrationNumber = registrationNumberFromUrl(searchParams.get("reg_num"));
+  const selectedSid = urlRegistrationNumber;
+  const tab = adminTabFromPath(pathname);
   const [state, setState] = useState<AdminState | null>(null);
   const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [auditPage, setAuditPage] = useState(0);
@@ -174,13 +217,23 @@ export default function AdminPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [isoInput, setIsoInput] = useState("");
-  const [selectedSid, setSelectedSid] = useState("");
   const [learnerOptions, setLearnerOptions] = useState<Student[]>([]);
   const [learnerQuery, setLearnerQuery] = useState("");
   const [learnerLoading, setLearnerLoading] = useState(false);
-  const [tab, setTab] = useState(0);
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null);
   const loadSequence = useRef(0);
+  const displayedLearnerSid = useRef("");
+
+  useEffect(() => {
+    if (!selectedSid) {
+      displayedLearnerSid.current = "";
+      setLearnerQuery("");
+      return;
+    }
+    if (state?.learner?.sid !== selectedSid || displayedLearnerSid.current === selectedSid) return;
+    displayedLearnerSid.current = selectedSid;
+    setLearnerQuery(state.learner.name);
+  }, [selectedSid, state?.learner]);
 
   const load = useCallback(async () => {
     const sequence = ++loadSequence.current;
@@ -438,7 +491,8 @@ export default function AdminPage() {
                 onChange={(_event, student) => {
                   const nextSid = student?.sid ?? "";
                   setLearnerQuery(student?.name ?? "");
-                  setSelectedSid(nextSid);
+                  displayedLearnerSid.current = nextSid;
+                  router.replace(adminUrl(tab, nextSid), { scroll: false });
                   setState((current) =>
                     current
                       ? {
@@ -454,7 +508,6 @@ export default function AdminPage() {
                         }
                       : current,
                   );
-                  setTab(0);
                 }}
                 noOptionsText={learnerQuery ? "No matching learner" : "No learners found"}
                 renderInput={(params) => (
@@ -488,7 +541,9 @@ export default function AdminPage() {
       <Paper className="admin-tabs-shell" elevation={0}>
         <Tabs
           value={tab}
-          onChange={(_event, value: number) => setTab(value)}
+          onChange={(_event, value: number) => {
+            router.push(adminUrl(value, selectedSid), { scroll: false });
+          }}
           variant="scrollable"
           scrollButtons="auto"
           aria-label="Administration areas"
@@ -855,15 +910,43 @@ export default function AdminPage() {
                         </TableCell>
                         <TableCell>{grade.feedback ?? "—"}</TableCell>
                         <TableCell>
-                          <Chip
-                            size="small"
-                            color={grade.flagged ? "error" : "success"}
-                            label={
-                              grade.flagged
-                                ? "Flagged · score " + (grade.report?.suspicion_score ?? "?")
-                                : "Clean"
-                            }
-                          />
+                          <Stack spacing={1}>
+                            <Chip
+                              size="small"
+                              color={grade.flagged ? "error" : "success"}
+                              label={
+                                grade.flagged
+                                  ? "Flagged · score " + (grade.report?.suspicion_score ?? "?")
+                                  : "Clean"
+                              }
+                            />
+                            {grade.report?.integrity_penalty_applied ? (
+                              <Typography variant="caption">
+                                Raw {grade.report.raw_score ?? "?"} · recorded {grade.score}
+                              </Typography>
+                            ) : null}
+                            {grade.report?.integrity_events?.length ? (
+                              <Accordion disableGutters>
+                                <AccordionSummary expandIcon={<ExpandMoreRounded />}>
+                                  <Typography variant="caption">
+                                    View {grade.report.integrity_events.length} integrity events
+                                  </Typography>
+                                </AccordionSummary>
+                                <AccordionDetails>
+                                  <Stack spacing={0.75}>
+                                    {grade.report.integrity_events.map((event, index) => (
+                                      <Typography variant="caption" component="div" key={`${event.at}-${event.type}-${index}`}>
+                                        {formatDateTime(event.at)} · {event.type} · evidence {event.evidence_value ?? 0}
+                                        {event.details && Object.keys(event.details).length
+                                          ? ` · ${JSON.stringify(event.details)}`
+                                          : ""}
+                                      </Typography>
+                                    ))}
+                                  </Stack>
+                                </AccordionDetails>
+                              </Accordion>
+                            ) : null}
+                          </Stack>
                         </TableCell>
                       </TableRow>
                     ))}

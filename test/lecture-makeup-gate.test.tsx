@@ -6,10 +6,6 @@ vi.mock("next/link", () => ({
     <a href={href}>{children}</a>
   ),
 }));
-vi.mock("@/app/lecture/[id]/LectureRoom", () => ({
-  default: () => <div>interactive-live-room</div>,
-}));
-
 import MakeupLectureGate from "@/app/lecture/[id]/MakeupLectureGate";
 
 describe("make-up lecture confirmation", () => {
@@ -30,6 +26,7 @@ describe("make-up lecture confirmation", () => {
         week={2}
         title="Storage engines"
         initialState="ready"
+        activeRoom={<div>interactive-live-room</div>}
       />,
     );
 
@@ -51,6 +48,7 @@ describe("make-up lecture confirmation", () => {
         week={2}
         title="Storage engines"
         initialState="completed"
+        activeRoom={<div>interactive-live-room</div>}
       />,
     );
 

@@ -1,4 +1,5 @@
 import { requireAdmin } from "@/lib/session";
+import { Suspense } from "react";
 
 /**
  * Gates every /admin/* page at the server, before any admin UI renders. The
@@ -13,5 +14,5 @@ export default async function AdminLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   await requireAdmin();
-  return <>{children}</>;
+  return <Suspense fallback={null}>{children}</Suspense>;
 }

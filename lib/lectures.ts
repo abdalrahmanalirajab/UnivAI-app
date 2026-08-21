@@ -24,6 +24,7 @@ export const LECTURE_WINDOW_MINUTES = LEGACY_LECTURE_MINUTES;
  * durable checkpoint.
  */
 export const JOIN_CUTOFF_MINUTES = LECTURE_WINDOW_MINUTES / 2;
+export const REJOIN_GRACE_FRACTION = 0.3;
 
 export type Segment = { slide: number; text: string; citations: { page: number }[] };
 export type Script = {
@@ -43,13 +44,25 @@ export function lectureJoinBlockReason(input: {
   virtualNow: Date;
   startsAt: Date;
   cutoffAt: Date;
+  endsAt?: Date;
+  lastDisconnectedAt?: Date | null;
 }): BlockedReason {
   if (input.completed) return "completed";
-  // The cutoff applies to the first admission only. Once the worker has seen
-  // this learner in LiveKit, refreshes and reconnects remain legal.
-  if (input.previouslyAdmitted) return null;
+  if (input.previouslyAdmitted) {
+    // A currently connected learner has no new disconnection anchor and may
+    // finish the full lecture even when playback runs past the scheduled end.
+    if (!input.lastDisconnectedAt) return null;
+    const endsAt = input.endsAt ?? new Date(
+      input.cutoffAt.getTime() + (input.cutoffAt.getTime() - input.startsAt.getTime()),
+    );
+    const durationMs = Math.max(0, endsAt.getTime() - input.startsAt.getTime());
+    const rejoinDeadline = input.lastDisconnectedAt < input.cutoffAt
+      ? endsAt
+      : new Date(input.lastDisconnectedAt.getTime() + durationMs * REJOIN_GRACE_FRACTION);
+    return input.virtualNow > rejoinDeadline ? "too_late" : null;
+  }
   if (input.virtualNow < input.startsAt) return "not_started";
-  if (input.virtualNow > input.cutoffAt) return "missed";
+  if (input.virtualNow >= input.cutoffAt) return "missed";
   return null;
 }
 
@@ -608,9 +621,13 @@ export async function getLectures(sid: string): Promise<Lecture[]> {
     starts_at: Date;
     joined_at: Date | null;
     completed_at: Date | null;
+    is_connected: boolean | null;
+    presence_last_seen_at: Date | null;
+    last_disconnected_at: Date | null;
   }>(
     `SELECT l.id, l.public_id::text AS public_id, l.week, l.title, l.starts_at,
-            a.joined_at, a.completed_at
+            a.joined_at, a.completed_at, a.is_connected,
+            a.presence_last_seen_at, a.last_disconnected_at
        FROM lectures l
        LEFT JOIN attendance a ON a.lecture_id = l.id AND a.student_id = $1
       WHERE l.student_id = $1
@@ -626,6 +643,31 @@ export async function getLectures(sid: string): Promise<Lecture[]> {
     const endsAt = new Date(startsAt.getTime() + durationMinutes * MINUTE_MS);
     const completed = Boolean(row.completed_at);
     const previouslyAdmitted = Boolean(row.joined_at);
+    const lastSeenAt = row.presence_last_seen_at
+      ? new Date(row.presence_last_seen_at)
+      : null;
+    const activelyConnected = Boolean(
+      row.is_connected && lastSeenAt &&
+      Math.abs(virtualNow.getTime() - lastSeenAt.getTime()) <= 15_000,
+    );
+    const recordedDisconnect = row.last_disconnected_at
+      ? new Date(row.last_disconnected_at)
+      : null;
+    const lastDisconnectedAt = activelyConnected
+      ? null
+      : recordedDisconnect && lastSeenAt
+        ? new Date(Math.max(recordedDisconnect.getTime(), lastSeenAt.getTime()))
+        : recordedDisconnect ?? lastSeenAt;
+
+    const blockedReason = lectureJoinBlockReason({
+      completed,
+      previouslyAdmitted,
+      virtualNow,
+      startsAt,
+      cutoffAt: cutoff,
+      endsAt,
+      lastDisconnectedAt,
+    });
 
     let state: Lecture["state"] = "upcoming";
     if (virtualNow >= endsAt) state = "done";
@@ -638,15 +680,7 @@ export async function getLectures(sid: string): Promise<Lecture[]> {
     // Once admitted, a learner owns a resumable live session. The lecturer
     // waits through disconnects, so the scheduled wall-clock end cannot turn a
     // valid reconnect into an archive while the script is still unfinished.
-    else if (previouslyAdmitted) state = "live";
-
-    const blockedReason = lectureJoinBlockReason({
-      completed,
-      previouslyAdmitted,
-      virtualNow,
-      startsAt,
-      cutoffAt: cutoff,
-    });
+    else if (previouslyAdmitted && blockedReason === null) state = "live";
 
     return {
       id: row.public_id,
@@ -667,8 +701,8 @@ export async function getLectures(sid: string): Promise<Lecture[]> {
 
 export const BLOCKED_MESSAGE: Record<NonNullable<BlockedReason>, string> = {
   not_started: "This lecture has not started yet.",
-  too_late: "You cannot join after the lecture's halfway point.",
-  missed: "You missed this lecture. The doors close halfway through.",
+  too_late: "This lecture is no longer available to rejoin.",
+  missed: "This lecture is no longer available to join.",
   completed: "You have already finished this lecture.",
 };
 

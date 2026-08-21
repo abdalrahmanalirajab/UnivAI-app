@@ -1,4 +1,5 @@
 import LectureRoom from "./LectureRoom";
+import DemoLectureRoom from "./DemoLectureRoom";
 import StandaloneLectureRoom from "./StandaloneLectureRoom";
 import { getLectureMaterialAccess } from "@/lib/lecture-materials";
 import { getLectureMakeupAccess } from "@/lib/lecture-makeup";
@@ -6,6 +7,7 @@ import { requireLearningAction } from "@/lib/session";
 import { isStandalone } from "@/lib/runtime";
 import { redirect } from "next/navigation";
 import MakeupLectureGate from "./MakeupLectureGate";
+import { isDemoMediaTransport } from "@/lib/live-session-transport";
 
 export default async function LecturePage({
   params,
@@ -21,6 +23,9 @@ export default async function LecturePage({
   const makeup = validId
     ? await getLectureMakeupAccess(user.registrationNumber, id)
     : null;
+  const room = isDemoMediaTransport()
+    ? <DemoLectureRoom lectureId={id} />
+    : <LectureRoom lectureId={id} />;
   if (makeup) {
     return (
       <MakeupLectureGate
@@ -28,10 +33,11 @@ export default async function LecturePage({
         week={makeup.week}
         title={makeup.title}
         initialState={makeup.state}
+        activeRoom={room}
       />
     );
   }
   const access = validId ? await getLectureMaterialAccess(user.registrationNumber, id) : null;
   if (access?.mode === "archive") redirect(`/lecture/${id}/archive`);
-  return <LectureRoom lectureId={id} />;
+  return room;
 }

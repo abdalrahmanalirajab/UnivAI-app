@@ -81,7 +81,7 @@ export async function getAttendance(sid: string): Promise<LectureAttendance[]> {
 
     if (row.joined_at) {
       status = row.status === "late" ? "late" : "on_time";
-    } else if (virtualNow > firstJoinCutoff) {
+    } else if (virtualNow >= firstJoinCutoff) {
       status = "absent";
     } else {
       status = "upcoming";

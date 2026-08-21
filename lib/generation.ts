@@ -4,6 +4,8 @@ import path from "path";
 import { query, queryOne } from "./db";
 import { AGENT_PYTHON, REPO_ROOT } from "./python";
 import { isStandalone } from "./runtime";
+import { isDemoMediaTransport } from "./live-session-transport";
+import { ensureSchedule } from "./lectures";
 
 /**
  * Fire course generation (UnivAI-Agent/generation/lecture_gen.py — the Brain
@@ -24,6 +26,12 @@ import { isStandalone } from "./runtime";
  * the button a no-op.
  */
 export type GenerationMode = "full" | "plan" | "quizzes" | "rebuild";
+
+export type CourseBuildStart = {
+  bookId: number;
+  pages: number;
+  cached: boolean;
+};
 
 export function spawnGeneration(
   pdfPath: string,
@@ -54,7 +62,14 @@ export function spawnGeneration(
     stdio: ["ignore", log, log],
     // Log lines carry generated titles; without this, one character outside
     // the console codepage kills the whole run with UnicodeEncodeError.
-    env: { ...process.env, PYTHONIOENCODING: "utf-8" },
+    env: {
+      ...process.env,
+      PYTHONIOENCODING: "utf-8",
+      // env.ts reads the root .env without copying it into process.env. Pass
+      // the server's resolved transport explicitly or Python silently falls
+      // back to LiveKit and marks on-demand audio ready in demo-media mode.
+      LIVE_SESSION_TRANSPORT: isDemoMediaTransport() ? "demo_media" : "livekit",
+    },
   });
   const pid = child.pid ?? null;
   if (pid) {
@@ -116,12 +131,28 @@ export async function cancelGenerationForSource(
 export async function startApprovedCourseBuild(
   collectionId: number,
   registrationNumber: string,
-): Promise<number[]> {
-  const books = await query<{ id: number; filename: string }>(
-    `SELECT id, filename FROM books
-      WHERE student_id = $1
-        AND filename LIKE 'collections/' || $2::text || '/%'
-        AND status IN ('awaiting_approval', 'failed', 'partial_failed', 'partial')`,
+): Promise<CourseBuildStart[]> {
+  // Offline media is tied to the scheduled lecture public IDs. Create those
+  // learner-owned rows before Python starts so its final render can publish a
+  // complete, immediately playable bundle in the same generation run.
+  if (isDemoMediaTransport()) await ensureSchedule(registrationNumber);
+
+  const books = await query<CourseBuildStart & { id: number; filename: string }>(
+    `SELECT b.id, b.filename, b.pages, b.id AS "bookId",
+            EXISTS (
+              SELECT 1
+                FROM books AS donor
+               WHERE donor.id <> b.id
+                 AND donor.source_sha256 = b.source_sha256
+                 AND donor.status = 'ready'
+                 AND donor.generation_total_weeks > 0
+                 AND donor.generation_ready_weeks >= donor.generation_total_weeks
+                 AND donor.generation_audio_ready_weeks >= donor.generation_total_weeks
+            ) AS cached
+       FROM books AS b
+      WHERE b.student_id = $1
+        AND b.filename LIKE 'collections/' || $2::text || '/%'
+        AND b.status IN ('awaiting_approval', 'failed', 'partial_failed', 'partial')`,
     [registrationNumber, collectionId],
   );
 
@@ -139,5 +170,5 @@ export async function startApprovedCourseBuild(
       "full",
     );
   }
-  return books.map((book) => book.id);
+  return books.map(({ bookId, pages, cached }) => ({ bookId, pages, cached }));
 }

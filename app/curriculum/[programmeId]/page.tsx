@@ -22,6 +22,25 @@ type Props = {
   params: Promise<{ programmeId: string }>;
 };
 
+type GenerationEstimate = {
+  books: number;
+  pages: number;
+  cacheStatus: "all" | "some" | "none";
+};
+
+const HOUR_BUCKETS = [2, 4, 6, 8, 12, 18, 24, 36, 48, 72];
+
+function preparationEstimate(estimate: GenerationEstimate): string {
+  const pages = Math.max(1, estimate.pages);
+  const rawHours = estimate.cacheStatus === "all"
+    ? Math.min(24, 2 + pages / 60)
+    : estimate.cacheStatus === "some"
+      ? Math.min(48, 5 + pages / 30)
+      : Math.min(72, 8 + pages / 15);
+  const hours = HOUR_BUCKETS.find((bucket) => bucket >= rawHours) ?? 72;
+  return hours < 24 ? `${hours} hours` : `${Math.ceil(hours / 24)} days`;
+}
+
 export default function CurriculumPage({ params }: Props) {
   const [programme, setProgramme] = useState<Programme | null>(null);
   const [loading, setLoading] = useState(true);
@@ -32,6 +51,7 @@ export default function CurriculumPage({ params }: Props) {
   const [approveError, setApproveError] = useState<string | null>(null);
   const [approved, setApproved] = useState(false);
   const [approvalBlocks, setApprovalBlocks] = useState<ApprovalBlock[]>([]);
+  const [generationNotice, setGenerationNotice] = useState<GenerationEstimate | null>(null);
 
   const fetchProgramme = useCallback(async (id: number) => {
     setLoading(true);
@@ -99,7 +119,11 @@ export default function CurriculumPage({ params }: Props) {
       const updated = data.programme as Programme;
       setProgramme(updated);
       setApproved(true);
-      window.location.assign("/library?continue=schedule");
+      if (data.coursesStarted > 0 && data.generationEstimate) {
+        setGenerationNotice(data.generationEstimate as GenerationEstimate);
+      } else {
+        window.location.assign("/library?continue=schedule");
+      }
     } catch (err) {
       setApproveError(err instanceof Error ? err.message : "Failed to approve programme.");
     } finally {
@@ -234,6 +258,46 @@ export default function CurriculumPage({ params }: Props) {
             disabled={approving}
           >
             {approving ? "Approving…" : "Yes, approve"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={generationNotice !== null}
+        onClose={() => window.location.assign("/library?continue=schedule")}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>
+          {generationNotice?.cacheStatus === "all"
+            ? "Good news — your course is cached"
+            : generationNotice?.cacheStatus === "some"
+              ? "Some course content is cached"
+              : "Your course is now being built"}
+        </DialogTitle>
+        <DialogContent>
+          <Stack spacing={1}>
+            <DialogContentText>
+              {generationNotice?.cacheStatus === "all"
+                ? "We found fully prepared copies of your books."
+                : generationNotice?.cacheStatus === "some"
+                  ? "We found prepared copies for some books and will build the rest."
+                  : "These books are new, so we are building the course for the first time."}
+              {generationNotice
+                ? ` Based on ${generationNotice.pages > 0 ? `${generationNotice.pages} pages` : "the book size"}, it should take about ${preparationEstimate(generationNotice)}.`
+                : ""}
+            </DialogContentText>
+            <DialogContentText>
+              We’ll email you when everything is ready. You can relax 🙂
+            </DialogContentText>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            variant="contained"
+            onClick={() => window.location.assign("/library?continue=schedule")}
+          >
+            Continue
           </Button>
         </DialogActions>
       </Dialog>

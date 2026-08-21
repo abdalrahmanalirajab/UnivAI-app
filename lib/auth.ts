@@ -32,6 +32,19 @@ import {
  * bootstrap are assigned server-side in the create hook, never from the client.
  */
 export const auth = betterAuth({
+  trustedOrigins: [
+    env.BETTER_AUTH_URL,
+    ...(process.env.NODE_ENV !== "production"
+      ? [
+          "http://localhost:3000",
+          "http://localhost:3100",
+          "http://192.168.*.*:3100",
+          "http://10.*.*.*:3100",
+          "http://100.*.*.*:3100",
+          "http://172.*.*.*:3100",
+        ]
+      : []),
+  ],
   secret: env.BETTER_AUTH_SECRET,
   baseURL: env.BETTER_AUTH_URL,
   database: pool,
@@ -49,14 +62,6 @@ export const auth = betterAuth({
       generateId: () => randomUUID(),
     },
   },
-
-  // Browsers send an Origin header and Better Auth rejects any origin it does
-  // not trust (baseURL is trusted by default). Local dev may run on :3000 or
-  // :3100, so trust both there; production trusts only BETTER_AUTH_URL.
-  trustedOrigins:
-    process.env.NODE_ENV === "production"
-      ? [env.BETTER_AUTH_URL]
-      : ["http://localhost:3000", "http://localhost:3100"],
 
   emailAndPassword: {
     enabled: true,

@@ -103,7 +103,12 @@ export default function AdminFeedbackReports({
     } : current);
   }
 
-  async function save(report: Report) {
+  async function save(
+    report: Report,
+    patch: Pick<Partial<Report>, "status" | "adminNote"> = {},
+  ) {
+    const nextReport = { ...report, ...patch };
+    if (Object.keys(patch).length > 0) changeReport(report.id, patch);
     setSavingId(report.id);
     setError(null);
     try {
@@ -112,14 +117,18 @@ export default function AdminFeedbackReports({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           reportId: report.id,
-          status: report.status,
-          adminNote: report.adminNote,
+          status: nextReport.status,
+          adminNote: nextReport.adminNote,
         }),
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error ?? "Could not save review.");
       changeReport(report.id, body.report as Report);
     } catch (reason) {
+      changeReport(report.id, {
+        status: report.status,
+        adminNote: report.adminNote,
+      });
       setError(reason instanceof Error ? reason.message : "Could not save review.");
     } finally {
       setSavingId(null);
@@ -226,7 +235,8 @@ export default function AdminFeedbackReports({
                             size="small"
                             label="Status"
                             value={report.status}
-                            onChange={(event) => changeReport(report.id, {
+                            disabled={savingId === report.id}
+                            onChange={(event) => void save(report, {
                               status: event.target.value as AiOutputReportStatus,
                             })}
                           >
@@ -247,7 +257,7 @@ export default function AdminFeedbackReports({
                             disabled={savingId === report.id}
                             onClick={() => void save(report)}
                           >
-                            Save review
+                            {savingId === report.id ? "Savingâ€¦" : "Save note"}
                           </Button>
                         </Stack>
                       </TableCell>

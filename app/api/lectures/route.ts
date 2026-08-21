@@ -45,7 +45,7 @@ export async function GET() {
         const state = makeup?.state === "active" ? "live" : lecture.state;
         const joinable = lecture.joinable || makeup?.state === "active";
         const makeupBlockedMessage = makeup?.state === "expired"
-          ? "Your one-time make-up start window closed before you joined."
+          ? "Your one-time make-up lecture is no longer available."
           : makeup?.state === "completed"
             ? "Your one-time make-up lecture is complete and cannot be replayed."
             : null;

@@ -21,6 +21,12 @@ const envPath =
     : process.env.UNIVAI_INTEGRATION_ROOT
       ? path.resolve(process.env.UNIVAI_INTEGRATION_ROOT, ".env")
       : path.resolve(process.cwd(), "..", ".env");
+const integrationRoot =
+  mode === "standalone"
+    ? process.cwd()
+    : process.env.UNIVAI_INTEGRATION_ROOT
+      ? path.resolve(process.env.UNIVAI_INTEGRATION_ROOT)
+      : path.resolve(process.cwd(), "..");
 // processEnv: {} keeps the file out of process.env — we only ever read `parsed`.
 // Loading it the default way copies every value into this long-lived server's
 // environment, and lib/python spawns the Python side with that environment
@@ -34,6 +40,11 @@ const parsed = config({ path: envPath, quiet: true, processEnv: {} }).parsed ?? 
 function read(name: string, fallback = ""): string {
   return parsed[name] ?? process.env[name] ?? fallback;
 }
+
+const liveSessionTransport = (
+  process.env.LIVE_SESSION_TRANSPORT ?? read("LIVE_SESSION_TRANSPORT", "livekit")
+).trim().toLowerCase();
+const configuredDemoMediaRoot = read("DEMO_MEDIA_ROOT", "demo-media");
 
 export const env = {
   UNIVAI_MODE: read("UNIVAI_MODE", "integrated"),
@@ -59,15 +70,22 @@ export const env = {
   UNIVAI_AGENT_SECRET: read("UNIVAI_AGENT_SECRET"),
   STUDENT_NAME: read("STUDENT_NAME", "Student"),
 
-  LIVEKIT_URL: read("LIVEKIT_URL") || read("NEXT_PUBLIC_LIVEKIT_URL"),
-  LIVEKIT_API_KEY: read("LIVEKIT_API_KEY"),
-  LIVEKIT_API_SECRET: read("LIVEKIT_API_SECRET"),
+  // Demo transport makes these empty even when the normal .env still contains
+  // rollback credentials. No demo route can accidentally use them.
+  LIVEKIT_URL: liveSessionTransport === "demo_media" ? "" : read("LIVEKIT_URL") || read("NEXT_PUBLIC_LIVEKIT_URL"),
+  LIVEKIT_API_KEY: liveSessionTransport === "demo_media" ? "" : read("LIVEKIT_API_KEY"),
+  LIVEKIT_API_SECRET: liveSessionTransport === "demo_media" ? "" : read("LIVEKIT_API_SECRET"),
+  LIVE_SESSION_TRANSPORT: liveSessionTransport,
+  DEMO_MEDIA_ROOT: path.resolve(integrationRoot, configuredDemoMediaRoot),
+  LECTURES_ROOT: path.resolve(integrationRoot, "lectures"),
 
   // Auth (Better Auth). See docs/auth-plan.md + docs/auth-contract.md.
   BETTER_AUTH_SECRET: read("BETTER_AUTH_SECRET"),
   BETTER_AUTH_URL: read("BETTER_AUTH_URL", "http://localhost:3100"),
   // The single account auto-promoted to super_admin on signup.
   SUPER_ADMIN_EMAIL: read("SUPER_ADMIN_EMAIL").trim().toLowerCase(),
+  // Server-only allowlist for the final-demo developer command deck.
+  DEVELOPER_EMAILS: read("DEVELOPER_EMAILS"),
   // Google sign-in. Both empty => the provider is not registered at all and the
   // UI hides the button, so the app runs unchanged without Google credentials.
   GOOGLE_CLIENT_ID: read("GOOGLE_CLIENT_ID"),

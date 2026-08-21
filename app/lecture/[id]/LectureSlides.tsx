@@ -19,7 +19,15 @@ type SlidesResponse = {
   reason?: string | null;
 };
 
-export default function LectureSlides({ lectureId, slide }: { lectureId: string; slide: number }) {
+export default function LectureSlides({
+  lectureId,
+  slide,
+  onReady,
+}: {
+  lectureId: string;
+  slide: number;
+  onReady?: () => void;
+}) {
   const [deck, setDeck] = useState<SlideDeck | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmingAccess, setConfirmingAccess] = useState(false);
@@ -129,6 +137,7 @@ export default function LectureSlides({ lectureId, slide }: { lectureId: string;
       height="520"
       frameBorder="0"
       allowFullScreen
+      onLoad={onReady}
     />
   );
 }

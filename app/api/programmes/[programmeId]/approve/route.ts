@@ -76,5 +76,14 @@ export async function POST(
     programme: result.programme,
     approvedVersion: result.programme.plan_version,
     coursesStarted: started.length,
+    generationEstimate: started.length > 0 ? {
+      books: started.length,
+      pages: started.reduce((total, course) => total + Math.max(0, course.pages), 0),
+      cacheStatus: started.every((course) => course.cached)
+        ? "all"
+        : started.some((course) => course.cached)
+          ? "some"
+          : "none",
+    } : null,
   });
 }

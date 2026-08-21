@@ -21,7 +21,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       : access.blockedReason === "makeup_completed"
         ? "This one-time make-up lecture is complete and cannot be replayed."
         : access.blockedReason === "makeup_closed"
-          ? "This one-time make-up lecture closed before its first join."
+          ? "This one-time make-up lecture is no longer available."
           : archiveRequested || access.blockedReason === "not_started"
             ? "The presentation is not available yet."
             : "Your live lecture connection is still being confirmed. The presentation will open automatically.";

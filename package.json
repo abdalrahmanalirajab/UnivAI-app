@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "tsx scripts/next-dev.ts",
     "dev:standalone": "tsx scripts/standalone.ts dev",
     "standalone:up": "tsx scripts/standalone.ts up",
     "standalone:seed": "tsx scripts/standalone.ts seed",
@@ -11,6 +11,9 @@
     "standalone:down": "tsx scripts/standalone.ts down",
     "seed:integration": "tsx scripts/integration-seed.ts",
     "seed:transcript-demo": "tsx scripts/seed-transcript-demo.ts",
+    "demo:prepare-media": "tsx scripts/demo-media.ts prepare",
+    "demo:backfill-media": "tsx scripts/demo-media-backfill.ts",
+    "demo:preflight": "tsx scripts/demo-media.ts preflight",
     "smoke:standalone": "tsx scripts/standalone.ts smoke",
     "test": "npm run test:standalone && npm run test:ui",
     "test:standalone": "tsx --test tests/*.test.ts",

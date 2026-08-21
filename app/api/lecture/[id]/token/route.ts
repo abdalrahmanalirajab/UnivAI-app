@@ -6,6 +6,7 @@ import { getLectureMakeupAccess } from "@/lib/lecture-makeup";
 import { requireLearningActionApi } from "@/lib/session";
 import { env } from "@/lib/env";
 import { enforceUserRateLimit } from "@/lib/rate-limits";
+import { isDemoMediaTransport } from "@/lib/live-session-transport";
 import {
   buildLiveSessionMetadata,
   safeSpokenName,
@@ -58,6 +59,7 @@ async function configureRoom(
 }
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  if (isDemoMediaTransport()) return new Response(null, { status: 404 });
   const gate = await requireLearningActionApi();
   if (gate instanceof Response) return gate;
   const limited = await enforceUserRateLimit(gate.id, "live");
@@ -88,8 +90,8 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   );
   if (!lecture) return Response.json({ error: "No such lecture." }, { status: 404 });
 
-  // The halfway cutoff applies only to first admission. A learner already seen
-  // in this lecture may reconnect to the waiting worker; completion stays final.
+  // The schedule read model applies the first-join cutoff and the bounded
+  // rejoin window from the learner's latest disconnection.
   const [schedule, makeup] = await Promise.all([
     getLectures(sid),
     getLectureMakeupAccess(sid, lectureId),
@@ -109,7 +111,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       {
         error: makeup.state === "completed"
           ? "This one-time make-up lecture is already complete."
-          : "This one-time make-up lecture closed before its first join.",
+          : "This one-time make-up lecture is no longer available.",
         reason: makeup.state === "completed" ? "makeup_completed" : "makeup_closed",
       },
       { status: 403 },

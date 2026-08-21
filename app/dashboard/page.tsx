@@ -10,7 +10,6 @@ import CardContent from "@mui/material/CardContent";
 import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
 import Grid from "@mui/material/Grid";
-import LinearProgress from "@mui/material/LinearProgress";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import ArrowForwardRounded from "@mui/icons-material/ArrowForwardRounded";
@@ -239,9 +238,22 @@ export default function DashboardPage() {
   }
 
   const endedLectures = lectures.filter((lecture) => lecture.state === "done").length;
-  const courseProgress = lectures.length
-    ? Math.round((endedLectures / lectures.length) * 100)
-    : 0;
+  const visibleAttendance = data.attendance.filter((record) => {
+    const lecture = lectures.find((candidate) => candidate.id === record.lectureId);
+    return Boolean(
+      lecture &&
+      (lecture.completed || (now && now.getTime() >= new Date(lecture.endsAt).getTime())),
+    );
+  });
+  const visibleAttended = visibleAttendance.filter(
+    (record) => record.attendanceStatus === "attended",
+  ).length;
+  const visiblePartial = visibleAttendance.filter(
+    (record) => record.attendanceStatus === "partially_attended",
+  ).length;
+  const visibleAbsent = visibleAttendance.filter(
+    (record) => record.attendanceStatus === "absent",
+  ).length;
   const submittedAssessments = exams.filter((exam) => exam.state === "submitted").length;
   const openAssessments = exams.filter((exam) => exam.state === "open").length;
   const officialFinalReady = data.grades.some(
@@ -318,16 +330,14 @@ export default function DashboardPage() {
                 </Avatar>
                 <Stack spacing={0.5}>
                   <Typography variant="h6">Course progress</Typography>
-                  <Typography variant="h4">{courseProgress}%</Typography>
+                  <Typography variant="h4">{endedLectures} finished</Typography>
                   <Typography variant="body2" color="text.secondary">
                     {endedLectures} of {lectures.length || "—"} lecture weeks finished
                   </Typography>
                 </Stack>
-                <LinearProgress
-                  variant="determinate"
-                  value={courseProgress}
-                  aria-label={`Course progress ${courseProgress} percent`}
-                />
+                <Button component={Link} href="/schedule" size="small">
+                  View course timeline
+                </Button>
               </Stack>
             </CardContent>
           </Card>
@@ -367,10 +377,12 @@ export default function DashboardPage() {
                 <Stack spacing={0.5}>
                   <Typography variant="h6">Attendance</Typography>
                   <Typography variant="h4">
-                    {data.summary.attendedCount} attended
+                    {visibleAttendance.length ? `${visibleAttended} attended` : "Pending"}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    {data.summary.partiallyAttendedCount} partial · {data.summary.participationAbsentCount} absent · {data.summary.averageAttendancePercentage}% average coverage
+                    {visibleAttendance.length
+                      ? `${visiblePartial} partially attended · ${visibleAbsent} absent`
+                      : "Results appear after each lecture ends."}
                   </Typography>
                 </Stack>
                 <Button component={Link} href="/schedule" size="small">
